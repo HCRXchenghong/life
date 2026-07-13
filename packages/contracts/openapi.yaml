@@ -39,6 +39,17 @@ paths:
             Set-Cookie: { schema: { type: string } }
         "409": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
+    delete:
+      security:
+        - enrollmentCookie: []
+      operationId: cancelAdminEnrollment
+      description: Cancels only the pending administrator bound to the current enrollment cookie.
+      responses:
+        "200":
+          description: Pending enrollment deleted and enrollment cookie cleared.
+          headers:
+            Set-Cookie: { schema: { type: string } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /auth/setup/enrollment:
     get:
       security:

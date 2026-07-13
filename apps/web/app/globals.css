@@ -281,11 +281,88 @@ textarea { resize: vertical; line-height: 1.55; }
   text-align: center;
   font-size: 13px;
 }
+.admin-auth-totp-content {
+  margin-top: -36px;
+  text-align: center;
+}
+.admin-auth-totp-content .admin-auth-subtitle { margin-bottom: 30px; }
+.admin-auth-qr {
+  width: 210px;
+  height: 210px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto;
+  padding: 12px;
+  border: 1px solid var(--auth-line);
+  border-radius: 6px;
+  background: #fff;
+  color: #8f959e;
+  font-size: 12px;
+}
+.admin-auth-qr img { width: 184px; height: 184px; display: block; image-rendering: pixelated; }
+.admin-auth-secret-toggle,
+.admin-auth-back {
+  border: 0;
+  background: transparent;
+  color: #8f959e;
+  cursor: pointer;
+  font-size: 13px;
+}
+.admin-auth-secret-toggle {
+  margin: 17px 0 31px;
+  padding: 5px;
+}
+.admin-auth-secret-toggle:hover:not(:disabled),
+.admin-auth-back:hover:not(:disabled) { color: var(--auth-blue); }
+.admin-auth-secret-toggle:focus-visible,
+.admin-auth-back:focus-visible {
+  outline: 2px solid var(--auth-blue);
+  outline-offset: 2px;
+}
+.admin-auth-secret-toggle:disabled { cursor: default; }
+.admin-auth-secret {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: -20px 0 24px;
+  padding: 11px 12px;
+  border: 1px solid var(--auth-line);
+  border-radius: 6px;
+  background: #fff;
+  text-align: left;
+}
+.admin-auth-secret code {
+  color: var(--auth-ink);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.admin-auth-secret button {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--auth-blue);
+  cursor: pointer;
+  font-size: 12px;
+}
+.admin-auth-totp-form { gap: 23px; text-align: left; }
+.admin-auth-totp-form .admin-auth-primary { margin-top: 9px; }
+.admin-auth-back {
+  justify-self: center;
+  margin-top: -13px;
+  padding: 5px 10px;
+}
+.admin-auth-totp-form .admin-auth-message {
+  margin-top: -14px;
+  color: #d54941;
+}
 @media (max-width: 620px) {
   .admin-auth-shell { align-items: start; padding: 122px 24px 88px; }
   .admin-auth-brand { top: 27px; left: 24px; font-size: 22px; }
   .admin-auth-brand-mark { width: 36px; height: 36px; }
   .admin-auth-content { margin-top: 8px; }
+  .admin-auth-totp-content { margin-top: 0; }
   .admin-auth-content h1 { font-size: 31px; }
   .admin-auth-subtitle { margin-bottom: 36px; font-size: 16px; }
   .admin-auth-privacy { bottom: 24px; font-size: 11px; }

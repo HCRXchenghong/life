@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { AdminConsole } from "../../components/AdminConsole";
 import {
   AdminLoginForm,
@@ -22,6 +23,7 @@ export default async function AdminPage() {
   const bootstrap = await getBootstrapState(cookieHeader);
   if (bootstrap.kind === "uninitialized") return <AdminSetupForm />;
   if (bootstrap.kind === "pending") {
+    if (bootstrap.enrollmentAuthorized) redirect("/admin/setup/2fa");
     return <PendingSetupNotice authorized={bootstrap.enrollmentAuthorized} />;
   }
   return <AdminLoginForm />;

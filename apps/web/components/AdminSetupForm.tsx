@@ -13,7 +13,6 @@ export function AdminSetupForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [message, setMessage] = useState("");
-  const [created, setCreated] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -32,9 +31,7 @@ export function AdminSetupForm() {
         setMessage(result.error?.message ?? "创建失败，请稍后重试");
         return;
       }
-      setCreated(true);
-      form.reset();
-      setMessage("管理员账号已创建，请继续绑定 Microsoft Authenticator");
+      window.location.assign(result.next ?? "/admin/setup/2fa");
     } catch {
       setMessage("网络连接失败，请稍后重试");
     } finally {
@@ -60,7 +57,6 @@ export function AdminSetupForm() {
               pattern="[A-Za-z0-9][A-Za-z0-9._-]{3,31}"
               placeholder="请输入账号"
               required
-              disabled={created}
             />
           </label>
 
@@ -70,7 +66,6 @@ export function AdminSetupForm() {
             placeholder="至少 12 位"
             visible={showPassword}
             onToggle={() => setShowPassword((value) => !value)}
-            disabled={created}
           />
 
           <PasswordField
@@ -79,13 +74,12 @@ export function AdminSetupForm() {
             placeholder="请再次输入密码"
             visible={showConfirmation}
             onToggle={() => setShowConfirmation((value) => !value)}
-            disabled={created}
           />
 
-          <button className="admin-auth-primary" type="submit" disabled={busy || created}>
-            {busy ? "创建中…" : created ? "账号已创建" : "下一步"}
+          <button className="admin-auth-primary" type="submit" disabled={busy}>
+            {busy ? "创建中…" : "下一步"}
           </button>
-          <p className={`admin-auth-message ${created ? "success" : ""}`} role="status">
+          <p className="admin-auth-message" role="status">
             {message || "下一步将绑定 Microsoft Authenticator"}
           </p>
         </form>

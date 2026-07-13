@@ -3,6 +3,7 @@
 Daylink 的 Cloudflare Worker / D1 / R2 服务，包含：
 
 - `/admin`：管理员账号、密码与 Microsoft Authenticator TOTP 保护的 AI Provider 配置、连通测试、生图、投票创建与设备令牌签发/撤销。
+- TOTP 二维码只在浏览器本地从一次性 `otpauth://` 数据生成，不调用第三方二维码服务。
 - `/api/assistant/*`：移动端使用 Daylink Token 调用的 Responses/Images 网关；Provider Key 不返回设备。
 - `/api/polls/*` 与 `/poll/:token`：公开时间投票、匿名参与、编辑令牌和乐观锁定稿。
 - D1：Provider 密文、AI 运行、审计、投票与生成资产元数据。

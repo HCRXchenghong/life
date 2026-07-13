@@ -1,8 +1,10 @@
+import { eq } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { adminAccounts } from "../../../../db/schema";
 import {
   consumeAuthRateLimit,
   getBootstrapState,
+  getPendingEnrollment,
   RateLimitError,
   rateLimitResponse,
 } from "../../../../lib/admin-auth";
@@ -15,12 +17,37 @@ import {
   randomToken,
 } from "../../../../lib/security/auth-crypto";
 import {
+  clearPrivateCookie,
   noStoreJson,
   requireSameOriginMutation,
   serializePrivateCookie,
 } from "../../../../lib/security/http";
 
 const ENROLLMENT_SECONDS = 10 * 60;
+
+export async function DELETE(request: Request) {
+  const csrfFailure = requireSameOriginMutation(request);
+  if (csrfFailure) return csrfFailure;
+  const account = await getPendingEnrollment(request.headers.get("cookie"));
+  if (!account) {
+    return noStoreJson(
+      { error: { code: "enrollment_expired", message: "初始化会话已失效" } },
+      { status: 401 },
+    );
+  }
+  await getDb().delete(adminAccounts).where(eq(adminAccounts.id, account.id));
+  await writeAudit({
+    actor: "system:bootstrap",
+    action: "admin.enrollment.cancelled",
+    targetType: "admin_account",
+    targetId: account.id,
+    outcome: "allowed",
+    risk: "critical",
+  });
+  const response = noStoreJson({ next: "/admin" });
+  response.headers.append("set-cookie", clearPrivateCookie(request, "enrollment"));
+  return response;
+}
 
 export async function POST(request: Request) {
   const csrfFailure = requireSameOriginMutation(request);
