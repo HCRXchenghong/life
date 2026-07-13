@@ -1,8 +1,10 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { getChatGPTUser } from "../app/chatgpt-auth";
+import { headers } from "next/headers";
 import { getDb } from "../db";
 import { mobileApiTokens } from "../db/schema";
+import { getAdminIdentity } from "./admin-auth";
 import { sha256 } from "./security/encoding";
+import { requireSameOriginMutation } from "./security/http";
 
 export async function requireOperator(request: Request): Promise<string | Response> {
   const header = request.headers.get("authorization");
@@ -30,19 +32,38 @@ export async function requireOperator(request: Request): Promise<string | Respon
     }
   }
 
-  const user = await getChatGPTUser();
-  if (user) return user.email;
+  const csrfFailure = requireSameOriginMutation(request);
+  if (csrfFailure) return csrfFailure;
+  const admin = await getAdminIdentity(
+    request.headers.get("cookie"),
+    request.headers.get("user-agent"),
+  );
+  if (admin) return admin.actor;
   return Response.json(
     { error: { code: "unauthorized", message: "Sign in or provide a valid API token" } },
-    { status: 401 },
+    { status: 401, headers: { "cache-control": "no-store" } },
   );
 }
 
-export async function requireAdmin(): Promise<string | Response> {
-  const user = await getChatGPTUser();
-  if (user) return user.email;
+export async function requireAdmin(request?: Request): Promise<string | Response> {
+  if (request) {
+    const csrfFailure = requireSameOriginMutation(request);
+    if (csrfFailure) return csrfFailure;
+    const admin = await getAdminIdentity(
+      request.headers.get("cookie"),
+      request.headers.get("user-agent"),
+    );
+    if (admin) return admin.actor;
+  } else {
+    const requestHeaders = await headers();
+    const admin = await getAdminIdentity(
+      requestHeaders.get("cookie"),
+      requestHeaders.get("user-agent"),
+    );
+    if (admin) return admin.actor;
+  }
   return Response.json(
-    { error: { code: "unauthorized", message: "ChatGPT sign-in is required" } },
-    { status: 401 },
+    { error: { code: "unauthorized", message: "Administrator sign-in is required" } },
+    { status: 401, headers: { "cache-control": "no-store" } },
   );
 }

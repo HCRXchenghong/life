@@ -1,0 +1,134 @@
+import { getDb } from "../../../../db";
+import { adminAccounts } from "../../../../db/schema";
+import {
+  consumeAuthRateLimit,
+  getBootstrapState,
+  RateLimitError,
+  rateLimitResponse,
+} from "../../../../lib/admin-auth";
+import { writeAudit } from "../../../../lib/audit";
+import {
+  createTotpSecret,
+  encryptAuthSecret,
+  hashOpaqueToken,
+  hashPassword,
+  randomToken,
+} from "../../../../lib/security/auth-crypto";
+import {
+  noStoreJson,
+  requireSameOriginMutation,
+  serializePrivateCookie,
+} from "../../../../lib/security/http";
+
+const ENROLLMENT_SECONDS = 10 * 60;
+
+export async function POST(request: Request) {
+  const csrfFailure = requireSameOriginMutation(request);
+  if (csrfFailure) return csrfFailure;
+
+  try {
+    const payload = (await request.json()) as Record<string, unknown>;
+    const username = validateUsername(payload.username);
+    const password = validatePassword(payload.password);
+    if (password !== payload.confirmPassword) throw new Error("两次输入的密码不一致");
+
+    await consumeAuthRateLimit(request, "setup", username, 5);
+    const state = await getBootstrapState(request.headers.get("cookie"));
+    if (state.kind !== "uninitialized") {
+      return noStoreJson(
+        { error: { code: "setup_unavailable", message: "后台已初始化或正在初始化" } },
+        { status: 409 },
+      );
+    }
+
+    const id = crypto.randomUUID();
+    const passwordDigest = await hashPassword(password);
+    const totpSecret = createTotpSecret();
+    const totpEnvelope = await encryptAuthSecret(totpSecret, `admin-totp:${id}`);
+    const enrollmentToken = randomToken();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + ENROLLMENT_SECONDS * 1000).toISOString();
+
+    try {
+      await getDb().insert(adminAccounts).values({
+        id,
+        singletonKey: 1,
+        username,
+        usernameCanonical: username.toLowerCase(),
+        passwordAlgorithm: passwordDigest.algorithm,
+        passwordHash: passwordDigest.hash,
+        passwordSalt: passwordDigest.salt,
+        passwordIterations: passwordDigest.iterations,
+        totpSecretCiphertext: totpEnvelope.ciphertext,
+        totpSecretNonce: totpEnvelope.nonce,
+        status: "pending",
+        enrollmentTokenHash: await hashOpaqueToken(enrollmentToken),
+        enrollmentExpiresAt: expiresAt,
+        passwordChangedAt: now.toISOString(),
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      });
+    } catch {
+      const [existing] = await getDb().select({ id: adminAccounts.id }).from(adminAccounts).limit(1);
+      if (existing) {
+        return noStoreJson(
+          { error: { code: "setup_unavailable", message: "后台已初始化或正在初始化" } },
+          { status: 409 },
+        );
+      }
+      throw new Error("暂时无法创建管理员，请稍后重试");
+    }
+
+    await writeAudit({
+      actor: "system:bootstrap",
+      action: "admin.enrollment.started",
+      targetType: "admin_account",
+      targetId: id,
+      outcome: "allowed",
+      risk: "critical",
+      metadata: { expiresInSeconds: ENROLLMENT_SECONDS },
+    });
+
+    const response = noStoreJson(
+      { next: "/admin/setup/2fa" },
+      { status: 201 },
+    );
+    response.headers.append(
+      "set-cookie",
+      serializePrivateCookie(request, "enrollment", enrollmentToken, ENROLLMENT_SECONDS),
+    );
+    return response;
+  } catch (error) {
+    if (error instanceof RateLimitError) return rateLimitResponse(error);
+    const message = error instanceof Error ? error.message : "请求无效";
+    const configurationFailure = message.includes("AUTH_SECRET_MASTER_KEY") || message.includes("not configured");
+    return noStoreJson(
+      {
+        error: {
+          code: configurationFailure ? "auth_not_configured" : "invalid_request",
+          message: configurationFailure ? "管理员鉴权尚未配置" : message,
+        },
+      },
+      { status: configurationFailure ? 503 : 400 },
+    );
+  }
+}
+
+function validateUsername(value: unknown): string {
+  if (typeof value !== "string") throw new Error("请输入管理员账号");
+  const username = value.trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{3,31}$/.test(username)) {
+    throw new Error("账号需为 4–32 位字母、数字、点、横线或下划线");
+  }
+  return username;
+}
+
+function validatePassword(value: unknown): string {
+  if (typeof value !== "string" || value.length < 12 || value.length > 128) {
+    throw new Error("密码长度需为 12–128 位");
+  }
+  if (!/[a-z]/.test(value) || !/[A-Z]/.test(value) || !/\d/.test(value) || !/[^A-Za-z0-9]/.test(value)) {
+    throw new Error("密码需包含大小写字母、数字和符号");
+  }
+  return value;
+}

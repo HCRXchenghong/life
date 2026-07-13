@@ -4,8 +4,9 @@ info:
   version: 0.1.0
   description: >-
     HTTP contract for the Daylink mobile client, public time polls, AI gateway,
-    and Web administration. Administrative routes use ChatGPT sign-in. Mobile
-    operator routes use a bearer token and never receive provider API keys.
+    and Web administration. Administrative routes use an HttpOnly administrator
+    session established with password plus TOTP. Mobile operator routes use a
+    bearer token and never receive provider API keys.
 servers:
   - url: https://{daylinkHost}/api
     variables:
@@ -14,6 +15,102 @@ servers:
 security:
   - mobileToken: []
 paths:
+  /auth/setup:
+    post:
+      security: []
+      operationId: startAdminEnrollment
+      description: Creates the only pending administrator. The account remains unusable until TOTP verification succeeds.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [username, password, confirmPassword]
+              properties:
+                username: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{3,31}$" }
+                password: { type: string, minLength: 12, maxLength: 128, format: password }
+                confirmPassword: { type: string, minLength: 12, maxLength: 128, format: password }
+      responses:
+        "201":
+          description: Pending administrator created and enrollment cookie set.
+          headers:
+            Set-Cookie: { schema: { type: string } }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /auth/setup/enrollment:
+    get:
+      security:
+        - enrollmentCookie: []
+      operationId: getAdminTotpEnrollment
+      responses:
+        "200":
+          description: One-time TOTP enrollment material. Responses are never cached.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [username, secret, uri, expiresAt]
+                properties:
+                  username: { type: string }
+                  secret: { type: string, pattern: "^[A-Z2-7]+$" }
+                  uri: { type: string, pattern: "^otpauth://" }
+                  expiresAt: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/setup/verify:
+    post:
+      security:
+        - enrollmentCookie: []
+      operationId: verifyAdminTotpEnrollment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties:
+                code: { type: string, pattern: "^[0-9]{6}$" }
+      responses:
+        "200":
+          description: Administrator activated and session cookie set.
+          headers:
+            Set-Cookie: { schema: { type: string } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/Error" }
+  /auth/login:
+    post:
+      security: []
+      operationId: loginAdministrator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [username, password, code]
+              properties:
+                username: { type: string }
+                password: { type: string, format: password }
+                code: { type: string, pattern: "^[0-9]{6}$" }
+      responses:
+        "200":
+          description: Administrator session created.
+          headers:
+            Set-Cookie: { schema: { type: string } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/Error" }
+  /auth/logout:
+    post:
+      security:
+        - adminSession: []
+      operationId: logoutAdministrator
+      responses:
+        "200": { description: Current administrator session revoked. }
   /health:
     get:
       security: []
@@ -223,6 +320,14 @@ components:
       type: http
       scheme: bearer
       bearerFormat: opaque
+    adminSession:
+      type: apiKey
+      in: cookie
+      name: __Host-daylink_admin_session
+    enrollmentCookie:
+      type: apiKey
+      in: cookie
+      name: __Host-daylink_admin_enrollment
   parameters:
     PublicToken:
       name: publicToken

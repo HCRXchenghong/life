@@ -5,7 +5,7 @@ import { loadProviderForOwner } from "../../../../lib/ai/provider";
 import { errorResponse, requiredText } from "../../../../lib/security/validation";
 
 export async function POST(request: Request) {
-  const actor = await requireAdmin();
+  const actor = await requireAdmin(request);
   if (actor instanceof Response) return actor;
   let providerId: string | null = null;
   try {
@@ -39,4 +39,3 @@ export async function POST(request: Request) {
     return errorResponse(error, 502);
   }
 }
-

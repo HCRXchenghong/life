@@ -38,7 +38,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const actor = await requireAdmin();
+  const actor = await requireAdmin(request);
   if (actor instanceof Response) return actor;
   const runId = crypto.randomUUID();
   let providerId = "";
@@ -167,4 +167,3 @@ function normalizeSize(value: unknown): string {
   }
   return value;
 }
-

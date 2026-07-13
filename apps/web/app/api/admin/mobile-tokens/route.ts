@@ -34,7 +34,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const actor = await requireAdmin();
+  const actor = await requireAdmin(request);
   if (actor instanceof Response) return actor;
   try {
     const payload = (await request.json()) as Record<string, unknown>;
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const actor = await requireAdmin();
+  const actor = await requireAdmin(request);
   if (actor instanceof Response) return actor;
   try {
     const id = requiredText(new URL(request.url).searchParams.get("id"), "id", 64);

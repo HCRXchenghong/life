@@ -32,6 +32,73 @@ export const mobileApiTokens = sqliteTable(
   ],
 );
 
+export const adminAccounts = sqliteTable(
+  "admin_accounts",
+  {
+    id: text("id").primaryKey(),
+    singletonKey: integer("singleton_key").notNull().default(1),
+    username: text("username").notNull(),
+    usernameCanonical: text("username_canonical").notNull(),
+    passwordAlgorithm: text("password_algorithm").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    passwordSalt: text("password_salt").notNull(),
+    passwordIterations: integer("password_iterations").notNull(),
+    totpSecretCiphertext: text("totp_secret_ciphertext").notNull(),
+    totpSecretNonce: text("totp_secret_nonce").notNull(),
+    totpLastCounter: integer("totp_last_counter"),
+    status: text("status", { enum: ["pending", "active", "disabled"] })
+      .notNull()
+      .default("pending"),
+    enrollmentTokenHash: text("enrollment_token_hash"),
+    enrollmentExpiresAt: text("enrollment_expires_at"),
+    failedLoginCount: integer("failed_login_count").notNull().default(0),
+    lockedUntil: text("locked_until"),
+    activatedAt: text("activated_at"),
+    lastLoginAt: text("last_login_at"),
+    passwordChangedAt: text("password_changed_at").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("admin_accounts_singleton_idx").on(table.singletonKey),
+    uniqueIndex("admin_accounts_username_idx").on(table.usernameCanonical),
+    index("admin_accounts_status_idx").on(table.status),
+  ],
+);
+
+export const adminSessions = sqliteTable(
+  "admin_sessions",
+  {
+    id: text("id").primaryKey(),
+    adminId: text("admin_id")
+      .notNull()
+      .references(() => adminAccounts.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    userAgentHash: text("user_agent_hash"),
+    expiresAt: text("expires_at").notNull(),
+    lastSeenAt: text("last_seen_at").notNull(),
+    revokedAt: text("revoked_at"),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    uniqueIndex("admin_sessions_token_idx").on(table.tokenHash),
+    index("admin_sessions_admin_idx").on(table.adminId, table.createdAt),
+    index("admin_sessions_expiry_idx").on(table.expiresAt),
+  ],
+);
+
+export const authRateLimits = sqliteTable(
+  "auth_rate_limits",
+  {
+    bucketKey: text("bucket_key").primaryKey(),
+    action: text("action").notNull(),
+    windowStartedAt: text("window_started_at").notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    blockedUntil: text("blocked_until"),
+    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [index("auth_rate_limits_updated_idx").on(table.updatedAt)],
+);
+
 export const aiProviderConfigs = sqliteTable(
   "ai_provider_configs",
   {
