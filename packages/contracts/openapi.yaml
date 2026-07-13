@@ -1,0 +1,361 @@
+openapi: 3.1.0
+info:
+  title: Daylink Web API
+  version: 0.1.0
+  description: >-
+    HTTP contract for the Daylink mobile client, public time polls, AI gateway,
+    and Web administration. Administrative routes use ChatGPT sign-in. Mobile
+    operator routes use a bearer token and never receive provider API keys.
+servers:
+  - url: https://{daylinkHost}/api
+    variables:
+      daylinkHost:
+        default: daylink.example.com
+security:
+  - mobileToken: []
+paths:
+  /health:
+    get:
+      security: []
+      operationId: getHealth
+      responses:
+        "200":
+          description: Service is ready.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status, service, version, time]
+                properties:
+                  status: { const: ok }
+                  service: { const: daylink-web }
+                  version: { type: string }
+                  time: { type: string, format: date-time }
+  /assistant/responses:
+    post:
+      operationId: createAssistantResponse
+      description: >-
+        Sends a Responses-compatible turn through a server-managed provider.
+        Only strict function tools are accepted; tool execution stays on-device.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistantRequest"
+      responses:
+        "200":
+          description: Provider Responses payload, including function_call items.
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "502": { $ref: "#/components/responses/Error" }
+  /assistant/images:
+    post:
+      operationId: generateAssistantImage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [providerId, prompt]
+              properties:
+                providerId: { type: string, maxLength: 64 }
+                prompt: { type: string, minLength: 1, maxLength: 4000 }
+                size:
+                  enum: [1024x1024, 1536x1024, 1024x1536]
+                  default: 1024x1024
+                quality:
+                  enum: [low, medium, high]
+                  default: medium
+      responses:
+        "200":
+          description: OpenAI Images-compatible base64 response.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [created, data]
+                properties:
+                  created: { type: integer }
+                  data:
+                    type: array
+                    minItems: 1
+                    maxItems: 1
+                    items:
+                      type: object
+                      required: [b64_json]
+                      properties:
+                        b64_json: { type: string, contentEncoding: base64 }
+                        revised_prompt: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "502": { $ref: "#/components/responses/Error" }
+  /polls:
+    post:
+      operationId: createPoll
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePollRequest"
+      responses:
+        "201":
+          description: Poll and one-time management token.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [poll]
+                properties:
+                  poll:
+                    type: object
+                    additionalProperties: false
+                    required: [id, publicToken, manageToken, inviteUrl, status, version]
+                    properties:
+                      id: { type: string, format: uuid }
+                      publicToken: { type: string }
+                      manageToken: { type: string }
+                      inviteUrl: { type: string, format: uri }
+                      status: { const: open }
+                      version: { const: 1 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /polls/{publicToken}:
+    parameters:
+      - $ref: "#/components/parameters/PublicToken"
+    get:
+      security: []
+      operationId: getPoll
+      responses:
+        "200":
+          description: Public poll state and aggregated choices.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PollState" }
+        "404": { $ref: "#/components/responses/Error" }
+  /polls/{publicToken}/votes:
+    parameters:
+      - $ref: "#/components/parameters/PublicToken"
+    post:
+      security: []
+      operationId: upsertPollVotes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [displayName, votes]
+              properties:
+                displayName: { type: string, minLength: 1, maxLength: 80 }
+                editToken: { type: string }
+                votes:
+                  type: array
+                  maxItems: 100
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [slotId, response]
+                    properties:
+                      slotId: { type: string, format: uuid }
+                      response: { type: string, enum: ["yes", "maybe", "no"] }
+      responses:
+        "200":
+          description: Existing participant votes updated.
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VoteReceipt" }
+        "201":
+          description: Participant and votes created.
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VoteReceipt" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /polls/{publicToken}/finalize:
+    parameters:
+      - $ref: "#/components/parameters/PublicToken"
+    post:
+      security: []
+      operationId: finalizePoll
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [manageToken, slotId]
+              properties:
+                manageToken: { type: string }
+                slotId: { type: string, format: uuid }
+                expectedVersion: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Poll finalized with the selected time.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [pollId, version, selectedSlot]
+                properties:
+                  pollId: { type: string, format: uuid }
+                  version: { type: integer, minimum: 2 }
+                  selectedSlot: { $ref: "#/components/schemas/PollSlot" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    mobileToken:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+  parameters:
+    PublicToken:
+      name: publicToken
+      in: path
+      required: true
+      schema: { type: string, minLength: 20, maxLength: 200 }
+  responses:
+    Unauthorized:
+      description: Authentication failed.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Error:
+      description: Request could not be completed.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+    AssistantRequest:
+      type: object
+      additionalProperties: false
+      required: [providerId, input, tools]
+      properties:
+        providerId: { type: string, maxLength: 64 }
+        input:
+          oneOf:
+            - { type: string, maxLength: 128000 }
+            - { type: array, maxItems: 64 }
+        previous_response_id: { type: string, maxLength: 160 }
+        tools:
+          type: array
+          maxItems: 32
+          items:
+            type: object
+            additionalProperties: false
+            required: [type, name, description, strict, parameters]
+            properties:
+              type: { const: function }
+              name: { type: string, pattern: "^[A-Za-z0-9_-]{1,64}$" }
+              description: { type: string, minLength: 1, maxLength: 1000 }
+              strict: { const: true }
+              parameters: { type: object }
+    CreatePollRequest:
+      type: object
+      additionalProperties: false
+      required: [title, timezone, slots]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 160 }
+        description: { type: string, maxLength: 2000 }
+        timezone: { type: string, minLength: 1, maxLength: 80 }
+        closesAt: { type: [string, "null"], format: date-time }
+        slots:
+          type: array
+          minItems: 2
+          maxItems: 30
+          items:
+            type: object
+            additionalProperties: false
+            required: [startsAt, endsAt]
+            properties:
+              label: { type: string, maxLength: 120 }
+              startsAt: { type: string, format: date-time }
+              endsAt: { type: string, format: date-time }
+    Poll:
+      type: object
+      additionalProperties: true
+      required: [id, title, timezone, status, version]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string }
+        timezone: { type: string }
+        status: { enum: [open, closed, cancelled, expired] }
+        version: { type: integer }
+        selectedSlotId: { type: [string, "null"] }
+    PollSlot:
+      type: object
+      additionalProperties: true
+      required: [id, startsAt, endsAt]
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+    PollState:
+      type: object
+      additionalProperties: false
+      required: [poll, slots, participants, votes]
+      properties:
+        poll: { $ref: "#/components/schemas/Poll" }
+        slots:
+          type: array
+          items: { $ref: "#/components/schemas/PollSlot" }
+        participants:
+          type: array
+          items:
+            type: object
+            required: [id, displayName]
+            properties:
+              id: { type: string, format: uuid }
+              displayName: { type: string }
+        votes:
+          type: array
+          items:
+            type: object
+            required: [participantId, slotId, response]
+            properties:
+              participantId: { type: string, format: uuid }
+              slotId: { type: string, format: uuid }
+              response: { type: string, enum: ["yes", "maybe", "no"] }
+    VoteReceipt:
+      type: object
+      additionalProperties: false
+      required: [participant, editToken, version]
+      properties:
+        participant:
+          type: object
+          additionalProperties: false
+          required: [id, displayName]
+          properties:
+            id: { type: string, format: uuid }
+            displayName: { type: string }
+        editToken: { type: string }
+        version: { type: integer, minimum: 1 }

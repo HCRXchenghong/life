@@ -1,0 +1,48 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/protocol",
+  "crates/mobile-core",
+  "crates/agent",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Proprietary"
+rust-version = "1.95"
+
+[workspace.dependencies]
+anyhow = "1.0"
+async-trait = "0.1"
+bytes = "1.10"
+ciborium = "0.2"
+futures = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+thiserror = "2.0"
+tokio = { version = "1.48", features = ["macros", "rt-multi-thread", "net", "process", "signal", "sync", "time", "io-util", "io-std", "fs"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+uuid = { version = "1.18", features = ["v4", "serde"] }
+russh = { version = "0.62.2", default-features = false, features = ["ring", "rsa"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+
+# Mobile debug artifacts are never symbol-distributed. Omitting DWARF keeps
+# cross-architecture Android links within predictable memory bounds.
+[profile.dev]
+debug = 0
+codegen-units = 1
+incremental = false
+
+[profile.test]
+debug = 0

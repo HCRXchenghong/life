@@ -1,0 +1,13 @@
+cargo:
+  debug:
+    toolchain: stable
+    extra_flags:
+      - "--jobs=2"
+  profile:
+    toolchain: stable
+    extra_flags:
+      - "--jobs=2"
+  release:
+    toolchain: stable
+    extra_flags:
+      - "--jobs=2"
