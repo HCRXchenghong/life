@@ -22,6 +22,8 @@ npm run test
 运行变量 `AI_SECRET_MASTER_KEY` 与 `AUTH_SECRET_MASTER_KEY` 都是独立生成的
 32 字节随机值的 Base64。只通过本地 `.env` 或 Sites Secret 注入，不写入仓库。
 首次初始化必须在 Sites 访问策略保护下完成，2FA 激活后再开放后台登录入口。
+生产环境还必须设置 `ADMIN_BOOTSTRAP_EMAILS`；只有经过 ChatGPT 托管身份验证且
+命中此白名单的部署者才能创建首个管理员，防止公网首访者抢注。
 移动端令牌从后台签发，数据库只保存
 SHA-256 哈希，明文只在签发响应中返回一次。
 数据库迁移位于 `drizzle/`，HTTP 契约位于仓库根目录

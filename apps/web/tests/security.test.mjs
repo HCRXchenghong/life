@@ -7,6 +7,7 @@ import {
   serializePrivateCookie,
 } from "../lib/security/http.ts";
 import { createTotpSecret, createTotpUri, verifyTotp } from "../lib/security/totp.ts";
+import { authorizeBootstrapPolicy } from "../lib/security/bootstrap-policy.ts";
 
 test("TOTP matches the RFC 6238 SHA-1 vector and rejects replay", async () => {
   const secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
@@ -56,4 +57,30 @@ test("private cookies are host-bound, HttpOnly, strict and readable by either ru
     cookieNames("session"),
   );
   assert.equal(value, "secret value");
+});
+
+test("production bootstrap requires both hosted identity and explicit allowlist", () => {
+  const anonymous = authorizeBootstrapPolicy(new Headers(), "daylink.example", "owner@example.com");
+  assert.deepEqual(anonymous, { allowed: false, reason: "identity_required" });
+
+  const identityHeaders = new Headers({ "oai-authenticated-user-email": "Owner@Example.com" });
+  assert.deepEqual(authorizeBootstrapPolicy(identityHeaders, "daylink.example", undefined), {
+    allowed: false,
+    reason: "allowlist_missing",
+  });
+  assert.deepEqual(authorizeBootstrapPolicy(identityHeaders, "daylink.example", "other@example.com"), {
+    allowed: false,
+    reason: "forbidden",
+  });
+  assert.deepEqual(authorizeBootstrapPolicy(identityHeaders, "daylink.example", "owner@example.com"), {
+    allowed: true,
+    actor: "bootstrap:allowlisted-user",
+  });
+});
+
+test("localhost bootstrap remains available for local development", () => {
+  assert.deepEqual(authorizeBootstrapPolicy(new Headers(), "127.0.0.1", undefined), {
+    allowed: true,
+    actor: "bootstrap:local",
+  });
 });

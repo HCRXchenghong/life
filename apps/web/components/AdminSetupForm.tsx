@@ -133,16 +133,25 @@ export function AdminLoginForm() {
   );
 }
 
-export function PendingSetupNotice({ authorized }: { authorized: boolean }) {
+export function PendingSetupNotice({
+  authorized,
+  reason,
+}: {
+  authorized: boolean;
+  reason?: "allowlist_missing" | "forbidden";
+}) {
+  const description = reason === "allowlist_missing"
+    ? "请先在部署环境配置管理员初始化白名单"
+    : reason === "forbidden"
+      ? "当前托管身份不在管理员初始化白名单中"
+      : authorized
+        ? "账号已创建，正在继续绑定双重验证"
+        : "已有设备正在创建管理员账号，请稍后重试";
   return (
     <AdminAuthFrame privacyText="初始化会话将在 10 分钟后自动失效">
       <section className="admin-auth-content" aria-labelledby="pending-title">
-        <h1 id="pending-title">管理员初始化中</h1>
-        <p className="admin-auth-subtitle">
-          {authorized
-            ? "账号已创建，2FA 绑定页面确认后即可继续"
-            : "已有设备正在创建管理员账号，请稍后重试"}
-        </p>
+        <h1 id="pending-title">{reason ? "无法初始化后台" : "管理员初始化中"}</h1>
+        <p className="admin-auth-subtitle">{description}</p>
       </section>
     </AdminAuthFrame>
   );
