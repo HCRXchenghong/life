@@ -12,7 +12,7 @@
 | Agent 安装 | Flutter FFI 上传、64 MiB 上限、本地/远端 SHA-256、远端自检、版本目录和原子 symlink 切换；自检失败不替换旧版本 |
 | C-SSH 运维覆盖 | 主机/分组/标签、终端、tmux、文件、指标、进程、firewall、systemd、journal、Docker、批量命令、传输任务、端口转发 |
 | 日程提醒 | 手动/AI/投票来源、重复规则、DST、Android exact/inexact、iOS 通知窗口、完成、snooze、启动/恢复对账 |
-| AI | 本地 Provider/API Key、Web 托管 Provider、Responses 工具循环、生图、递归 schema 校验、风险审批与敏感输出脱敏 |
+| AI | 本地第三方 API/Key、Web 托管第三方 Provider、Responses 工具循环、生图、递归 schema 校验、风险审批与敏感输出脱敏 |
 | Codex | 官方 App Server JSON-RPC 字段、SSH Agent transport、消息泵、动态工具能力、审批/MCP elicitation 默认拒绝 |
 | 好友选时间 | App 创建/刷新/定稿、公开网页投票、匿名编辑令牌、乐观锁、管理令牌安全存储、定稿导入日程 |
 | Web 后台 | 管理员密码 + Microsoft TOTP、生产初始化身份白名单、极简概览/App 账号/AI 服务/安全审计页、Provider AES-GCM 与只写 Key、Provider 公网 HTTPS/防重定向约束、设备 Token 哈希/撤销、D1/R2、限流 AI 测试、生图、敏感元数据过滤审计、投票管理 |
@@ -40,7 +40,7 @@
 - Apple/Google 正式签名、Provisioning Profile、商店资料和审核。
 - Android/iPhone 真机通知权限、Doze、重启和系统升级矩阵。
 - 真实 Linux 主机上的发行版/架构 Agent 包、SSH 断网恢复和 Docker/systemd 权限矩阵。
-- 真实 OpenAI/兼容 Provider 计费 Key 的端到端文本与生图调用。
+- 真实第三方 Responses/Images 兼容 Provider 计费 Key 的端到端文本与生图调用。
 - Web 当前保持 owner-only 私有访问；要让未登录朋友打开投票链接，需要项目所有者明确批准改为公开访问。
 
 ## 已知上游迁移提示

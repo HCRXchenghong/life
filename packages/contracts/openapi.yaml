@@ -657,7 +657,7 @@ components:
       required: [name, kind, baseUrl, textModel, apiKey]
       properties:
         name: { type: string, minLength: 1, maxLength: 80 }
-        kind: { enum: [openai_responses, openai_compatible, anthropic_compatible] }
+        kind: { enum: [openai_responses, openai_compatible] }
         baseUrl: { type: string, format: uri, pattern: "^https://" }
         textModel: { type: string, minLength: 1, maxLength: 120 }
         imageModel: { type: string, maxLength: 120 }
@@ -670,7 +670,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         name: { type: string, minLength: 1, maxLength: 80 }
-        kind: { enum: [openai_responses, openai_compatible, anthropic_compatible] }
+        kind: { enum: [openai_responses, openai_compatible] }
         baseUrl: { type: string, format: uri, pattern: "^https://" }
         textModel: { type: string, minLength: 1, maxLength: 120 }
         imageModel: { type: string, maxLength: 120 }

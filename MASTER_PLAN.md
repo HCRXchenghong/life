@@ -50,7 +50,7 @@
 
 - `client_core`：SSH、known_hosts、密钥兼容、agent 部署、agent 传输、端口转发、保险库。
 - `creation_core`：请求/响应协议、文件条目、指标、Docker/systemd/窗口等结构体。
-- `ai_agent`：OpenAI 兼容与 Anthropic provider、会话压缩、权限、只读/写入/终端工具组。
+- `ai_agent`：第三方 Responses/Images API provider、会话压缩、权限、只读/写入/终端工具组。
 - 移动/桌面适配层：主机、部署、终端、监控、文件、系统管理、应用中心、批量命令、授权、AI 运行状态。
 - 远端 `agent`：Unix server、tmux、流式命令、Docker、systemd、防火墙、进程、文件和指标采集。
 
@@ -489,7 +489,7 @@ Envelope {
 
 ### 15.1 Provider 抽象
 
-- 首发支持 OpenAI-compatible 与 Anthropic-compatible 两类接口，采用 BYOK，密钥只在本地保险库。
+- 首发支持第三方 Responses/Images 兼容接口，采用 API 地址 + BYOK；本地模式的密钥只在设备保险库，托管模式使用服务端加密密钥库。
 - `AiProvider` 统一输出文本增量、tool call、usage、finish reason 和 provider error。
 - provider 配置包括 base URL、model、context window、timeout、是否支持图片/并行工具。
 - 不假设模型真实上下文大小；由用户配置并在运行前做上限校验。

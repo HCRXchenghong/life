@@ -129,7 +129,7 @@ export function AdminAiSettings({
         <header className="admin-accounts-heading">
           <div>
             <h1 id="ai-title">AI 服务</h1>
-            <p className="admin-overview-subtitle">连接 AI 服务，供 App 助手与生图使用</p>
+            <p className="admin-overview-subtitle">配置第三方 API，供 App 助手、生图与 Codex 兼容调用</p>
           </div>
           <button className="admin-accounts-primary" type="button" onClick={() => openDialog("new")}>
             添加服务
@@ -143,7 +143,7 @@ export function AdminAiSettings({
           <section className="admin-accounts-empty admin-ai-empty" aria-label="暂无 AI 服务">
             <span className="admin-ai-empty-icon"><AdminCssIcon name="ai" /></span>
             <h2>暂无 AI 服务</h2>
-            <p>添加 API、模型后，即可在 App 中使用对话与生图</p>
+            <p>填写 API 地址、Key 与模型后，即可接入第三方 AI 服务</p>
             <button className="admin-accounts-primary" type="button" onClick={() => openDialog("new")}>
               添加服务
             </button>
@@ -186,7 +186,7 @@ export function AdminAiSettings({
 
         <p className="admin-overview-privacy admin-accounts-privacy">
           <span className="admin-overview-lock" aria-hidden="true" />
-          API Key 加密保存，保存后不再显示明文
+          第三方 API Key 加密保存，保存后不再显示明文
         </p>
       </section>
 
@@ -198,7 +198,7 @@ export function AdminAiSettings({
             <header>
               <div>
                 <h2 id="ai-dialog-title">{editing === "new" ? "添加 AI 服务" : "编辑 AI 服务"}</h2>
-                <p>Endpoint 与模型保存在后台，API Key 使用服务端密钥加密</p>
+                <p>第三方 API 地址与模型保存在后台，API Key 使用服务端密钥加密</p>
               </div>
               <button type="button" aria-label="关闭" disabled={Boolean(busy)} onClick={() => setEditing(null)}>×</button>
             </header>
@@ -211,28 +211,31 @@ export function AdminAiSettings({
                     autoFocus
                     required
                     maxLength={80}
-                    defaultValue={editing === "new" ? "OpenAI" : editing.name}
-                    placeholder="例如 OpenAI"
+                    defaultValue={editing === "new" ? "" : editing.name}
+                    placeholder="例如 我的 AI 服务"
                   />
                 </label>
                 <label>
-                  接口类型
-                  <select name="kind" defaultValue={editing === "new" ? "openai_responses" : editing.kind}>
-                    <option value="openai_responses">OpenAI Responses</option>
-                    <option value="openai_compatible">OpenAI 兼容接口</option>
-                    <option value="anthropic_compatible">Anthropic 兼容（暂未启用）</option>
+                  接口协议
+                  <select name="kind" defaultValue={editing === "new" ? "openai_compatible" : editing.kind}>
+                    <option value="openai_compatible">第三方 API（Responses）</option>
+                    <option value="openai_responses">Codex 原生兼容（Responses）</option>
+                    {editing !== "new" && editing.kind === "anthropic_compatible" && (
+                      <option value="anthropic_compatible" disabled>旧版 Anthropic 配置（请迁移）</option>
+                    )}
                   </select>
                 </label>
               </div>
               <label>
-                API Endpoint
+                API 地址
                 <input
                   name="baseUrl"
                   type="url"
                   inputMode="url"
                   required
                   maxLength={400}
-                  defaultValue={editing === "new" ? "https://api.openai.com/v1" : editing.baseUrl}
+                  defaultValue={editing === "new" ? "" : editing.baseUrl}
+                  placeholder="https://api.example.com/v1"
                 />
               </label>
               <div className="admin-ai-dialog-grid">
@@ -242,7 +245,8 @@ export function AdminAiSettings({
                     name="textModel"
                     required
                     maxLength={120}
-                    defaultValue={editing === "new" ? "gpt-5.6" : editing.textModel}
+                    defaultValue={editing === "new" ? "" : editing.textModel}
+                    placeholder="例如 your-chat-model"
                   />
                 </label>
                 <label>
@@ -250,7 +254,8 @@ export function AdminAiSettings({
                   <input
                     name="imageModel"
                     maxLength={120}
-                    defaultValue={editing === "new" ? "gpt-image-2" : editing.imageModel ?? ""}
+                    defaultValue={editing === "new" ? "" : editing.imageModel ?? ""}
+                    placeholder="例如 your-image-model"
                   />
                 </label>
               </div>
@@ -273,7 +278,7 @@ export function AdminAiSettings({
                 />
                 <span>启用此服务</span>
               </label>
-              <p className="admin-accounts-dialog-help">只允许 HTTPS 公网 Endpoint；重定向、内网地址与本地域名会被服务端拒绝。</p>
+              <p className="admin-accounts-dialog-help">第三方接口需兼容 Responses；Codex 原生配置对应 <code>wire_api = &quot;responses&quot;</code>。只允许公网 HTTPS，重定向、内网与本地域名会被拒绝。</p>
               {error && <p className="admin-accounts-dialog-error" role="alert">{error}</p>}
               <footer>
                 <button type="button" disabled={Boolean(busy)} onClick={() => setEditing(null)}>取消</button>
@@ -290,7 +295,7 @@ export function AdminAiSettings({
 }
 
 function kindLabel(kind: Provider["kind"]): string {
-  if (kind === "openai_responses") return "OpenAI Responses";
-  if (kind === "openai_compatible") return "OpenAI 兼容";
-  return "Anthropic 兼容";
+  if (kind === "openai_responses") return "Codex Responses 兼容";
+  if (kind === "openai_compatible") return "第三方 Responses API";
+  return "旧版 Anthropic 配置";
 }

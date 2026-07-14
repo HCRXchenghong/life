@@ -11,6 +11,9 @@ const FORBIDDEN_HOST_SUFFIXES = [
   ".nip.io",
   ".sslip.io",
 ];
+const THIRD_PARTY_AI_PROTOCOLS = new Set(["openai_responses", "openai_compatible"]);
+
+export type ThirdPartyAiProtocol = "openai_responses" | "openai_compatible";
 
 export function parseHttpsBaseUrl(value: string): string {
   const url = new URL(value);
@@ -77,6 +80,14 @@ export function optionalSecret(value: unknown, field: string, max: number): stri
     throw new Error(`${field} contains unsupported characters`);
   }
   return value;
+}
+
+export function parseThirdPartyAiProtocol(value: unknown): ThirdPartyAiProtocol {
+  const protocol = requiredText(value, "kind", 40);
+  if (!THIRD_PARTY_AI_PROTOCOLS.has(protocol)) {
+    throw new Error("Unsupported third-party AI protocol");
+  }
+  return protocol as ThirdPartyAiProtocol;
 }
 
 export function assertAllowedFields(

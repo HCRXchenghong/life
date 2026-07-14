@@ -13,6 +13,7 @@ import {
   assertAllowedFields,
   optionalSecret,
   parseHttpsBaseUrl,
+  parseThirdPartyAiProtocol,
 } from "../lib/security/validation.ts";
 import {
   canonicalAccountUsername,
@@ -161,6 +162,13 @@ test("AI API Key validation preserves exact bytes and rejects control characters
   assert.equal(optionalSecret("", "apiKey", 4_096), null);
   assert.throws(() => optionalSecret("secret\nheader", "apiKey", 4_096));
   assert.throws(() => optionalSecret("   ", "apiKey", 4_096));
+});
+
+test("third-party AI configuration accepts only Responses-compatible protocols", () => {
+  assert.equal(parseThirdPartyAiProtocol("openai_compatible"), "openai_compatible");
+  assert.equal(parseThirdPartyAiProtocol("openai_responses"), "openai_responses");
+  assert.throws(() => parseThirdPartyAiProtocol("anthropic_compatible"));
+  assert.throws(() => parseThirdPartyAiProtocol("codex_login"));
 });
 
 test("audit metadata removes secret-bearing fields and bounds untrusted values", () => {
