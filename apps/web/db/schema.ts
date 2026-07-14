@@ -99,6 +99,57 @@ export const authRateLimits = sqliteTable(
   (table) => [index("auth_rate_limits_updated_idx").on(table.updatedAt)],
 );
 
+export const appAccounts = sqliteTable(
+  "app_accounts",
+  {
+    id: text("id").primaryKey(),
+    username: text("username").notNull(),
+    usernameCanonical: text("username_canonical").notNull(),
+    passwordAlgorithm: text("password_algorithm").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    passwordSalt: text("password_salt").notNull(),
+    passwordIterations: integer("password_iterations").notNull(),
+    passwordChangeRequired: integer("password_change_required", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    status: text("status", { enum: ["active", "disabled"] }).notNull().default("active"),
+    failedLoginCount: integer("failed_login_count").notNull().default(0),
+    lockedUntil: text("locked_until"),
+    lastLoginAt: text("last_login_at"),
+    passwordChangedAt: text("password_changed_at").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("app_accounts_username_idx").on(table.usernameCanonical),
+    index("app_accounts_status_idx").on(table.status),
+    index("app_accounts_created_idx").on(table.createdAt),
+  ],
+);
+
+export const appSessions = sqliteTable(
+  "app_sessions",
+  {
+    id: text("id").primaryKey(),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => appAccounts.id, { onDelete: "cascade" }),
+    accessTokenHash: text("access_token_hash").notNull(),
+    refreshTokenHash: text("refresh_token_hash").notNull(),
+    deviceName: text("device_name").notNull(),
+    accessExpiresAt: text("access_expires_at").notNull(),
+    refreshExpiresAt: text("refresh_expires_at").notNull(),
+    lastSeenAt: text("last_seen_at").notNull(),
+    revokedAt: text("revoked_at"),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    uniqueIndex("app_sessions_access_token_idx").on(table.accessTokenHash),
+    uniqueIndex("app_sessions_refresh_token_idx").on(table.refreshTokenHash),
+    index("app_sessions_account_idx").on(table.accountId, table.createdAt),
+    index("app_sessions_refresh_expiry_idx").on(table.refreshExpiresAt),
+  ],
+);
+
 export const aiProviderConfigs = sqliteTable(
   "ai_provider_configs",
   {

@@ -36,6 +36,18 @@ export function optionalText(value: unknown, field: string, max: number): string
   return requiredText(value, field, max);
 }
 
+export function assertAllowedFields(
+  value: unknown,
+  allowedFields: readonly string[],
+): asserts value is Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("JSON object required");
+  }
+  const allowed = new Set(allowedFields);
+  const unknown = Object.keys(value).find((field) => !allowed.has(field));
+  if (unknown) throw new Error(`Unexpected field: ${unknown}`);
+}
+
 export function isoInstant(value: unknown, field: string): string {
   const text = requiredText(value, field, 64);
   const date = new Date(text);
@@ -47,4 +59,3 @@ export function errorResponse(error: unknown, status = 400): Response {
   const message = error instanceof Error ? error.message : "Unexpected error";
   return Response.json({ error: { code: "invalid_request", message } }, { status });
 }
-

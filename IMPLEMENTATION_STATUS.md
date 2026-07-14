@@ -1,6 +1,6 @@
 # Daylink 非 UI 实现状态
 
-更新时间：2026-07-13。本文只记录已经进入源码并经过验证的能力；产品页面按需求暂不实现。
+更新时间：2026-07-14。本文只记录已经进入源码并经过验证的能力。
 
 ## 已完成的后端能力
 
@@ -15,7 +15,8 @@
 | AI | 本地 Provider/API Key、Web 托管 Provider、Responses 工具循环、生图、递归 schema 校验、风险审批与敏感输出脱敏 |
 | Codex | 官方 App Server JSON-RPC 字段、SSH Agent transport、消息泵、动态工具能力、审批/MCP elicitation 默认拒绝 |
 | 好友选时间 | App 创建/刷新/定稿、公开网页投票、匿名编辑令牌、乐观锁、管理令牌安全存储、定稿导入日程 |
-| Web 后台 | ChatGPT 登录、Provider AES-GCM、设备 Token 哈希/撤销、D1/R2、AI 测试、生图、审计、投票管理 |
+| Web 后台 | 管理员密码 + Microsoft TOTP、生产初始化身份白名单、极简概览与 App 账号页、Provider AES-GCM、设备 Token 哈希/撤销、D1/R2、AI 测试、生图、审计、投票管理 |
+| App 账号鉴权 | 强密码与独立 pepper 域、15 分钟访问令牌、30 天单次轮换刷新令牌、首次改密、5 次失败锁定、管理员启停/重置即撤销旧会话 |
 
 ## 验证证据
 

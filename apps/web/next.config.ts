@@ -11,6 +11,10 @@ const nextConfig: NextConfig = {
           { key: "Referrer-Policy", value: "no-referrer" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
           { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+          {
+            key: "Content-Security-Policy",
+            value: "base-uri 'none'; frame-ancestors 'none'; object-src 'none'; form-action 'self'",
+          },
           { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
         ],
       },
@@ -20,6 +24,10 @@ const nextConfig: NextConfig = {
       },
       {
         source: "/api/auth/:path*",
+        headers: [{ key: "Cache-Control", value: "no-store, max-age=0" }],
+      },
+      {
+        source: "/api/app/:path*",
         headers: [{ key: "Cache-Control", value: "no-store, max-age=0" }],
       },
     ];

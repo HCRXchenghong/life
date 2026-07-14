@@ -20,9 +20,15 @@ import {
 import {
   clearPrivateCookie,
   noStoreJson,
+  requireJsonRequest,
   requireSameOriginMutation,
   serializePrivateCookie,
 } from "../../../../lib/security/http";
+import {
+  validateAccountUsername,
+  validateStrongPassword,
+} from "../../../../lib/security/account-credentials";
+import { assertAllowedFields } from "../../../../lib/security/validation";
 
 const ENROLLMENT_SECONDS = 10 * 60;
 
@@ -53,6 +59,8 @@ export async function DELETE(request: Request) {
 export async function POST(request: Request) {
   const csrfFailure = requireSameOriginMutation(request);
   if (csrfFailure) return csrfFailure;
+  const mediaFailure = requireJsonRequest(request);
+  if (mediaFailure) return mediaFailure;
 
   const bootstrapAuthorization = authorizeBootstrap(
     request.headers,
@@ -72,9 +80,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    const payload = (await request.json()) as Record<string, unknown>;
-    const username = validateUsername(payload.username);
-    const password = validatePassword(payload.password);
+    const payload: unknown = await request.json();
+    assertAllowedFields(payload, ["username", "password", "confirmPassword"]);
+    const username = validateAccountUsername(payload.username, "管理员账号");
+    const password = validateStrongPassword(payload.password);
     if (password !== payload.confirmPassword) throw new Error("两次输入的密码不一致");
 
     await consumeAuthRateLimit(request, "setup", username, 5);
@@ -157,23 +166,4 @@ export async function POST(request: Request) {
       { status: configurationFailure ? 503 : 400 },
     );
   }
-}
-
-function validateUsername(value: unknown): string {
-  if (typeof value !== "string") throw new Error("请输入管理员账号");
-  const username = value.trim();
-  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{3,31}$/.test(username)) {
-    throw new Error("账号需为 4–32 位字母、数字、点、横线或下划线");
-  }
-  return username;
-}
-
-function validatePassword(value: unknown): string {
-  if (typeof value !== "string" || value.length < 12 || value.length > 128) {
-    throw new Error("密码长度需为 12–128 位");
-  }
-  if (!/[a-z]/.test(value) || !/[A-Z]/.test(value) || !/\d/.test(value) || !/[^A-Za-z0-9]/.test(value)) {
-    throw new Error("密码需包含大小写字母、数字和符号");
-  }
-  return value;
 }

@@ -13,7 +13,7 @@ import { authorizeBootstrap } from "../../lib/bootstrap-auth";
 import { requestHostname } from "../../lib/security/bootstrap-policy";
 import { chatGPTSignInPath } from "../chatgpt-auth";
 import { getDb } from "../../db";
-import { aiProviderConfigs } from "../../db/schema";
+import { aiProviderConfigs, appAccounts } from "../../db/schema";
 
 export const metadata: Metadata = { title: "后台管理" };
 export const dynamic = "force-dynamic";
@@ -23,11 +23,20 @@ export default async function AdminPage() {
   const cookieHeader = requestHeaders.get("cookie");
   const identity = await getAdminIdentity(cookieHeader, requestHeaders.get("user-agent"));
   if (identity) {
-    const [providerCount] = await getDb()
-      .select({ value: count() })
-      .from(aiProviderConfigs)
-      .where(eq(aiProviderConfigs.ownerEmail, identity.actor));
-    return <AdminOverview username={identity.username} aiProviderCount={providerCount?.value ?? 0} />;
+    const [[providerCount], [appAccountCount]] = await Promise.all([
+      getDb()
+        .select({ value: count() })
+        .from(aiProviderConfigs)
+        .where(eq(aiProviderConfigs.ownerEmail, identity.actor)),
+      getDb().select({ value: count() }).from(appAccounts),
+    ]);
+    return (
+      <AdminOverview
+        username={identity.username}
+        aiProviderCount={providerCount?.value ?? 0}
+        appAccountCount={appAccountCount?.value ?? 0}
+      />
+    );
   }
 
   const bootstrap = await getBootstrapState(cookieHeader);

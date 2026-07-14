@@ -73,6 +73,15 @@ export function requireSameOriginMutation(request: Request): Response | null {
   return null;
 }
 
+export function requireJsonRequest(request: Request): Response | null {
+  const contentType = request.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+  if (contentType === "application/json") return null;
+  return Response.json(
+    { error: { code: "unsupported_media_type", message: "JSON request required" } },
+    { status: 415, headers: { "cache-control": "no-store" } },
+  );
+}
+
 export function noStoreJson(body: unknown, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
   headers.set("cache-control", "no-store, max-age=0");

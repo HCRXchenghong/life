@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Daylink Web API
-  version: 0.1.0
+  version: 0.2.0
   description: >-
     HTTP contract for the Daylink mobile client, public time polls, AI gateway,
     and Web administration. Administrative routes use an HttpOnly administrator
@@ -122,6 +122,180 @@ paths:
       operationId: logoutAdministrator
       responses:
         "200": { description: Current administrator session revoked. }
+  /admin/app-accounts:
+    get:
+      security:
+        - adminSession: []
+      operationId: listAppAccounts
+      description: Lists login metadata only. Password digests and user content are never returned.
+      responses:
+        "200":
+          description: App accounts visible to the administrator.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [accounts]
+                properties:
+                  accounts:
+                    type: array
+                    items: { $ref: "#/components/schemas/AppAccount" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      security:
+        - adminSession: []
+      operationId: createAppAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [username, password, confirmPassword]
+              properties:
+                username: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{3,31}$" }
+                password: { type: string, minLength: 12, maxLength: 128, format: password }
+                confirmPassword: { type: string, minLength: 12, maxLength: 128, format: password }
+      responses:
+        "201":
+          description: App account created with mandatory first-login password change.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [account]
+                properties:
+                  account: { $ref: "#/components/schemas/AppAccount" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+    patch:
+      security:
+        - adminSession: []
+      operationId: manageAppAccount
+      description: Enables, disables, or resets an App account. Disable and password reset revoke all device sessions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  additionalProperties: false
+                  required: [id, action]
+                  properties:
+                    id: { type: string, format: uuid }
+                    action: { enum: [enable, disable] }
+                - type: object
+                  additionalProperties: false
+                  required: [id, action, password, confirmPassword]
+                  properties:
+                    id: { type: string, format: uuid }
+                    action: { const: reset_password }
+                    password: { type: string, minLength: 12, maxLength: 128, format: password }
+                    confirmPassword: { type: string, minLength: 12, maxLength: 128, format: password }
+      responses:
+        "200": { description: App account updated. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /app/auth/login:
+    post:
+      security: []
+      operationId: loginAppAccount
+      description: Exchanges an App username and password for a short access token and rotating refresh token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [username, password]
+              properties:
+                username: { type: string, maxLength: 32 }
+                password: { type: string, maxLength: 128, format: password }
+                deviceName: { type: string, maxLength: 80 }
+      responses:
+        "200": { $ref: "#/components/responses/AppAuthenticated" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/Error" }
+  /app/auth/refresh:
+    post:
+      security: []
+      operationId: refreshAppSession
+      description: Rotates both App tokens. A refresh token can succeed only once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string, minLength: 32, maxLength: 256, format: password }
+      responses:
+        "200":
+          description: A new token pair.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [tokens]
+                properties:
+                  tokens: { $ref: "#/components/schemas/AppTokenPair" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/Error" }
+  /app/auth/session:
+    get:
+      security:
+        - appAccessToken: []
+      operationId: getAppSession
+      responses:
+        "200":
+          description: Current App identity metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [account]
+                properties:
+                  account: { $ref: "#/components/schemas/AppIdentity" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    delete:
+      security:
+        - appAccessToken: []
+      operationId: logoutAppSession
+      responses:
+        "200": { description: Current App session revoked. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /app/auth/password:
+    post:
+      security:
+        - appAccessToken: []
+      operationId: changeAppPassword
+      description: Changes the App password, revokes every old device session, and returns a fresh token pair.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string, maxLength: 128, format: password }
+                newPassword: { type: string, minLength: 12, maxLength: 128, format: password }
+      responses:
+        "200": { $ref: "#/components/responses/AppAuthenticated" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/Error" }
   /health:
     get:
       security: []
@@ -339,6 +513,10 @@ components:
       type: apiKey
       in: cookie
       name: __Host-daylink_admin_enrollment
+    appAccessToken:
+      type: http
+      scheme: bearer
+      bearerFormat: Daylink-App-Access
   parameters:
     PublicToken:
       name: publicToken
@@ -346,6 +524,17 @@ components:
       required: true
       schema: { type: string, minLength: 20, maxLength: 200 }
   responses:
+    AppAuthenticated:
+      description: App identity and a newly issued token pair. Tokens must be stored in platform secure storage.
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [account, tokens]
+            properties:
+              account: { $ref: "#/components/schemas/AppIdentity" }
+              tokens: { $ref: "#/components/schemas/AppTokenPair" }
     Unauthorized:
       description: Authentication failed.
       content:
@@ -357,6 +546,35 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
   schemas:
+    AppIdentity:
+      type: object
+      additionalProperties: false
+      required: [id, username, passwordChangeRequired]
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        passwordChangeRequired: { type: boolean }
+    AppAccount:
+      type: object
+      additionalProperties: false
+      required: [id, username, passwordChangeRequired, status, lockedUntil, lastLoginAt, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        passwordChangeRequired: { type: boolean }
+        status: { enum: [active, disabled] }
+        lockedUntil: { type: [string, "null"], format: date-time }
+        lastLoginAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+    AppTokenPair:
+      type: object
+      additionalProperties: false
+      required: [accessToken, accessExpiresAt, refreshToken, refreshExpiresAt]
+      properties:
+        accessToken: { type: string, minLength: 32, maxLength: 256 }
+        accessExpiresAt: { type: string, format: date-time }
+        refreshToken: { type: string, minLength: 32, maxLength: 256 }
+        refreshExpiresAt: { type: string, format: date-time }
     Error:
       type: object
       additionalProperties: false

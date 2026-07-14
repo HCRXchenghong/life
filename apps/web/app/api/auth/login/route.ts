@@ -16,9 +16,11 @@ import {
 } from "../../../../lib/security/auth-crypto";
 import {
   noStoreJson,
+  requireJsonRequest,
   requireSameOriginMutation,
   serializePrivateCookie,
 } from "../../../../lib/security/http";
+import { assertAllowedFields } from "../../../../lib/security/validation";
 
 const DUMMY_PASSWORD = {
   algorithm: "pbkdf2-sha256" as const,
@@ -30,8 +32,11 @@ const DUMMY_PASSWORD = {
 export async function POST(request: Request) {
   const csrfFailure = requireSameOriginMutation(request);
   if (csrfFailure) return csrfFailure;
+  const mediaFailure = requireJsonRequest(request);
+  if (mediaFailure) return mediaFailure;
   try {
-    const payload = (await request.json()) as Record<string, unknown>;
+    const payload: unknown = await request.json();
+    assertAllowedFields(payload, ["username", "password", "code"]);
     const username = typeof payload.username === "string" ? payload.username.trim() : "";
     const password = typeof payload.password === "string" ? payload.password : "";
     const code = typeof payload.code === "string" ? payload.code.trim() : "";

@@ -6,12 +6,14 @@ const encoder = new TextEncoder();
 const PASSWORD_ITERATIONS = 600_000;
 const PASSWORD_BYTES = 32;
 
+export type PasswordAlgorithm = "pbkdf2-sha256" | "pbkdf2-sha256-app-v1";
+
 type AuthEnv = {
   AUTH_SECRET_MASTER_KEY?: string;
 };
 
 export type PasswordDigest = {
-  algorithm: "pbkdf2-sha256";
+  algorithm: PasswordAlgorithm;
   hash: string;
   salt: string;
   iterations: number;
@@ -50,18 +52,25 @@ function joinBytes(first: Uint8Array, second: Uint8Array): Uint8Array {
   return joined;
 }
 
-async function passwordMaterial(password: string): Promise<Uint8Array> {
-  return joinBytes(encoder.encode(password), await deriveBytes("daylink:password-pepper:v1"));
+async function passwordMaterial(
+  password: string,
+  algorithm: PasswordAlgorithm,
+): Promise<Uint8Array> {
+  const label = algorithm === "pbkdf2-sha256-app-v1"
+    ? "daylink:app-password-pepper:v1"
+    : "daylink:password-pepper:v1";
+  return joinBytes(encoder.encode(password), await deriveBytes(label));
 }
 
 async function pbkdf2(
   password: string,
   salt: Uint8Array,
   iterations: number,
+  algorithm: PasswordAlgorithm,
 ): Promise<Uint8Array> {
   const material = await crypto.subtle.importKey(
     "raw",
-    asArrayBuffer(await passwordMaterial(password)),
+    asArrayBuffer(await passwordMaterial(password, algorithm)),
     "PBKDF2",
     false,
     ["deriveBits"],
@@ -75,11 +84,17 @@ async function pbkdf2(
   );
 }
 
-export async function hashPassword(password: string): Promise<PasswordDigest> {
+export async function hashPassword(
+  password: string,
+  purpose: "admin" | "app" = "admin",
+): Promise<PasswordDigest> {
+  const algorithm: PasswordAlgorithm = purpose === "app"
+    ? "pbkdf2-sha256-app-v1"
+    : "pbkdf2-sha256";
   const salt = crypto.getRandomValues(new Uint8Array(16));
-  const hash = await pbkdf2(password, salt, PASSWORD_ITERATIONS);
+  const hash = await pbkdf2(password, salt, PASSWORD_ITERATIONS, algorithm);
   return {
-    algorithm: "pbkdf2-sha256",
+    algorithm,
     hash: bytesToBase64(hash),
     salt: bytesToBase64(salt),
     iterations: PASSWORD_ITERATIONS,
@@ -90,12 +105,14 @@ export async function verifyPassword(
   password: string,
   digest: Pick<PasswordDigest, "algorithm" | "hash" | "salt" | "iterations">,
 ): Promise<boolean> {
-  if (digest.algorithm !== "pbkdf2-sha256") return false;
+  if (digest.algorithm !== "pbkdf2-sha256" && digest.algorithm !== "pbkdf2-sha256-app-v1") {
+    return false;
+  }
   if (digest.iterations < PASSWORD_ITERATIONS || digest.iterations > 2_000_000) return false;
   const expected = base64ToBytes(digest.hash);
   const salt = base64ToBytes(digest.salt);
   if (expected.byteLength !== PASSWORD_BYTES || salt.byteLength < 16) return false;
-  const actual = await pbkdf2(password, salt, digest.iterations);
+  const actual = await pbkdf2(password, salt, digest.iterations, digest.algorithm);
   return constantTimeEqual(actual, expected);
 }
 

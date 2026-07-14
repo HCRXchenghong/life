@@ -3,11 +3,19 @@ import test from "node:test";
 import {
   cookieNames,
   readCookie,
+  requireJsonRequest,
   requireSameOriginMutation,
   serializePrivateCookie,
 } from "../lib/security/http.ts";
 import { createTotpSecret, createTotpUri, verifyTotp } from "../lib/security/totp.ts";
 import { authorizeBootstrapPolicy } from "../lib/security/bootstrap-policy.ts";
+import { assertAllowedFields } from "../lib/security/validation.ts";
+import {
+  canonicalAccountUsername,
+  readBearerToken,
+  validateAccountUsername,
+  validateStrongPassword,
+} from "../lib/security/account-credentials.ts";
 
 test("TOTP matches the RFC 6238 SHA-1 vector and rejects replay", async () => {
   const secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
@@ -83,4 +91,44 @@ test("localhost bootstrap remains available for local development", () => {
     allowed: true,
     actor: "bootstrap:local",
   });
+});
+
+test("App account credentials are canonicalized and strongly validated", () => {
+  assert.equal(validateAccountUsername(" Member.One ", "App 账号"), "Member.One");
+  assert.equal(canonicalAccountUsername("Member.One"), "member.one");
+  assert.equal(validateStrongPassword("Longer!Pass123"), "Longer!Pass123");
+  assert.throws(() => validateAccountUsername("../admin", "App 账号"));
+  assert.throws(() => validateStrongPassword("onlylowercase"));
+  assert.throws(() => validateStrongPassword("NoSymbols1234"));
+});
+
+test("App bearer tokens reject malformed or ambiguous authorization values", () => {
+  const token = `dlka_${"A".repeat(48)}`;
+  assert.equal(readBearerToken(`Bearer ${token}`), token);
+  assert.equal(readBearerToken(`bearer ${token}`), null);
+  assert.equal(readBearerToken(`Bearer short`), null);
+  assert.equal(readBearerToken(`Bearer ${token}.suffix`), null);
+});
+
+test("JSON mutation endpoints reject form and text payloads", () => {
+  const json = new Request("https://daylink.example/api/app/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
+  assert.equal(requireJsonRequest(json), null);
+  const form = new Request("https://daylink.example/api/app/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+  });
+  assert.equal(requireJsonRequest(form)?.status, 415);
+});
+
+test("strict request schemas reject unrecognized credential fields", () => {
+  const accepted = { username: "member", password: "secret" };
+  assert.doesNotThrow(() => assertAllowedFields(accepted, ["username", "password"]));
+  assert.throws(
+    () => assertAllowedFields({ ...accepted, admin: true }, ["username", "password"]),
+    /Unexpected field: admin/,
+  );
+  assert.throws(() => assertAllowedFields([accepted], ["username", "password"]));
 });
