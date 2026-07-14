@@ -214,7 +214,10 @@ export const auditEvents = sqliteTable(
     metadataJson: text("metadata_json").notNull().default("{}"),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   },
-  (table) => [index("audit_actor_created_idx").on(table.actor, table.createdAt)],
+  (table) => [
+    index("audit_actor_created_idx").on(table.actor, table.createdAt),
+    index("audit_created_idx").on(table.createdAt),
+  ],
 );
 
 export const sharePolls = sqliteTable(

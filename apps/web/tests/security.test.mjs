@@ -20,6 +20,7 @@ import {
   validateAccountUsername,
   validateStrongPassword,
 } from "../lib/security/account-credentials.ts";
+import { sanitizeAuditMetadata } from "../lib/security/audit-metadata.ts";
 
 test("TOTP matches the RFC 6238 SHA-1 vector and rejects replay", async () => {
   const secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
@@ -160,4 +161,27 @@ test("AI API Key validation preserves exact bytes and rejects control characters
   assert.equal(optionalSecret("", "apiKey", 4_096), null);
   assert.throws(() => optionalSecret("secret\nheader", "apiKey", 4_096));
   assert.throws(() => optionalSecret("   ", "apiKey", 4_096));
+});
+
+test("audit metadata removes secret-bearing fields and bounds untrusted values", () => {
+  const sanitized = sanitizeAuditMetadata({
+    providerId: "provider-1",
+    toolCount: 3,
+    apiKey: "must-not-survive",
+    authorization: "Bearer must-not-survive",
+    nested: {
+      password: "must-not-survive",
+      reason: "invalid\ncredentials",
+    },
+    longValue: "x".repeat(500),
+  });
+  assert.deepEqual(sanitized, {
+    providerId: "provider-1",
+    toolCount: 3,
+    nested: { reason: "invalidcredentials" },
+    longValue: "x".repeat(256),
+  });
+  const circular = { safe: true };
+  circular.self = circular;
+  assert.doesNotThrow(() => JSON.stringify(sanitizeAuditMetadata({ circular })));
 });

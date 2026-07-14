@@ -1,5 +1,6 @@
 import { getDb } from "../db";
 import { auditEvents } from "../db/schema";
+import { sanitizeAuditMetadata } from "./security/audit-metadata";
 
 type AuditInput = {
   actor: string;
@@ -22,7 +23,6 @@ export async function writeAudit(input: AuditInput): Promise<void> {
     outcome: input.outcome,
     risk: input.risk ?? "low",
     requestId: input.requestId ?? null,
-    metadataJson: JSON.stringify(input.metadata ?? {}),
+    metadataJson: JSON.stringify(sanitizeAuditMetadata(input.metadata)),
   });
 }
-
