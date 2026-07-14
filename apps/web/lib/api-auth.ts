@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { getDb } from "../db";
 import { mobileApiTokens } from "../db/schema";
 import { getAdminIdentity } from "./admin-auth";
+import type { AdminIdentity } from "./admin-auth";
 import { sha256 } from "./security/encoding";
 import { requireSameOriginMutation } from "./security/http";
 
@@ -46,6 +47,11 @@ export async function requireOperator(request: Request): Promise<string | Respon
 }
 
 export async function requireAdmin(request?: Request): Promise<string | Response> {
+  const identity = await requireAdminIdentity(request);
+  return identity instanceof Response ? identity : identity.actor;
+}
+
+export async function requireAdminIdentity(request?: Request): Promise<AdminIdentity | Response> {
   if (request) {
     const csrfFailure = requireSameOriginMutation(request);
     if (csrfFailure) return csrfFailure;
@@ -53,14 +59,14 @@ export async function requireAdmin(request?: Request): Promise<string | Response
       request.headers.get("cookie"),
       request.headers.get("user-agent"),
     );
-    if (admin) return admin.actor;
+    if (admin) return admin;
   } else {
     const requestHeaders = await headers();
     const admin = await getAdminIdentity(
       requestHeaders.get("cookie"),
       requestHeaders.get("user-agent"),
     );
-    if (admin) return admin.actor;
+    if (admin) return admin;
   }
   return Response.json(
     { error: { code: "unauthorized", message: "Administrator sign-in is required" } },

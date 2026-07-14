@@ -15,7 +15,7 @@
 | AI | 本地第三方 API/Key、Web 托管第三方 Provider、Responses 工具循环、生图、递归 schema 校验、风险审批与敏感输出脱敏 |
 | Codex | 官方 App Server JSON-RPC 字段、SSH Agent transport、消息泵、动态工具能力、审批/MCP elicitation 默认拒绝 |
 | 好友选时间 | App 创建/刷新/定稿、公开网页投票、匿名编辑令牌、乐观锁、管理令牌安全存储、定稿导入日程 |
-| Web 后台 | 管理员密码 + Microsoft TOTP、生产初始化身份白名单、极简概览/App 账号/AI 服务/安全审计页、Provider AES-GCM 与只写 Key、Provider 公网 HTTPS/防重定向约束、设备 Token 哈希/撤销、D1/R2、限流 AI 测试、生图、敏感元数据过滤审计、投票管理 |
+| Web 后台 | 管理员密码 + Microsoft TOTP、生产初始化身份白名单、极简概览/App 账号/AI 服务/安全审计/设置页、管理员改密与 TOTP 重绑二次验证、全会话撤销、短时重绑密文、Provider AES-GCM 与只写 Key、Provider 公网 HTTPS/防重定向约束、设备 Token 哈希/撤销、D1/R2、限流 AI 测试、生图、敏感元数据过滤审计、投票管理 |
 | App 账号鉴权 | 强密码与独立 pepper 域、15 分钟访问令牌、30 天单次轮换刷新令牌、首次改密、5 次失败锁定、管理员启停/重置即撤销旧会话 |
 
 ## 验证证据
@@ -23,7 +23,7 @@
 - `dart analyze --format=machine`：0 条诊断。
 - Flutter：25 项单元/组件测试通过。
 - Rust：7 项单元测试通过；workspace Clippy 使用 `-D warnings` 通过。
-- Web：ESLint、TypeScript、vinext 生产构建和 3 项黑盒 SSR/health 测试通过。
+- Web：ESLint、TypeScript、vinext 生产构建和 17 项安全/黑盒 SSR/health 测试通过。
 - Android：debug APK 含 `arm64-v8a`、`armeabi-v7a`、`x86_64` 三套 `libdaylink_mobile_core.so`，并检出 Agent 安装 FFI 符号。
 - iOS：模拟器 Runner 与 Rust framework 均为 `arm64 + x86_64`，并检出 Agent 安装 FFI 符号。
 - Agent：`--self-test` 返回 agent 版本与协议版本 1。

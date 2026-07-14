@@ -71,6 +71,16 @@ test("private cookies are host-bound, HttpOnly, strict and readable by either ru
     cookieNames("session"),
   );
   assert.equal(value, "secret value");
+
+  const rebind = serializePrivateCookie(request, "totp_rebind", "opaque rebind", 600);
+  assert.match(rebind, /^__Host-daylink_admin_totp_rebind=/);
+  assert.equal(
+    readCookie(
+      "__Host-daylink_admin_totp_rebind=opaque%20rebind",
+      cookieNames("totp_rebind"),
+    ),
+    "opaque rebind",
+  );
 });
 
 test("production bootstrap requires both hosted identity and explicit allowlist", () => {

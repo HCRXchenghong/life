@@ -44,6 +44,15 @@ Daylink 的第三方 AI 配置与 Codex 登录是两条独立凭据边界。Code
 安全审计页位于 `/admin/audit`，只展示最近的登录、密码、设备令牌、App 账号和 AI 服务配置事件。
 页面查询不会读取审计元数据、目标 ID 或请求 ID；审计写入层也会丢弃敏感字段并限制非可信值长度。
 
+后台安全设置页位于 `/admin/settings`。修改管理员密码或重新绑定 Microsoft Authenticator
+都必须再次提交当前密码与不可重放的当前 TOTP；成功后撤销全部后台会话。2FA 重新绑定使用
+10 分钟短时加密登记，只有新验证器完成校验后才替换旧密钥，取消或超时不会破坏原有 2FA。
+
+使用第三方中转运行 Codex 时，中转必须完整兼容 Responses 工具调用语义；本地工具、MCP 和
+App Server 动态工具仍由 Daylink/Codex 客户端执行。第三方中转不会自动获得 ChatGPT 的内置
+生图能力。Daylink 已提供受鉴权的 `/api/assistant/images` 网关和移动端 Images 调用，后续把它
+注册为 `daylink_generate_image` 动态工具即可供 Codex 发起严格 schema 的生图调用。
+
 Linux 远端执行 `daylink-agent --stdio` 供 SSH 通道使用，或在设置了
 `XDG_RUNTIME_DIR` 后启动 Unix Socket 服务。`DAYLINK_ALLOWED_ROOTS` 使用系统
 路径分隔符声明 Agent 可读取和启动 Codex 的目录；未配置时仅允许 `$HOME`。

@@ -86,6 +86,26 @@ export const adminSessions = sqliteTable(
   ],
 );
 
+export const adminTotpRebindings = sqliteTable(
+  "admin_totp_rebindings",
+  {
+    id: text("id").primaryKey(),
+    adminId: text("admin_id")
+      .notNull()
+      .references(() => adminAccounts.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    secretCiphertext: text("secret_ciphertext").notNull(),
+    secretNonce: text("secret_nonce").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    uniqueIndex("admin_totp_rebindings_admin_idx").on(table.adminId),
+    uniqueIndex("admin_totp_rebindings_token_idx").on(table.tokenHash),
+    index("admin_totp_rebindings_expiry_idx").on(table.expiresAt),
+  ],
+);
+
 export const authRateLimits = sqliteTable(
   "auth_rate_limits",
   {

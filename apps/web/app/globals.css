@@ -1071,3 +1071,140 @@ textarea { resize: vertical; line-height: 1.55; }
   .admin-audit-row-icon { width: 36px; height: 36px; }
   .admin-audit-outcome { padding-inline: 7px; }
 }
+
+/* Minimal administrator security settings. */
+.admin-settings-main { width: min(1030px, calc(100% - 208px - 104px)); }
+.admin-settings-card {
+  overflow: hidden;
+  border: 1px solid var(--overview-line);
+  border-radius: 7px;
+  background: #fff;
+}
+.admin-settings-card > h2 {
+  margin: 0;
+  padding: 31px 38px 18px;
+  color: #1f2329;
+  font-size: 18px;
+  font-weight: 650;
+}
+.admin-settings-row {
+  min-height: 132px;
+  display: grid;
+  grid-template-columns: 66px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 21px;
+  margin: 0 38px;
+}
+.admin-settings-row + .admin-settings-row { border-top: 1px solid var(--overview-line); }
+.admin-settings-row-icon {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #f0f5ff;
+  color: #3370ff;
+}
+.admin-settings-row-icon.totp { background: #f3f1ff; color: #7d72ff; }
+.admin-settings-row-icon.totp .admin-css-icon { transform: scale(1.65); }
+.admin-settings-lock {
+  position: relative;
+  width: 24px;
+  height: 22px;
+  margin-top: 7px;
+  border: 2px solid currentColor;
+  border-radius: 4px;
+}
+.admin-settings-lock::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: -16px;
+  width: 12px;
+  height: 15px;
+  border: 2px solid currentColor;
+  border-bottom: 0;
+  border-radius: 9px 9px 0 0;
+}
+.admin-settings-lock::after {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 7px;
+  width: 3px;
+  height: 7px;
+  border-radius: 2px;
+  background: currentColor;
+}
+.admin-settings-row-copy h3 { margin: 0 0 8px; color: #1f2329; font-size: 16px; font-weight: 650; }
+.admin-settings-row-copy p { margin: 0; color: #8f959e; font-size: 13px; }
+.admin-settings-row > button {
+  min-height: 40px;
+  padding: 0 19px;
+  border: 1px solid #c9cdd4;
+  border-radius: 6px;
+  background: #fff;
+  color: #646a73;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.admin-settings-row > button:hover { border-color: #8f959e; background: #f8f9fa; color: #3370ff; }
+.admin-settings-row > button:focus-visible,
+.admin-settings-secret-toggle:focus-visible { outline: 2px solid #3370ff; outline-offset: 2px; }
+.admin-settings-status {
+  min-width: 58px;
+  color: #20a162;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+.admin-settings-privacy { margin-top: 28px; }
+.admin-settings-dialog { width: min(500px, 100%); }
+.admin-settings-qr {
+  width: 190px;
+  height: 190px;
+  display: grid;
+  place-items: center;
+  justify-self: center;
+  padding: 7px;
+  border: 1px solid #dee0e3;
+  border-radius: 8px;
+  background: #fff;
+  color: #8f959e;
+  font-size: 12px;
+}
+.admin-settings-qr img { display: block; width: 176px; height: 176px; }
+.admin-settings-secret-toggle {
+  justify-self: center;
+  margin: -7px 0 -3px;
+  border: 0;
+  background: transparent;
+  color: #3370ff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+.admin-settings-secret { margin: -5px 0 0; }
+.admin-settings-secret code { overflow-wrap: anywhere; }
+@media (max-width: 900px) {
+  .admin-settings-main { width: min(760px, calc(100% - 112px)); }
+}
+@media (max-width: 620px) {
+  .admin-settings-main { width: 100%; }
+  .admin-settings-card > h2 { padding: 25px 22px 12px; }
+  .admin-settings-row {
+    min-height: 116px;
+    grid-template-columns: 50px minmax(0, 1fr) auto;
+    gap: 15px;
+    margin: 0 22px;
+  }
+  .admin-settings-row-icon { width: 46px; height: 46px; }
+  .admin-settings-row-icon.totp .admin-css-icon { transform: scale(1.3); }
+  .admin-settings-lock { transform: scale(.8); }
+  .admin-settings-row-copy h3 { font-size: 15px; }
+  .admin-settings-row-copy p { font-size: 11px; }
+  .admin-settings-status { display: none; }
+  .admin-settings-row > button { min-height: 36px; padding-inline: 12px; font-size: 12px; }
+}

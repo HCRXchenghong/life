@@ -17,20 +17,22 @@ export function readCookie(cookieHeader: string | null, names: string[]): string
   return null;
 }
 
-export function secureCookieName(request: Request, purpose: "session" | "enrollment"): string {
+export type PrivateCookiePurpose = "session" | "enrollment" | "totp_rebind";
+
+export function secureCookieName(request: Request, purpose: PrivateCookiePurpose): string {
   const secure = new URL(request.url).protocol === "https:";
   const base = `daylink_admin_${purpose}`;
   return secure ? `__Host-${base}` : base;
 }
 
-export function cookieNames(purpose: "session" | "enrollment"): string[] {
+export function cookieNames(purpose: PrivateCookiePurpose): string[] {
   const base = `daylink_admin_${purpose}`;
   return [`__Host-${base}`, base];
 }
 
 export function serializePrivateCookie(
   request: Request,
-  purpose: "session" | "enrollment",
+  purpose: PrivateCookiePurpose,
   value: string,
   maxAgeSeconds: number,
 ): string {
@@ -49,7 +51,7 @@ export function serializePrivateCookie(
 
 export function clearPrivateCookie(
   request: Request,
-  purpose: "session" | "enrollment",
+  purpose: PrivateCookiePurpose,
 ): string {
   return serializePrivateCookie(request, purpose, "", 0);
 }
