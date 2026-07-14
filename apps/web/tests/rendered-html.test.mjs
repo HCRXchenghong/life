@@ -41,17 +41,13 @@ test.after(() => {
   server?.kill("SIGTERM");
 });
 
-test("server-renders the Daylink product home", async () => {
-  const response = await request();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
-  const html = await response.text();
-  assert.match(html, /<title>Daylink · SSH 与日程协作<\/title>/i);
-  assert.match(html, /把服务器和生活安排/);
-  assert.match(html, /SSH Core/);
-  assert.match(html, /AI Tools/);
-  assert.match(html, /Time Poll/);
-  assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/);
+test("redirects the site root directly to the administrator page", async () => {
+  const response = await fetch(origin, {
+    headers: { accept: "text/html" },
+    redirect: "manual",
+  });
+  assert.equal(response.status, 307);
+  assert.equal(new URL(response.headers.get("location"), origin).pathname, "/admin");
 });
 
 test("exposes a small health endpoint", async () => {
