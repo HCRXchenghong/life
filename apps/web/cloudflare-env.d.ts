@@ -16,7 +16,6 @@ interface DaylinkWorkerEnv {
   };
   AI_SECRET_MASTER_KEY?: string;
   AUTH_SECRET_MASTER_KEY?: string;
-  ADMIN_BOOTSTRAP_EMAILS?: string;
   SHARE_API_TOKEN?: string;
 }
 

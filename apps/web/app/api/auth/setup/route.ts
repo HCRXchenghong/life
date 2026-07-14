@@ -9,7 +9,6 @@ import {
   rateLimitResponse,
 } from "../../../../lib/admin-auth";
 import { writeAudit } from "../../../../lib/audit";
-import { authorizeBootstrap } from "../../../../lib/bootstrap-auth";
 import {
   createTotpSecret,
   encryptAuthSecret,
@@ -61,23 +60,6 @@ export async function POST(request: Request) {
   if (csrfFailure) return csrfFailure;
   const mediaFailure = requireJsonRequest(request);
   if (mediaFailure) return mediaFailure;
-
-  const bootstrapAuthorization = authorizeBootstrap(
-    request.headers,
-    new URL(request.url).hostname,
-  );
-  if (!bootstrapAuthorization.allowed) {
-    const misconfigured = bootstrapAuthorization.reason === "allowlist_missing";
-    return noStoreJson(
-      {
-        error: {
-          code: misconfigured ? "bootstrap_not_configured" : "bootstrap_forbidden",
-          message: misconfigured ? "管理员初始化白名单尚未配置" : "当前身份无权初始化后台",
-        },
-      },
-      { status: misconfigured ? 503 : 403 },
-    );
-  }
 
   try {
     const payload: unknown = await request.json();
@@ -134,7 +116,7 @@ export async function POST(request: Request) {
     }
 
     await writeAudit({
-      actor: bootstrapAuthorization.actor,
+      actor: "system:first-admin-setup",
       action: "admin.enrollment.started",
       targetType: "admin_account",
       targetId: id,

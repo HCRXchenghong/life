@@ -63,13 +63,17 @@ test("exposes a small health endpoint", async () => {
 });
 
 test("removes all disposable starter artifacts", async () => {
-  const [page, layout, packageJson] = await Promise.all([
+  const [page, layout, adminPage, setupRoute, packageJson] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/admin/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/auth/setup/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
   ]);
   assert.doesNotMatch(page, /SkeletonPreview|codex-preview/);
   assert.doesNotMatch(layout, /Starter Project|codex-preview/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
+  assert.doesNotMatch(adminPage, /signin-with-chatgpt|oai-authenticated/i);
+  assert.doesNotMatch(setupRoute, /signin-with-chatgpt|oai-authenticated/i);
   await assert.rejects(access(new URL("../app/_sites-preview/SkeletonPreview.tsx", root)));
 });

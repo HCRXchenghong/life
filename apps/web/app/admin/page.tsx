@@ -9,9 +9,6 @@ import {
   PendingSetupNotice,
 } from "../../components/AdminSetupForm";
 import { getAdminIdentity, getBootstrapState } from "../../lib/admin-auth";
-import { authorizeBootstrap } from "../../lib/bootstrap-auth";
-import { requestHostname } from "../../lib/security/bootstrap-policy";
-import { chatGPTSignInPath } from "../chatgpt-auth";
 import { getDb } from "../../db";
 import { aiProviderConfigs, appAccounts } from "../../db/schema";
 
@@ -41,14 +38,6 @@ export default async function AdminPage() {
 
   const bootstrap = await getBootstrapState(cookieHeader);
   if (bootstrap.kind === "uninitialized") {
-    const authorization = authorizeBootstrap(requestHeaders, requestHostname(requestHeaders));
-    if (!authorization.allowed && authorization.reason === "identity_required") {
-      redirect(chatGPTSignInPath("/admin"));
-    }
-    if (!authorization.allowed) {
-      const reason = authorization.reason === "allowlist_missing" ? "allowlist_missing" : "forbidden";
-      return <PendingSetupNotice authorized={false} reason={reason} />;
-    }
     return <AdminSetupForm />;
   }
   if (bootstrap.kind === "pending") {

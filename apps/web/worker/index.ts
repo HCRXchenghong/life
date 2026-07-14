@@ -8,7 +8,6 @@ interface Env {
   GENERATED_ASSETS: R2Bucket;
   AI_SECRET_MASTER_KEY?: string;
   AUTH_SECRET_MASTER_KEY?: string;
-  ADMIN_BOOTSTRAP_EMAILS?: string;
   SHARE_API_TOKEN?: string;
   IMAGES: {
     input(stream: ReadableStream): {
