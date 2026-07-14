@@ -150,7 +150,7 @@ export async function revokeAdminSession(cookieHeader: string | null): Promise<v
 
 export async function consumeAuthRateLimit(
   request: Request,
-  action: "setup" | "login" | "totp_enrollment" | "app_login" | "app_refresh" | "app_password" | "app_account_admin",
+  action: "setup" | "login" | "totp_enrollment" | "app_login" | "app_refresh" | "app_password" | "app_account_admin" | "ai_provider_admin" | "ai_provider_test",
   identity: string,
   maximumAttempts: number,
 ): Promise<void> {
@@ -208,7 +208,7 @@ export async function consumeAuthRateLimit(
 
 export async function clearAuthRateLimit(
   request: Request,
-  action: "setup" | "login" | "totp_enrollment" | "app_login" | "app_refresh" | "app_password" | "app_account_admin",
+  action: "setup" | "login" | "totp_enrollment" | "app_login" | "app_refresh" | "app_password" | "app_account_admin" | "ai_provider_admin" | "ai_provider_test",
   identity: string,
 ): Promise<void> {
   const key = await hashPrivateIdentifier(

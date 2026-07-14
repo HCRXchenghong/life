@@ -1,22 +1,17 @@
 import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { aiProviderConfigs } from "../../../../db/schema";
+import {
+  consumeAuthRateLimit,
+  RateLimitError,
+  rateLimitResponse,
+} from "../../../../lib/admin-auth";
 import { requireAdmin } from "../../../../lib/api-auth";
 import { writeAudit } from "../../../../lib/audit";
 import { publicProvider } from "../../../../lib/ai/provider";
+import { validateProviderMutation } from "../../../../lib/ai/provider-validation";
 import { encryptSecret, secretHint } from "../../../../lib/security/secrets";
-import {
-  errorResponse,
-  optionalText,
-  parseHttpsBaseUrl,
-  requiredText,
-} from "../../../../lib/security/validation";
-
-const PROVIDER_KINDS = new Set([
-  "openai_responses",
-  "openai_compatible",
-  "anthropic_compatible",
-]);
+import { noStoreJson, requireJsonRequest } from "../../../../lib/security/http";
 
 export async function GET() {
   const actor = await requireAdmin();
@@ -26,23 +21,18 @@ export async function GET() {
     .from(aiProviderConfigs)
     .where(eq(aiProviderConfigs.ownerEmail, actor))
     .orderBy(desc(aiProviderConfigs.updatedAt));
-  return Response.json({ providers: providers.map(publicProvider) });
+  return noStoreJson({ providers: providers.map(publicProvider) });
 }
 
 export async function POST(request: Request) {
   const actor = await requireAdmin(request);
   if (actor instanceof Response) return actor;
+  const mediaFailure = requireJsonRequest(request);
+  if (mediaFailure) return mediaFailure;
   try {
-    const payload = (await request.json()) as Record<string, unknown>;
-    const id = optionalText(payload.id, "id", 64);
-    const name = requiredText(payload.name, "name", 80);
-    const kind = requiredText(payload.kind, "kind", 40);
-    if (!PROVIDER_KINDS.has(kind)) throw new Error("Unsupported AI provider kind");
-    const baseUrl = parseHttpsBaseUrl(requiredText(payload.baseUrl, "baseUrl", 400));
-    const textModel = requiredText(payload.textModel, "textModel", 120);
-    const imageModel = optionalText(payload.imageModel, "imageModel", 120);
-    const apiKey = optionalText(payload.apiKey, "apiKey", 4096);
-    const enabled = payload.enabled !== false;
+    await consumeAuthRateLimit(request, "ai_provider_admin", actor, 30);
+    const input = validateProviderMutation(await request.json());
+    const { id, name, kind, baseUrl, textModel, imageModel, apiKey, enabled } = input;
     const now = new Date().toISOString();
     const db = getDb();
 
@@ -52,27 +42,42 @@ export async function POST(request: Request) {
         .from(aiProviderConfigs)
         .where(and(eq(aiProviderConfigs.id, id), eq(aiProviderConfigs.ownerEmail, actor)))
         .limit(1);
-      if (!existing) return errorResponse(new Error("Provider not found"), 404);
+      if (!existing) {
+        return noStoreJson(
+          { error: { code: "not_found", message: "AI 服务不存在" } },
+          { status: 404 },
+        );
+      }
       const encrypted = apiKey ? await encryptSecret(apiKey, actor) : null;
-      await db
-        .update(aiProviderConfigs)
-        .set({
-          name,
-          kind: kind as typeof existing.kind,
-          baseUrl,
-          textModel,
-          imageModel,
-          enabled,
-          updatedAt: now,
-          ...(encrypted
-            ? {
-                apiKeyCiphertext: encrypted.ciphertext,
-                apiKeyNonce: encrypted.nonce,
-                apiKeyHint: secretHint(apiKey!),
-              }
-            : {}),
-        })
-        .where(and(eq(aiProviderConfigs.id, id), eq(aiProviderConfigs.ownerEmail, actor)));
+      try {
+        await db
+          .update(aiProviderConfigs)
+          .set({
+            name,
+            kind,
+            baseUrl,
+            textModel,
+            imageModel,
+            enabled,
+            updatedAt: now,
+            ...(encrypted && apiKey
+              ? {
+                  apiKeyCiphertext: encrypted.ciphertext,
+                  apiKeyNonce: encrypted.nonce,
+                  apiKeyHint: secretHint(apiKey),
+                }
+              : {}),
+          })
+          .where(and(eq(aiProviderConfigs.id, id), eq(aiProviderConfigs.ownerEmail, actor)));
+      } catch {
+        const [conflict] = await db
+          .select({ id: aiProviderConfigs.id })
+          .from(aiProviderConfigs)
+          .where(and(eq(aiProviderConfigs.ownerEmail, actor), eq(aiProviderConfigs.name, name)))
+          .limit(1);
+        if (conflict && conflict.id !== id) return providerNameConflict();
+        throw new Error("AI 服务暂时无法保存");
+      }
       await writeAudit({
         actor,
         action: "ai_provider.update",
@@ -85,31 +90,42 @@ export async function POST(request: Request) {
       const [updated] = await db
         .select()
         .from(aiProviderConfigs)
-        .where(eq(aiProviderConfigs.id, id));
-      return Response.json({ provider: publicProvider(updated) });
+        .where(and(eq(aiProviderConfigs.id, id), eq(aiProviderConfigs.ownerEmail, actor)));
+      return noStoreJson({ provider: publicProvider(updated) });
     }
 
     if (!apiKey) throw new Error("apiKey is required for a new provider");
     const encrypted = await encryptSecret(apiKey, actor);
     const providerId = crypto.randomUUID();
-    const [created] = await db
-      .insert(aiProviderConfigs)
-      .values({
-        id: providerId,
-        ownerEmail: actor,
-        name,
-        kind: kind as "openai_responses" | "openai_compatible" | "anthropic_compatible",
-        baseUrl,
-        textModel,
-        imageModel,
-        apiKeyCiphertext: encrypted.ciphertext,
-        apiKeyNonce: encrypted.nonce,
-        apiKeyHint: secretHint(apiKey),
-        enabled,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning();
+    let created: typeof aiProviderConfigs.$inferSelect;
+    try {
+      [created] = await db
+        .insert(aiProviderConfigs)
+        .values({
+          id: providerId,
+          ownerEmail: actor,
+          name,
+          kind,
+          baseUrl,
+          textModel,
+          imageModel,
+          apiKeyCiphertext: encrypted.ciphertext,
+          apiKeyNonce: encrypted.nonce,
+          apiKeyHint: secretHint(apiKey),
+          enabled,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning();
+    } catch {
+      const [conflict] = await db
+        .select({ id: aiProviderConfigs.id })
+        .from(aiProviderConfigs)
+        .where(and(eq(aiProviderConfigs.ownerEmail, actor), eq(aiProviderConfigs.name, name)))
+        .limit(1);
+      if (conflict) return providerNameConflict();
+      throw new Error("AI 服务暂时无法保存");
+    }
     await writeAudit({
       actor,
       action: "ai_provider.create",
@@ -119,8 +135,26 @@ export async function POST(request: Request) {
       risk: "high",
       metadata: { kind },
     });
-    return Response.json({ provider: publicProvider(created) }, { status: 201 });
+    return noStoreJson({ provider: publicProvider(created) }, { status: 201 });
   } catch (error) {
-    return errorResponse(error);
+    if (error instanceof RateLimitError) return rateLimitResponse(error);
+    const message = error instanceof Error ? error.message : "请求无效";
+    const unavailable = message.includes("AI_SECRET_MASTER_KEY") || message.includes("not configured");
+    return noStoreJson(
+      {
+        error: {
+          code: unavailable ? "ai_secret_storage_unavailable" : "invalid_request",
+          message: unavailable ? "AI 密钥存储尚未配置" : message,
+        },
+      },
+      { status: unavailable ? 503 : 400 },
+    );
   }
+}
+
+function providerNameConflict(): Response {
+  return noStoreJson(
+    { error: { code: "provider_name_unavailable", message: "同名 AI 服务已存在" } },
+    { status: 409 },
+  );
 }

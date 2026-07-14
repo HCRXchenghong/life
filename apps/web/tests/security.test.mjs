@@ -9,7 +9,11 @@ import {
 } from "../lib/security/http.ts";
 import { createTotpSecret, createTotpUri, verifyTotp } from "../lib/security/totp.ts";
 import { authorizeBootstrapPolicy } from "../lib/security/bootstrap-policy.ts";
-import { assertAllowedFields } from "../lib/security/validation.ts";
+import {
+  assertAllowedFields,
+  optionalSecret,
+  parseHttpsBaseUrl,
+} from "../lib/security/validation.ts";
 import {
   canonicalAccountUsername,
   readBearerToken,
@@ -131,4 +135,29 @@ test("strict request schemas reject unrecognized credential fields", () => {
     /Unexpected field: admin/,
   );
   assert.throws(() => assertAllowedFields([accepted], ["username", "password"]));
+});
+
+test("AI endpoints accept only public HTTPS base URLs without embedded authority data", () => {
+  assert.equal(parseHttpsBaseUrl("https://api.openai.com/v1/"), "https://api.openai.com/v1");
+  for (const value of [
+    "http://api.openai.com/v1",
+    "https://user:pass@api.openai.com/v1",
+    "https://api.openai.com/v1?token=secret",
+    "https://127.0.0.1/v1",
+    "https://2130706433/v1",
+    "https://169.254.169.254/latest",
+    "https://[::1]/v1",
+    "https://metadata.google.internal/v1",
+    "https://127.0.0.1.nip.io/v1",
+  ]) {
+    assert.throws(() => parseHttpsBaseUrl(value), value);
+  }
+});
+
+test("AI API Key validation preserves exact bytes and rejects control characters", () => {
+  const key = "  exact-key-with-spaces  ";
+  assert.equal(optionalSecret(key, "apiKey", 4_096), key);
+  assert.equal(optionalSecret("", "apiKey", 4_096), null);
+  assert.throws(() => optionalSecret("secret\nheader", "apiKey", 4_096));
+  assert.throws(() => optionalSecret("   ", "apiKey", 4_096));
 });

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Daylink Web API
-  version: 0.2.0
+  version: 0.3.0
   description: >-
     HTTP contract for the Daylink mobile client, public time polls, AI gateway,
     and Web administration. Administrative routes use an HttpOnly administrator
@@ -202,6 +202,96 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
+  /admin/providers:
+    get:
+      security:
+        - adminSession: []
+      operationId: listAiProviders
+      description: Lists administrator-owned AI provider metadata. API Key ciphertext and plaintext are never returned.
+      responses:
+        "200":
+          description: AI provider metadata safe for the administration UI.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [providers]
+                properties:
+                  providers:
+                    type: array
+                    items: { $ref: "#/components/schemas/AiProvider" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      security:
+        - adminSession: []
+      operationId: saveAiProvider
+      description: >-
+        Creates or updates an AI provider. The API Key is write-only, encrypted
+        before persistence, and may be omitted during an update to retain the existing Key.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/CreateAiProviderRequest"
+                - $ref: "#/components/schemas/UpdateAiProviderRequest"
+      responses:
+        "200":
+          description: Existing provider updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [provider]
+                properties:
+                  provider: { $ref: "#/components/schemas/AiProvider" }
+        "201":
+          description: Provider created.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [provider]
+                properties:
+                  provider: { $ref: "#/components/schemas/AiProvider" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /admin/ai-test:
+    post:
+      security:
+        - adminSession: []
+      operationId: testAiProvider
+      description: Runs a bounded fixed-prompt connectivity test without returning provider output.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [providerId]
+              properties:
+                providerId: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Provider connection succeeded.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [ok]
+                properties:
+                  ok: { const: true }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
   /app/auth/login:
     post:
       security: []
@@ -546,6 +636,46 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
   schemas:
+    AiProvider:
+      type: object
+      additionalProperties: false
+      required: [id, name, kind, baseUrl, textModel, imageModel, apiKeyHint, enabled, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 80 }
+        kind: { enum: [openai_responses, openai_compatible, anthropic_compatible] }
+        baseUrl: { type: string, format: uri, pattern: "^https://" }
+        textModel: { type: string, minLength: 1, maxLength: 120 }
+        imageModel: { type: [string, "null"], maxLength: 120 }
+        apiKeyHint: { type: string }
+        enabled: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CreateAiProviderRequest:
+      type: object
+      additionalProperties: false
+      required: [name, kind, baseUrl, textModel, apiKey]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        kind: { enum: [openai_responses, openai_compatible, anthropic_compatible] }
+        baseUrl: { type: string, format: uri, pattern: "^https://" }
+        textModel: { type: string, minLength: 1, maxLength: 120 }
+        imageModel: { type: string, maxLength: 120 }
+        apiKey: { type: string, minLength: 1, maxLength: 4096, format: password, writeOnly: true }
+        enabled: { type: boolean, default: true }
+    UpdateAiProviderRequest:
+      type: object
+      additionalProperties: false
+      required: [id, name, kind, baseUrl, textModel]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 80 }
+        kind: { enum: [openai_responses, openai_compatible, anthropic_compatible] }
+        baseUrl: { type: string, format: uri, pattern: "^https://" }
+        textModel: { type: string, minLength: 1, maxLength: 120 }
+        imageModel: { type: string, maxLength: 120 }
+        apiKey: { type: string, maxLength: 4096, format: password, writeOnly: true }
+        enabled: { type: boolean, default: true }
     AppIdentity:
       type: object
       additionalProperties: false
