@@ -1,13 +1,13 @@
 # ADR-0001：Daylink 产品与 AI 架构
 
-- 状态：Accepted
+- 状态：Accepted（Web 托管部分于 2026-07-15 修订）
 - 日期：2026-07-13
 
 ## 决策
 
 1. Flutter/Dart 是移动应用、领域用例和日程提醒的主工程。
 2. Rust 只承担 SSH/PTY/转发/保险库/agent 协议等原生能力，并通过窄 FFI 暴露。
-3. 后台 Web 和好友投票使用 Sites/Worker、D1 与 R2；管理路由使用托管的 ChatGPT 登录身份。
+3. 后台 Web 和好友投票使用 React + Go + MySQL 独立部署；管理路由使用应用自有的管理员密码与 Microsoft Authenticator TOTP，不使用 GPT/ChatGPT 登录。
 4. AI 分为三条明确通道：
    - Daylink Assistant：可配置的第三方 Responses 兼容 API，使用 API 地址与 API Key，负责日程与受控运维工具。
    - Image Generation：第三方兼容 Images API。
@@ -25,6 +25,6 @@ Responses API 适合多轮、工具和生图；Codex app-server 是深度嵌入 
 
 ## 后果
 
-- Web 托管环境不能直接运行本地 Codex app-server；Codex 模式必须通过 SSH 到用户控制的主机或用户显式配置的 TLS WebSocket。
-- 生图产物存 R2，元数据和权限存 D1。
+- Web 服务不能直接运行用户工作区里的 Codex app-server；Codex 模式必须通过 SSH 到用户控制的主机或用户显式配置的受信传输。
+- 生图产物存受限持久卷，元数据和权限存 MySQL；未来切换对象存储时保持相同授权边界。
 - API Key 只能在设备保险库或服务器端加密封装中解密使用，永不返回给浏览器。

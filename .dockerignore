@@ -1,0 +1,12 @@
+.git
+.gitignore
+.DS_Store
+**/.dart_tool
+**/.symlinks
+**/build
+**/dist
+**/node_modules
+**/Pods
+**/target
+coverage
+*.log

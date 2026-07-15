@@ -1,69 +1,73 @@
 # Daylink
 
-Daylink 是一个独立实现的 Flutter Android/iOS 应用：把 SSH 运维、持久终端、日程、原生提醒、AI 助手、AI 生图和好友选时间放在同一个产品中。项目不复用 C-SSH 的私有实现或品牌资产。
+Daylink 是一个独立实现的 Flutter Android/iOS 应用：把 SSH 运维、持久终端、日程、原生提醒、AI 助手、AI 生图和好友选时间放在同一个产品中。项目遵守 clean-room 边界，不复用 C-SSH 的私有实现、协议、命名或品牌资产。
 
-当前工作代号为 **Daylink**，移动端临时 Bundle ID 为 `app.daylink.daylink_mobile`。正式发布前需要替换为团队拥有域名对应的标识。
+Web 系统已经从 Sites/Cloudflare 迁出。当前独立部署栈为：
 
-## 工程
+- `apps/api`：Go HTTP API，负责后台鉴权、App 鉴权、AI 网关、投票与密文同步。
+- `apps/web`：React + Vite 后台和公开投票页，不包含服务端 Secret。
+- `deploy`：MySQL 8.4、Go API、Caddy/React 的 Docker Compose 部署。
+- `apps/mobile`：Flutter Android/iOS 客户端与原生通知桥接。
+- `crates/mobile-core`：Rust SSH、PTY、端口转发、Agent 安装及 Flutter FFI。
+- `crates/agent`：Linux 远端 Agent。
+- `crates/protocol`：客户端、Agent 与 Codex bridge 的共享协议。
+- `packages/contracts`：HTTP/OpenAPI 与 Agent 协议。
 
-- `apps/mobile`：Flutter 移动端与原生通知桥接。
-- `apps/web`：后台管理、公开投票页、Share API、AI 网关和生成资产服务。
-- `crates/mobile-core`：SSH、PTY、端口转发、Agent 事务安装及 Flutter FFI 边界。
-- `crates/agent`：Linux 远端 agent。
-- `crates/protocol`：客户端、agent 与 Codex bridge 的共享协议。
-- `packages/contracts`：HTTP/OpenAPI 与 Agent 协议说明。
-- `docs/adr`：关键架构决策。
+总体计划见 [MASTER_PLAN.md](./MASTER_PLAN.md)，当前交付边界与验证证据见 [IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md)。身份、2FA、内容加密和多设备同步的安全决策见 [ADR-0002](./docs/adr/0002-identity-e2ee-and-sync.md)。
 
-账号、Microsoft Authenticator 兼容 TOTP、管理员权限边界、端到端加密与多设备实时同步的安全决策见 [ADR-0002](./docs/adr/0002-identity-e2ee-and-sync.md)。
-
-总体开发基线见 [MASTER_PLAN.md](./MASTER_PLAN.md)。
-当前实现、验证证据与外部发布门槛见 [IMPLEMENTATION_STATUS.md](./IMPLEMENTATION_STATUS.md)。
-
-## 本地验证
+## 独立部署
 
 ```text
-cd apps/web && npm ci && npm run test
-cd apps/mobile && flutter pub get && flutter test
-cargo test --workspace
-cargo clippy --workspace --all-targets -- -D warnings
+cp deploy/.env.example deploy/.env
+# 填写数据库密码、两个 master key 和独立初始化口令，并将 PUBLIC_ORIGIN 改为正式 HTTPS 域名
+docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
 ```
 
-Web 运行环境只需要 `AI_SECRET_MASTER_KEY`（32 字节随机值的 Base64）。它只能通过
-本地 `.env` 或托管平台 Secret 注入，不进入仓库。管理员在 `/admin` 登录后配置
-第三方 AI Provider、App 登录账号，并按设备签发只显示一次、可撤销的移动 API Token；AI 服务页位于
-`/admin/ai`，使用第三方 API 地址、API Key 与模型配置服务。API Key 只写入、不回显；只接受无凭据、
-无查询参数的公网 HTTPS Endpoint，且网关
-拒绝重定向并隐藏上游错误正文。移动端的 Gateway Base
-URL 使用 `https://你的域名/api`，Provider ID 使用后台生成的 ID。
+部署后直接打开 `PUBLIC_ORIGIN/admin`。首次进入时提交部署环境中的一次性初始化口令并创建唯一管理员账号，随后用 Microsoft Authenticator 扫描本地生成的二维码并验证；后续登录必须同时提交管理员密码和不可重放的 TOTP。loopback 开发环境可不设置初始化口令。
 
-Daylink 的第三方 AI 配置与 Codex 登录是两条独立凭据边界。Codex 能力通过官方 `codex app-server`
-协议接入，并支持 Codex 用户级 `model_provider` / `model_providers` 原生配置；自定义 Provider 使用
-`base_url`、`env_key` 与 `wire_api = "responses"`。Web 后台保存的第三方 API Key 不会写入 Codex
-配置、发送到 SSH 主机或替代 Codex 登录凭据。
+生产环境必须使用 HTTPS。`AUTH_SECRET_MASTER_KEY` 和 `AI_SECRET_MASTER_KEY` 必须分别生成，不得复用。Compose 通过分离的 `MYSQL_*` 变量构造连接配置，随机密码无需手工拼接到 DSN；Secret 只通过部署环境注入，不写入仓库。
 
-安全审计页位于 `/admin/audit`，只展示最近的登录、密码、设备令牌、App 账号和 AI 服务配置事件。
-页面查询不会读取审计元数据、目标 ID 或请求 ID；审计写入层也会丢弃敏感字段并限制非可信值长度。
+## 本地开发
 
-后台安全设置页位于 `/admin/settings`。修改管理员密码或重新绑定 Microsoft Authenticator
-都必须再次提交当前密码与不可重放的当前 TOTP；成功后撤销全部后台会话。2FA 重新绑定使用
-10 分钟短时加密登记，只有新验证器完成校验后才替换旧密钥，取消或超时不会破坏原有 2FA。
+启动 MySQL 后运行 API：
 
-使用第三方中转运行 Codex 时，中转必须完整兼容 Responses 工具调用语义；本地工具、MCP 和
-App Server 动态工具仍由 Daylink/Codex 客户端执行。第三方中转不会自动获得 ChatGPT 的内置
-生图能力。Daylink 已提供受鉴权的 `/api/assistant/images` 网关和移动端 Images 调用，后续把它
-注册为 `daylink_generate_image` 动态工具即可供 Codex 发起严格 schema 的生图调用。
+```text
+cd apps/api
+cp .env.example .env
+set -a; source .env; set +a
+go run ./cmd/daylink-api
+```
 
-Linux 远端执行 `daylink-agent --stdio` 供 SSH 通道使用，或在设置了
-`XDG_RUNTIME_DIR` 后启动 Unix Socket 服务。`DAYLINK_ALLOWED_ROOTS` 使用系统
-路径分隔符声明 Agent 可读取和启动 Codex 的目录；未配置时仅允许 `$HOME`。
+另一个终端启动 React：
 
-## 安全基线
+```text
+cd apps/web
+npm ci
+npm run dev
+```
 
-- SSH 凭据和移动端 AI Key 只存设备安全保险库。
-- Web 托管 AI Key 使用服务端主密钥 AES-GCM 加密，D1 不保存明文。
-- 第三方 AI Provider 配置与连接测试仅允许已登录管理员同源调用，并按来源和管理员双因子限流；测试使用固定提示、独立超时且不返回模型输出。
-- 安全审计仅对有效管理员会话开放；记录不包含密码、API Key、授权令牌、提示词、用户内容或远程命令输出。
-- 管理员登录强制密码与 Microsoft Authenticator TOTP；App 登录使用短期访问令牌和单次轮换刷新令牌，服务端只保存令牌哈希。
-- App 内容同步只允许使用服务端会话解析出的 `account_id`；管理员身份域不提供内容读取接口，内容密钥必须由客户端生成和持有。
-- 所有 AI 工具调用使用严格 schema、能力白名单、审批和审计。
-- Codex 兼容模式通过官方 `codex app-server` 协议接入；不伪造 Codex 内置工具，也不共享 Codex 登录凭据。
+Vite 会把 `/api` 代理到 `127.0.0.1:8080`，后台地址为 `http://localhost:5173/admin`。此时 API 的 `PUBLIC_ORIGIN` 也应设置为 `http://localhost:5173`。
+
+## 安全边界
+
+- 管理后台不使用 GPT/ChatGPT 登录；只使用应用自己的管理员账号、强密码和 Microsoft Authenticator TOTP。
+- 管理员和 App 密码使用不同 pepper 域、随机盐与 600,000 次 PBKDF2-SHA256。
+- App 使用 15 分钟访问令牌和 30 天一次性轮换刷新令牌；数据库只存令牌哈希。
+- 第三方 AI API Key 使用独立主密钥 AES-GCM 加密，只写入、不回显，也不会写入 Codex 配置或发送到 SSH 主机。
+- AI 上游只允许无凭据、无查询参数的公网 HTTPS 地址；运行时重新解析 DNS、拒绝私网地址和重定向，错误响应不回传上游正文。
+- 同步 API 的账号范围只取自访问令牌，服务端只接收客户端密文、nonce 和最小版本元数据；后台没有内容读取接口。
+- 实时通知使用账号隔离的 SSE，断线后以单调游标补拉；写入包含幂等 operation ID 和乐观 revision。
+- SSH Secret、API Key、原始授权令牌、私钥和完整远程命令输出不得进入日志或审计。
+
+## 验证
+
+```text
+cd apps/api && gofmt -w . && go test ./... && go vet ./...
+cd apps/web && npm ci && npm run lint && npm run test
+cd apps/mobile && dart format --output=none --set-exit-if-changed lib test && flutter analyze && flutter test
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+```
+
+移动端仍保持 Dart 独占 `app.db`、Rust 独占 `vault.db`。iOS 不承诺持续运行后台 SSH socket 或本地端口转发。

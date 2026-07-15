@@ -8,11 +8,8 @@ target/
 coverage/
 dist/
 *.log
-apps/web/.next/
-apps/web/.wrangler/
 apps/web/node_modules/
 apps/mobile/.dart_tool/
 apps/mobile/build/
 apps/mobile/ios/Pods/
 apps/mobile/ios/.symlinks/
-

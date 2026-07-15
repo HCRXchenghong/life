@@ -1,20 +1,38 @@
 openapi: 3.1.0
 info:
-  title: Daylink Web API
-  version: 0.3.0
+  title: Daylink Go API
+  version: 0.4.0
   description: >-
     HTTP contract for the Daylink mobile client, public time polls, AI gateway,
     and Web administration. Administrative routes use an HttpOnly administrator
     session established with password plus TOTP. Mobile operator routes use a
-    bearer token and never receive provider API keys.
+    short-lived App bearer token and never receive provider API keys. The API is
+    implemented by the standalone Go service with MySQL persistence.
 servers:
   - url: https://{daylinkHost}/api
     variables:
       daylinkHost:
         default: daylink.example.com
 security:
-  - mobileToken: []
+  - appAccessToken: []
 paths:
+  /admin/bootstrap:
+    get:
+      security: []
+      operationId: getAdministratorBootstrapState
+      description: Returns only the state required to render first setup, enrollment, login, or the authenticated console.
+      responses:
+        "200":
+          description: Current administrator bootstrap state.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [state]
+                properties:
+                  state: { enum: [uninitialized, pending, enrollment, login, authenticated] }
+                  username: { type: string }
   /auth/setup:
     post:
       security: []
@@ -32,6 +50,7 @@ paths:
                 username: { type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{3,31}$" }
                 password: { type: string, minLength: 12, maxLength: 128, format: password }
                 confirmPassword: { type: string, minLength: 12, maxLength: 128, format: password }
+                setupToken: { type: string, minLength: 24, maxLength: 256, format: password, writeOnly: true }
       responses:
         "201":
           description: Pending administrator created and enrollment cookie set.
@@ -500,7 +519,7 @@ paths:
                 required: [status, service, version, time]
                 properties:
                   status: { const: ok }
-                  service: { const: daylink-web }
+                  service: { const: daylink-api }
                   version: { type: string }
                   time: { type: string, format: date-time }
   /assistant/responses:
@@ -536,13 +555,15 @@ paths:
               required: [providerId, prompt]
               properties:
                 providerId: { type: string, maxLength: 64 }
-                prompt: { type: string, minLength: 1, maxLength: 4000 }
+                prompt: { type: string, minLength: 1, maxLength: 8000 }
+                n: { type: integer, enum: [1], default: 1 }
                 size:
                   enum: [1024x1024, 1536x1024, 1024x1536]
                   default: 1024x1024
                 quality:
                   enum: [low, medium, high]
                   default: medium
+                output_format: { enum: [png], default: png }
       responses:
         "200":
           description: OpenAI Images-compatible base64 response.
@@ -566,6 +587,12 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "502": { $ref: "#/components/responses/Error" }
   /polls:
+    get:
+      operationId: listPolls
+      responses:
+        "200":
+          description: Poll metadata owned by the current App account.
+        "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       operationId: createPoll
       requestBody:
@@ -639,17 +666,11 @@ paths:
       responses:
         "200":
           description: Existing participant votes updated.
-          headers:
-            Set-Cookie:
-              schema: { type: string }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/VoteReceipt" }
         "201":
           description: Participant and votes created.
-          headers:
-            Set-Cookie:
-              schema: { type: string }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/VoteReceipt" }
@@ -668,7 +689,7 @@ paths:
             schema:
               type: object
               additionalProperties: false
-              required: [manageToken, slotId]
+              required: [manageToken, slotId, expectedVersion]
               properties:
                 manageToken: { type: string }
                 slotId: { type: string, format: uuid }
@@ -688,24 +709,90 @@ paths:
                   selectedSlot: { $ref: "#/components/schemas/PollSlot" }
         "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+  /sync/changes:
+    get:
+      operationId: getEncryptedSyncChanges
+      description: Returns the account-scoped append-only encrypted change log after a monotonic cursor.
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
+      responses:
+        "200":
+          description: Encrypted changes. The server never receives plaintext or the content master key.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [changes, cursor, hasMore]
+                properties:
+                  changes:
+                    type: array
+                    items: { $ref: "#/components/schemas/SyncChange" }
+                  cursor: { type: integer, minimum: 0 }
+                  hasMore: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /sync/objects/{collection}/{objectId}:
+    parameters:
+      - name: collection
+        in: path
+        required: true
+        schema: { type: string, pattern: "^[a-z][a-z0-9_]{1,63}$" }
+      - name: objectId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      operationId: putEncryptedSyncObject
+      description: Idempotent optimistic write of a client-encrypted object.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SyncMutation" }
+      responses:
+        "200": { description: Revision accepted or the identical operation replayed. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteEncryptedSyncObject
+      description: Writes an encrypted-account tombstone. All query parameters are required.
+      parameters:
+        - { name: expectedRevision, in: query, required: true, schema: { type: integer, minimum: 1 } }
+        - { name: operationId, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: deviceId, in: query, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Tombstone accepted or replayed. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Error" }
+  /sync/events:
+    get:
+      operationId: streamEncryptedSyncEvents
+      description: Account-scoped SSE wake-up stream. Clients always reconcile using /sync/changes after reconnecting.
+      responses:
+        "200":
+          description: text/event-stream with ready, changes, and keepalive events.
+          content:
+            text/event-stream: {}
+        "401": { $ref: "#/components/responses/Unauthorized" }
 components:
   securitySchemes:
-    mobileToken:
-      type: http
-      scheme: bearer
-      bearerFormat: opaque
     adminSession:
       type: apiKey
       in: cookie
-      name: __Host-daylink_admin_session
+      name: daylink_admin_session
     enrollmentCookie:
       type: apiKey
       in: cookie
-      name: __Host-daylink_admin_enrollment
+      name: daylink_admin_enrollment
     adminTotpRebind:
       type: apiKey
       in: cookie
-      name: __Host-daylink_admin_totp_rebind
+      name: daylink_admin_totp_rebind
     appAccessToken:
       type: http
       scheme: bearer
@@ -751,17 +838,16 @@ components:
     AiProvider:
       type: object
       additionalProperties: false
-      required: [id, name, kind, baseUrl, textModel, imageModel, apiKeyHint, enabled, createdAt, updatedAt]
+      required: [id, name, kind, baseUrl, textModel, imageModel, apiKeyHint, enabled, updatedAt]
       properties:
         id: { type: string, format: uuid }
         name: { type: string, minLength: 1, maxLength: 80 }
-        kind: { enum: [openai_responses, openai_compatible, anthropic_compatible] }
+        kind: { enum: [openai_responses, openai_compatible] }
         baseUrl: { type: string, format: uri, pattern: "^https://" }
         textModel: { type: string, minLength: 1, maxLength: 120 }
         imageModel: { type: [string, "null"], maxLength: 120 }
         apiKeyHint: { type: string }
         enabled: { type: boolean }
-        createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
     CreateAiProviderRequest:
       type: object
@@ -839,10 +925,12 @@ components:
           oneOf:
             - { type: string, maxLength: 128000 }
             - { type: array, maxItems: 64 }
-        previous_response_id: { type: string, maxLength: 160 }
+        previous_response_id: { type: string, maxLength: 200 }
+        store: { type: boolean }
+        parallel_tool_calls: { const: false }
         tools:
           type: array
-          maxItems: 32
+          maxItems: 64
           items:
             type: object
             additionalProperties: false
@@ -935,3 +1023,33 @@ components:
             displayName: { type: string }
         editToken: { type: string }
         version: { type: integer, minimum: 1 }
+    SyncMutation:
+      type: object
+      additionalProperties: false
+      required: [operationId, deviceId, expectedRevision, revision, ciphertext, nonce, keyVersion, clientUpdatedAt]
+      properties:
+        operationId: { type: string, format: uuid }
+        deviceId: { type: string, format: uuid }
+        expectedRevision: { type: integer, minimum: 0 }
+        revision: { type: integer, minimum: 1 }
+        ciphertext: { type: string, contentEncoding: base64, maxLength: 2796204 }
+        nonce: { type: string, contentEncoding: base64 }
+        keyVersion: { type: integer, minimum: 1, maximum: 1000000 }
+        clientUpdatedAt: { type: string, format: date-time }
+    SyncChange:
+      type: object
+      additionalProperties: false
+      required: [cursor, collection, id, operationId, deviceId, revision, deleted, clientUpdatedAt, serverUpdatedAt]
+      properties:
+        cursor: { type: integer, minimum: 1 }
+        collection: { type: string }
+        id: { type: string, format: uuid }
+        operationId: { type: string, format: uuid }
+        deviceId: { type: string, format: uuid }
+        revision: { type: integer, minimum: 1 }
+        deleted: { type: boolean }
+        ciphertext: { type: string, contentEncoding: base64 }
+        nonce: { type: string, contentEncoding: base64 }
+        keyVersion: { type: integer, minimum: 1 }
+        clientUpdatedAt: { type: string, format: date-time }
+        serverUpdatedAt: { type: string, format: date-time }
