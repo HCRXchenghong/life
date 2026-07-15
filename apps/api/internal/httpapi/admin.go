@@ -4,12 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -38,6 +40,18 @@ type publicProvider struct {
 	UpdatedAt  time.Time `json:"updatedAt"`
 }
 
+type publicAuditEvent struct {
+	ID              string    `json:"id"`
+	ActorLabel      string    `json:"actorLabel"`
+	ActionLabel     string    `json:"actionLabel"`
+	TargetTypeLabel string    `json:"targetTypeLabel"`
+	Outcome         string    `json:"outcome"`
+	OutcomeLabel    string    `json:"outcomeLabel"`
+	Risk            string    `json:"risk"`
+	RiskLabel       string    `json:"riskLabel"`
+	CreatedAt       time.Time `json:"createdAt"`
+}
+
 func (s *Server) handleAdminOverview(w http.ResponseWriter, r *http.Request) {
 	identity, ok := s.requireAdmin(w, r)
 	if !ok {
@@ -52,8 +66,10 @@ func (s *Server) handleAdminOverview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "数据库暂时不可用")
 		return
 	}
+	metrics := s.collectServerMetrics(r.Context())
 	writeJSON(w, http.StatusOK, map[string]any{
 		"username": identity.Username, "appAccountCount": accounts, "aiProviderCount": providers,
+		"servers": []serverMetrics{metrics}, "supportedSystems": []string{"windows", "macos", "ubuntu"},
 	})
 }
 
@@ -376,31 +392,188 @@ func secretHint(value string) string {
 }
 
 func (s *Server) handleAdminAudit(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireAdmin(w, r); !ok {
+	identity, ok := s.requireAdmin(w, r)
+	if !ok {
 		return
 	}
-	rows, err := s.db.QueryContext(r.Context(), `SELECT action, target_type, outcome, risk, created_at
-      FROM audit_events ORDER BY created_at DESC LIMIT 100`)
+	if r.URL.Query().Get("format") == "csv" {
+		s.downloadAdminAudit(w, r, identity)
+		return
+	}
+	page := boundedPositiveInt(r.URL.Query().Get("page"), 1, 1, 1_000_000)
+	pageSize := boundedPositiveInt(r.URL.Query().Get("pageSize"), 20, 10, 100)
+	var total int
+	if err := s.db.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM audit_events").Scan(&total); err != nil {
+		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "数据库暂时不可用")
+		return
+	}
+	totalPages := (total + pageSize - 1) / pageSize
+	if totalPages == 0 {
+		totalPages = 1
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+	rows, err := s.db.QueryContext(r.Context(), `SELECT id, actor, action, target_type, outcome, risk, created_at
+	      FROM audit_events ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`, pageSize, (page-1)*pageSize)
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "数据库暂时不可用")
 		return
 	}
 	defer rows.Close()
-	events := make([]map[string]any, 0)
+	events := make([]publicAuditEvent, 0, pageSize)
 	for rows.Next() {
-		var action, targetType, outcome, risk string
+		var id, actor, action, targetType, outcome, risk string
 		var createdAt time.Time
-		if err := rows.Scan(&action, &targetType, &outcome, &risk, &createdAt); err != nil {
+		if err := rows.Scan(&id, &actor, &action, &targetType, &outcome, &risk, &createdAt); err != nil {
 			writeError(w, http.StatusServiceUnavailable, "database_unavailable", "数据库暂时不可用")
 			return
 		}
-		events = append(events, map[string]any{"action": action, "targetType": targetType, "outcome": outcome, "risk": risk, "createdAt": createdAt})
+		events = append(events, localizedAuditEvent(id, actor, action, targetType, outcome, risk, createdAt))
 	}
 	if rows.Err() != nil {
 		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "数据库暂时不可用")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"events": events})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"events": events, "page": page, "pageSize": pageSize, "total": total, "totalPages": totalPages,
+	})
+}
+
+func (s *Server) downloadAdminAudit(w http.ResponseWriter, r *http.Request, identity *adminIdentity) {
+	rows, err := s.db.QueryContext(r.Context(), `SELECT id, actor, action, target_type, outcome, risk, created_at
+	      FROM audit_events ORDER BY created_at DESC, id DESC LIMIT 10000`)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "数据库暂时不可用")
+		return
+	}
+	defer rows.Close()
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="daylink-audit.csv"`)
+	w.WriteHeader(http.StatusOK)
+	_, _ = io.WriteString(w, "\ufeff")
+	writer := csv.NewWriter(w)
+	_ = writer.Write([]string{"时间", "操作者", "操作", "对象", "结果", "风险级别"})
+	chinaTime := time.FixedZone("Asia/Shanghai", 8*60*60)
+	for rows.Next() {
+		var id, actor, action, targetType, outcome, risk string
+		var createdAt time.Time
+		if err := rows.Scan(&id, &actor, &action, &targetType, &outcome, &risk, &createdAt); err != nil {
+			return
+		}
+		event := localizedAuditEvent(id, actor, action, targetType, outcome, risk, createdAt)
+		_ = writer.Write([]string{
+			event.CreatedAt.In(chinaTime).Format("2006-01-02 15:04:05"), event.ActorLabel,
+			event.ActionLabel, event.TargetTypeLabel, event.OutcomeLabel, event.RiskLabel,
+		})
+	}
+	writer.Flush()
+	if writer.Error() == nil && rows.Err() == nil {
+		s.audit(r.Context(), identity.Actor, "admin.audit.download", "audit_event", "", "allowed", "read_only")
+	}
+}
+
+func boundedPositiveInt(raw string, fallback, minimum, maximum int) int {
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < minimum {
+		return fallback
+	}
+	if value > maximum {
+		return maximum
+	}
+	return value
+}
+
+func localizedAuditEvent(id, actor, action, targetType, outcome, risk string, createdAt time.Time) publicAuditEvent {
+	return publicAuditEvent{
+		ID: id, ActorLabel: auditActorLabel(actor), ActionLabel: auditActionLabel(action),
+		TargetTypeLabel: auditTargetLabel(targetType), Outcome: outcome, OutcomeLabel: auditOutcomeLabel(outcome),
+		Risk: risk, RiskLabel: auditRiskLabel(risk), CreatedAt: createdAt,
+	}
+}
+
+func auditActorLabel(actor string) string {
+	switch {
+	case strings.HasPrefix(actor, "admin:"):
+		return "后台管理员"
+	case strings.HasPrefix(actor, "app:"):
+		return "App 用户"
+	case strings.HasPrefix(actor, "poll-manager:"):
+		return "投票管理员"
+	default:
+		return "系统"
+	}
+}
+
+func auditActionLabel(action string) string {
+	labels := map[string]string{
+		"admin.enrollment.authorize": "授权管理员初始化",
+		"admin.enrollment.started":   "开始绑定双重验证",
+		"admin.enrollment.cancelled": "取消管理员初始化",
+		"admin.enrollment.verify":    "验证双重验证码",
+		"admin.enrollment.completed": "完成管理员初始化",
+		"admin.login":                "管理员登录",
+		"admin.password.change":      "修改管理员密码",
+		"admin.totp.rebind":          "重新绑定双重验证",
+		"admin.audit.download":       "下载安全审计日志",
+		"app.login":                  "App 账号登录",
+		"app.logout":                 "App 账号退出",
+		"app.session.refresh":        "刷新 App 会话",
+		"app.password.change":        "修改 App 密码",
+		"app_account.create":         "创建 App 账号",
+		"app_account.enable":         "启用 App 账号",
+		"app_account.disable":        "停用 App 账号",
+		"app_account.reset_password": "重置 App 密码",
+		"ai_provider.save":           "保存 AI 服务配置",
+		"ai_provider.test":           "测试 AI 服务连接",
+		"ai_gateway.response":        "调用 AI 对话服务",
+		"ai_gateway.image":           "调用 AI 生图服务",
+		"image.generate":             "生成图片",
+		"poll.create":                "创建时间投票",
+		"poll.finalize":              "确定投票时间",
+	}
+	if label, ok := labels[action]; ok {
+		return label
+	}
+	return "其他安全操作"
+}
+
+func auditTargetLabel(targetType string) string {
+	labels := map[string]string{
+		"admin_account": "管理员账号", "admin_session": "管理员会话", "app_account": "App 账号",
+		"app_session": "App 会话", "ai_provider": "AI 服务", "generated_asset": "生成图片",
+		"share_poll": "时间投票", "audit_event": "安全审计日志",
+	}
+	if label, ok := labels[targetType]; ok {
+		return label
+	}
+	return "系统资源"
+}
+
+func auditOutcomeLabel(outcome string) string {
+	switch outcome {
+	case "allowed":
+		return "成功"
+	case "denied":
+		return "已拒绝"
+	default:
+		return "失败"
+	}
+}
+
+func auditRiskLabel(risk string) string {
+	switch risk {
+	case "read_only":
+		return "只读"
+	case "low":
+		return "低"
+	case "medium":
+		return "中"
+	case "high":
+		return "高"
+	default:
+		return "严重"
+	}
 }
 
 func (s *Server) handleAdminImages(w http.ResponseWriter, r *http.Request) {

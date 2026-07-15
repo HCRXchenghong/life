@@ -18,3 +18,14 @@ test("uses the app-owned administrator bootstrap API", async () => {
   assert.match(auth, /\/api\/auth\/login/);
   assert.match(auth, /Microsoft Authenticator/);
 });
+
+test("renders real server metrics and paginated Chinese audit controls", async () => {
+  const dashboard = await readFile(new URL("../src/Dashboard.tsx", import.meta.url), "utf8");
+  assert.match(dashboard, /\/api\/admin\/overview/);
+  assert.match(dashboard, /CPU/);
+  assert.match(dashboard, /运行内存/);
+  assert.match(dashboard, /磁盘存储/);
+  assert.match(dashboard, /page=\$\{page\}&pageSize=20/);
+  assert.match(dashboard, /format=csv/);
+  assert.match(dashboard, /下载日志/);
+});

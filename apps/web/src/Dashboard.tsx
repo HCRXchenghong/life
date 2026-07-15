@@ -65,9 +65,40 @@ function Page({ kicker, title, subtitle, action, children }: { kicker: string; t
 }
 
 function Overview() {
-  const [data, setData] = useState<{ appAccountCount: number; aiProviderCount: number } | null>(null);
-  useEffect(() => { void api<typeof data>("/api/admin/overview").then(setData); }, []);
-  return <Page kicker="概览" title="开始使用 Daylink" subtitle="完成账号和 AI 服务配置后，即可邀请成员使用 App"><div className="admin-overview-setup"><Action title="App 账号" detail={`已创建 ${data?.appAccountCount ?? 0} 个账号`} href="/admin/accounts" /><Action title="AI 服务" detail={`已配置 ${data?.aiProviderCount ?? 0} 个服务`} href="/admin/ai" /></div></Page>;
+  const [data, setData] = useState<OverviewData | null>(null);
+  const load = useCallback(() => api<OverviewData>("/api/admin/overview").then(setData), []);
+  useEffect(() => {
+    void load();
+    const timer = window.setInterval(() => void load(), 30_000);
+    return () => window.clearInterval(timer);
+  }, [load]);
+  return <Page kicker="概览" title="开始使用 Daylink" subtitle="账号、AI 服务和部署服务器运行状态"><div className="admin-overview-setup"><Action title="App 账号" detail={`已创建 ${data?.appAccountCount ?? 0} 个账号`} href="/admin/accounts" /><Action title="AI 服务" detail={`已配置 ${data?.aiProviderCount ?? 0} 个服务`} href="/admin/ai" /></div><section className="admin-server-section"><header><div><h2>服务器状态</h2><p>每 30 秒自动更新 · 支持 Windows、macOS 和 Ubuntu</p></div><button className="admin-audit-refresh" onClick={() => void load()}>刷新数据</button></header><div className="admin-server-list">{data?.servers.map((server) => <ServerCard server={server} key={server.id} />) ?? <div className="admin-server-loading">正在读取服务器状态…</div>}</div><p className="admin-server-privacy">这里只显示 Daylink 后台部署服务器，不读取 App 用户保存的主机信息。</p></section></Page>;
+}
+
+type ServerMetrics = {
+  id: string; name: string; hostname: string; system: string; systemLabel: string; architecture: string; status: string;
+  cpuPercent: number; memoryPercent: number; memoryUsedBytes: number; memoryTotalBytes: number;
+  diskPercent: number; diskUsedBytes: number; diskTotalBytes: number; databasePercent: number;
+  databaseUsedBytes: number; databaseCapacityBytes: number; updatedAt: string;
+};
+
+type OverviewData = { appAccountCount: number; aiProviderCount: number; servers: ServerMetrics[] };
+
+function ServerCard({ server }: { server: ServerMetrics }) {
+  const metrics = [
+    { label: "CPU", percent: server.cpuPercent, detail: `${server.cpuPercent.toFixed(1)}%` },
+    { label: "运行内存", percent: server.memoryPercent, detail: `${formatBytes(server.memoryUsedBytes)} / ${formatBytes(server.memoryTotalBytes)}` },
+    { label: "磁盘存储", percent: server.diskPercent, detail: `${formatBytes(server.diskUsedBytes)} / ${formatBytes(server.diskTotalBytes)}` },
+    { label: "数据库占磁盘", percent: server.databasePercent, detail: formatBytes(server.databaseUsedBytes) },
+  ];
+  return <article className="admin-server-card"><header><div><h3>{server.name}</h3><p>{server.hostname} · {server.systemLabel} · {server.architecture}</p></div><span className="admin-server-online">运行中</span></header><div className="admin-server-metrics">{metrics.map((metric) => <div className="admin-server-metric" key={metric.label}><div><span>{metric.label}</span><strong>{metric.percent.toFixed(1)}%</strong></div><div className="admin-server-track"><span style={{ width: `${Math.min(100, Math.max(0, metric.percent))}%` }} /></div><p>{metric.detail}</p></div>)}</div><footer>更新于 {new Date(server.updatedAt).toLocaleString("zh-CN")}</footer></article>;
+}
+
+function formatBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+  return `${(value / 1024 ** index).toFixed(index > 2 ? 1 : 0)} ${units[index]}`;
 }
 
 function Action({ title, detail, href }: { title: string; detail: string; href: string }) {
@@ -134,13 +165,32 @@ function Providers() {
   return <Page kicker="AI 配置" title="AI 服务" subtitle="管理第三方 API、对话模型与生图模型" action={<button className="admin-accounts-primary" onClick={() => setEditing("create")}>添加服务</button>}>{message && <p className="admin-accounts-notice">{message}</p>}<section className="admin-ai-list">{providers.length === 0 && <EmptyState title="还没有 AI 服务" detail="添加兼容 Responses API 的第三方服务后即可使用。" />}{providers.map((provider) => <article className="admin-ai-row" key={provider.id}><div className="admin-ai-row-copy"><h2>{provider.name}</h2><p>{provider.textModel}{provider.imageModel ? ` · ${provider.imageModel}` : ""}</p><small>{provider.baseUrl} · Key {provider.apiKeyHint}</small></div><span className={`admin-accounts-status ${provider.enabled ? "active" : "disabled"}`}>{provider.enabled ? "已启用" : "已停用"}</span><div className="admin-accounts-actions"><button onClick={() => void test(provider)}>测试连接</button><button onClick={() => setEditing(provider)}>编辑</button></div></article>)}</section><section className="admin-ai-generator"><header><h2>生成图片</h2><p>使用已启用且配置了生图模型的第三方服务</p></header><form onSubmit={generate}><select name="providerId" required defaultValue=""><option value="" disabled>选择服务</option>{imageProviders.map((provider) => <option key={provider.id} value={provider.id}>{provider.name} · {provider.imageModel}</option>)}</select><textarea name="prompt" required minLength={1} maxLength={8000} placeholder="描述要生成的图片" /><div><select name="size" defaultValue="1024x1024"><option value="1024x1024">正方形</option><option value="1536x1024">横向</option><option value="1024x1536">纵向</option></select><select name="quality" defaultValue="medium"><option value="low">快速</option><option value="medium">标准</option><option value="high">高质量</option></select><button className="admin-accounts-primary" disabled={imageProviders.length === 0}>生成</button></div></form>{assets.length > 0 && <div className="admin-ai-assets">{assets.map((asset) => <a href={asset.url} target="_blank" rel="noreferrer" key={asset.id}><img src={asset.url} alt="后台生成的图片" loading="lazy" /><span>{new Date(asset.createdAt).toLocaleString()}</span></a>)}</div>}</section>{editing && <Dialog title={editing === "create" ? "添加 AI 服务" : "编辑 AI 服务"} onClose={() => setEditing(null)}><form onSubmit={save}><label>名称<input name="name" required maxLength={80} defaultValue={editing === "create" ? "" : editing.name} /></label><label>协议<select name="kind" defaultValue={editing === "create" ? "openai_compatible" : editing.kind}><option value="openai_compatible">第三方 Responses</option><option value="openai_responses">Codex Responses 兼容</option></select></label><label>API 地址<input name="baseUrl" type="url" required defaultValue={editing === "create" ? "" : editing.baseUrl} placeholder="https://api.example.com/v1" /></label><label>对话模型<input name="textModel" required defaultValue={editing === "create" ? "" : editing.textModel} /></label><label>生图模型<input name="imageModel" defaultValue={editing === "create" ? "" : editing.imageModel ?? ""} /></label><label>API Key<input name="apiKey" type="password" required={editing === "create"} /></label><label className="admin-ai-enabled"><input name="enabled" type="checkbox" defaultChecked={editing === "create" || editing.enabled} />启用</label><footer><button type="button" onClick={() => setEditing(null)}>取消</button><button className="admin-accounts-primary">加密保存</button></footer></form></Dialog>}</Page>;
 }
 
-type AuditEvent = { action: string; targetType: string; outcome: string; risk: string; createdAt: string };
+type AuditEvent = { id: string; actorLabel: string; actionLabel: string; targetTypeLabel: string; outcome: string; outcomeLabel: string; risk: string; riskLabel: string; createdAt: string };
+type AuditResponse = { events: AuditEvent[]; page: number; pageSize: number; total: number; totalPages: number };
 
 function Audit() {
-  const [events, setEvents] = useState<AuditEvent[]>([]);
-  const load = useCallback(() => api<{ events: AuditEvent[] }>("/api/admin/audit").then((value) => setEvents(value.events)), []);
+  const [result, setResult] = useState<AuditResponse>({ events: [], page: 1, pageSize: 20, total: 0, totalPages: 1 });
+  const [page, setPage] = useState(1);
+  const [message, setMessage] = useState("");
+  const load = useCallback(() => api<AuditResponse>(`/api/admin/audit?page=${page}&pageSize=20`).then(setResult), [page]);
   useEffect(() => { void load(); }, [load]);
-  return <Page kicker="安全审计" title="安全事件" subtitle="不记录密码、API Key、提示词或用户内容" action={<button className="admin-audit-refresh" onClick={() => void load()}>刷新</button>}><section className="admin-audit-list">{events.length === 0 && <EmptyState title="暂无安全事件" detail="后台的登录和配置操作会显示在这里。" />}{events.map((event, index) => <article className="admin-audit-row" key={`${event.createdAt}-${index}`}><div className="admin-audit-row-copy"><h2>{event.action}</h2><p>{event.targetType} · {new Date(event.createdAt).toLocaleString()}</p></div><span className={`admin-audit-outcome ${event.outcome}`}>{event.outcome}</span><span className={`admin-audit-risk ${event.risk}`}>{event.risk}</span></article>)}</section></Page>;
+  async function download() {
+    setMessage("");
+    try {
+      const response = await fetch("/api/admin/audit?format=csv", { credentials: "same-origin", cache: "no-store" });
+      if (!response.ok) throw new Error("下载失败");
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Daylink-安全审计-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : "下载失败"); }
+  }
+  const action = <div className="admin-audit-header-actions"><button className="admin-audit-refresh" onClick={() => void load()}>刷新</button><button className="admin-accounts-primary" onClick={() => void download()}>下载日志</button></div>;
+  return <Page kicker="安全审计" title="安全事件" subtitle="不记录密码、API Key、提示词或用户内容" action={action}>{message && <p className="admin-accounts-notice">{message}</p>}<section className="admin-audit-list">{result.events.length === 0 && <EmptyState title="暂无安全事件" detail="后台的登录和配置操作会显示在这里。" />}{result.events.map((event) => <article className="admin-audit-row" key={event.id}><div className="admin-audit-row-copy"><h2>{event.actionLabel}</h2><p>{event.actorLabel} · {event.targetTypeLabel} · {new Date(event.createdAt).toLocaleString("zh-CN")}</p></div><span className={`admin-audit-outcome ${event.outcome}`}>{event.outcomeLabel}</span><span className={`admin-audit-risk ${event.risk}`}>{event.riskLabel}</span></article>)}</section><nav className="admin-audit-pagination" aria-label="安全审计分页"><p>共 {result.total} 条 · 第 {result.page} / {result.totalPages} 页</p><div><button disabled={result.page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>上一页</button><button disabled={result.page >= result.totalPages} onClick={() => setPage((current) => Math.min(result.totalPages, current + 1))}>下一页</button></div></nav></Page>;
 }
 
 function Settings() {

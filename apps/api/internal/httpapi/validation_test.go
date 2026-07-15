@@ -64,3 +64,35 @@ func TestSyncIdentifiers(t *testing.T) {
 		}
 	}
 }
+
+func TestAuditLocalizationAndPaginationBounds(t *testing.T) {
+	if got := boundedPositiveInt("2", 1, 1, 100); got != 2 {
+		t.Fatalf("valid page changed: %d", got)
+	}
+	if got := boundedPositiveInt("1000", 20, 10, 100); got != 100 {
+		t.Fatalf("page size was not capped: %d", got)
+	}
+	if auditActionLabel("admin.login") != "管理员登录" || auditOutcomeLabel("denied") != "已拒绝" {
+		t.Fatal("known audit values were not localized")
+	}
+	if auditActorLabel("app:550e8400-e29b-41d4-a716-446655440000") != "App 用户" {
+		t.Fatal("app actor identity leaked or was not localized")
+	}
+}
+
+func TestServerMetricNormalization(t *testing.T) {
+	for _, test := range []struct {
+		os, platform, want string
+	}{
+		{os: "windows", want: "Windows"},
+		{os: "darwin", want: "macOS"},
+		{os: "linux", platform: "ubuntu", want: "Ubuntu"},
+	} {
+		if _, label := normalizeSystem(test.os, test.platform); label != test.want {
+			t.Fatalf("system label = %q, want %q", label, test.want)
+		}
+	}
+	if normalizedPercent(123.44) != 100 || normalizedPercent(-1) != 0 || normalizedPercent(55.56) != 55.6 {
+		t.Fatal("metric percentages were not safely normalized")
+	}
+}
