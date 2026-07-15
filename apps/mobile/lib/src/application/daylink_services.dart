@@ -2,6 +2,8 @@ import 'dart:async';
 
 import '../data/ai_provider_repository.dart';
 import '../data/app_database.dart';
+import '../data/artifact_client.dart';
+import '../data/artifact_repository.dart';
 import '../data/operations_repository.dart';
 import '../data/schedule_repository.dart';
 import '../data/secret_vault.dart';
@@ -12,6 +14,7 @@ import '../domain/ai/openai_responses_client.dart';
 import '../domain/ai/tool_protocol.dart';
 import '../platform/native_core_service.dart';
 import '../platform/notification_coordinator.dart';
+import 'artifact_tools.dart';
 import 'remote_operation_tools.dart';
 import 'schedule_tools.dart';
 import 'share_poll_coordinator.dart';
@@ -19,6 +22,7 @@ import 'share_poll_tools.dart';
 
 class DaylinkServices {
   DaylinkServices._({
+    required this.accountId,
     required this.database,
     required this.nativeCore,
     required this.notifications,
@@ -29,6 +33,7 @@ class DaylinkServices {
     required this.responses,
   });
 
+  final String accountId;
   final AppDatabase database;
   final NativeCoreService nativeCore;
   final NotificationCoordinator notifications;
@@ -38,14 +43,18 @@ class DaylinkServices {
   final AiProviderRepository aiProviders;
   final OpenAiResponsesClient responses;
 
-  static Future<DaylinkServices> start() async {
+  static Future<DaylinkServices> start({required String accountId}) async {
     final nativeCore = await NativeCoreService.initialize();
-    final database = AppDatabase.open();
-    final secrets = SecretVault();
+    final database = AppDatabase.openForAccount(accountId);
+    final secrets = SecretVault(accountId: accountId);
     final schedules = ScheduleRepository(database);
-    final notifications = NotificationCoordinator(repository: schedules);
+    final notifications = NotificationCoordinator(
+      accountId: accountId,
+      repository: schedules,
+    );
     final responses = OpenAiResponsesClient();
     final services = DaylinkServices._(
+      accountId: accountId,
       database: database,
       nativeCore: nativeCore,
       notifications: notifications,
@@ -91,9 +100,24 @@ class DaylinkServices {
     );
   }
 
+  ConfiguredArtifactService configureArtifacts({
+    required Uri apiBaseUri,
+    required String mobileToken,
+  }) {
+    final client = ArtifactClient(
+      apiBaseUri: apiBaseUri,
+      mobileToken: mobileToken,
+    );
+    return ConfiguredArtifactService(
+      client: client,
+      repository: ArtifactRepository(accountId: accountId),
+    );
+  }
+
   ToolRegistry createToolRegistry({
     required ApprovalDelegate approvals,
     ConfiguredShareService? share,
+    ConfiguredArtifactService? artifacts,
     NativeAgentChannel? remoteAgent,
   }) {
     final registry = ToolRegistry(approvals: approvals);
@@ -105,6 +129,12 @@ class DaylinkServices {
       SharePollTools(
         coordinator: share.coordinator,
         repository: share.repository,
+      ).register(registry);
+    }
+    if (artifacts != null) {
+      ArtifactTools(
+        generator: artifacts.client,
+        sink: artifacts.repository,
       ).register(registry);
     }
     if (remoteAgent != null) {
@@ -129,6 +159,18 @@ class DaylinkServices {
     responses.close();
     await database.close();
   }
+}
+
+class ConfiguredArtifactService {
+  const ConfiguredArtifactService({
+    required this.client,
+    required this.repository,
+  });
+
+  final ArtifactClient client;
+  final ArtifactRepository repository;
+
+  void close() => client.close();
 }
 
 class ConfiguredShareService {

@@ -24,11 +24,15 @@ Future<void> daylinkNotificationBackground(
   if (response.payload == null) return;
   final payload = jsonDecode(response.payload!) as Map<String, Object?>;
   final eventId = payload['eventId'] as String?;
-  if (eventId == null) return;
-  final database = AppDatabase.open();
+  final accountId = payload['accountId'] as String?;
+  if (eventId == null || accountId == null) return;
+  final database = AppDatabase.openForAccount(accountId);
   try {
     final repository = ScheduleRepository(database);
-    final coordinator = NotificationCoordinator(repository: repository);
+    final coordinator = NotificationCoordinator(
+      accountId: accountId,
+      repository: repository,
+    );
     await coordinator.initialize();
     await coordinator.handleAction(response);
   } finally {
@@ -38,12 +42,14 @@ Future<void> daylinkNotificationBackground(
 
 class NotificationCoordinator {
   NotificationCoordinator({
+    required this.accountId,
     required this._repository,
     FlutterLocalNotificationsPlugin? plugin,
     this._recurrence = const RecurrenceEngine(),
   }) : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
 
   final ScheduleRepository _repository;
+  final String accountId;
   final FlutterLocalNotificationsPlugin _plugin;
   final RecurrenceEngine _recurrence;
   bool _initialized = false;
@@ -160,6 +166,7 @@ class NotificationCoordinator {
           '${candidate.reminder.id}:${candidate.occurrence.startsAtUtc.toIso8601String()}',
         );
         final payload = jsonEncode({
+          'accountId': accountId,
           'eventId': candidate.event.id,
           'reminderId': candidate.reminder.id,
           'occurrenceStartsAtUtc': candidate.occurrence.startsAtUtc

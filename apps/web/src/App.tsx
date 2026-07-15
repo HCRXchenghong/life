@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, navigate } from "./api";
 import { AdminEnrollment, AdminLogin, AdminSetup, PendingSetup } from "./Auth";
 import { Dashboard } from "./Dashboard";
+import { InvitePage } from "./InvitePage";
 import { PollPage } from "./PollPage";
 
 type Bootstrap = {
@@ -30,12 +31,15 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (path.startsWith("/poll/")) return;
+    if (path.startsWith("/poll/") || path.startsWith("/invite/")) return;
     void reload();
   }, [path, reload]);
 
   if (path.startsWith("/poll/")) {
     return <PollPage token={path.slice("/poll/".length)} />;
+  }
+  if (path.startsWith("/invite/")) {
+    return <InvitePage token={path.slice("/invite/".length)} />;
   }
   if (error) {
     return <StatePage title="后台暂时不可用" detail={error} action={() => void reload()} />;

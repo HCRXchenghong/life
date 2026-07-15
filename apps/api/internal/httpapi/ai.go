@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"database/sql"
@@ -10,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -55,9 +57,20 @@ func (s *Server) handleAdminAITest(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
 	defer cancel()
-	_, err = s.postProviderJSON(ctx, provider, key, "/responses", map[string]any{
-		"model": provider.TextModel, "input": "Reply exactly: DAYLINK_OK", "store": false, "max_output_tokens": 64,
+	result, err := s.postProviderJSON(ctx, provider, key, "/responses", map[string]any{
+		"model": provider.TextModel,
+		"input": []any{map[string]any{"role": "user", "content": []any{
+			map[string]any{"type": "input_text", "text": "Reply exactly: DAYLINK_OK"},
+		}}},
+		"store": false,
 	}, 2<<20)
+	if err == nil {
+		responseID, _ := result["id"].(string)
+		_, hasOutput := result["output"].([]any)
+		if responseID == "" || !hasOutput {
+			err = errors.New("provider returned an invalid Responses payload")
+		}
+	}
 	if err != nil {
 		s.audit(r.Context(), identity.Actor, "ai_provider.test", "ai_provider", provider.ID, "failed", "low")
 		writeError(w, http.StatusBadGateway, "provider_test_failed", "AI 服务连接失败，请检查 API 地址、模型和 API Key")
@@ -101,7 +114,7 @@ func (s *Server) handleAssistantResponses(w http.ResponseWriter, r *http.Request
 		}
 		tools = append(tools, tool)
 	}
-	provider, key, err := s.loadProvider(r.Context(), input.ProviderID, "", true)
+	provider, key, err := s.loadDefaultProviderForApp(r.Context(), input.ProviderID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "not_found", "AI 服务不可用")
 		return
@@ -113,7 +126,7 @@ func (s *Server) handleAssistantResponses(w http.ResponseWriter, r *http.Request
 	}
 	body := map[string]any{
 		"model": provider.TextModel, "input": parsedInput, "tools": tools,
-		"store": true, "parallel_tool_calls": false, "max_output_tokens": 4096,
+		"store": true, "parallel_tool_calls": false,
 	}
 	if input.PreviousResponseID != "" && len(input.PreviousResponseID) <= 200 {
 		body["previous_response_id"] = input.PreviousResponseID
@@ -150,7 +163,7 @@ func (s *Server) handleAssistantImages(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
-	provider, key, err := s.loadProvider(r.Context(), input.ProviderID, "", true)
+	provider, key, err := s.loadDefaultProviderForApp(r.Context(), input.ProviderID)
 	if err != nil || provider.ImageModel == nil {
 		writeError(w, http.StatusNotFound, "image_provider_unavailable", "生图服务不可用")
 		return
@@ -267,7 +280,37 @@ func (s *Server) generateImage(ctx context.Context, provider providerSecret, key
 	}
 	b64, _ := first["b64_json"].(string)
 	image, err := parseImageData(b64)
+	if err != nil {
+		remoteURL, _ := first["url"].(string)
+		image, err = s.downloadGeneratedImage(ctx, remoteURL)
+	}
 	return image, first["revised_prompt"], err
+}
+
+func (s *Server) downloadGeneratedImage(ctx context.Context, rawURL string) ([]byte, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil {
+		return nil, errors.New("provider returned invalid image URL")
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
+	if err != nil {
+		return nil, errors.New("provider returned invalid image URL")
+	}
+	request.Header.Set("Accept", "image/png")
+	response, err := s.client.Do(request)
+	if err != nil {
+		return nil, errors.New("generated image is unreachable")
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 64<<10))
+		return nil, errors.New("generated image download failed")
+	}
+	content, err := io.ReadAll(io.LimitReader(response.Body, (32<<20)+1))
+	if err != nil || len(content) > 32<<20 {
+		return nil, errors.New("generated image is too large")
+	}
+	return validatePNGImage(content)
 }
 
 func (s *Server) loadProvider(ctx context.Context, providerID, adminID string, enabledOnly bool) (providerSecret, string, error) {
@@ -319,12 +362,95 @@ func (s *Server) postProviderJSON(ctx context.Context, provider providerSecret, 
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 64<<10))
 		return nil, fmt.Errorf("provider returned status %d", response.StatusCode)
 	}
+	if strings.HasPrefix(strings.ToLower(response.Header.Get("Content-Type")), "text/event-stream") {
+		return decodeProviderSSE(response.Body, maximum)
+	}
 	decoder := json.NewDecoder(io.LimitReader(response.Body, maximum))
 	var result map[string]any
 	if err := decoder.Decode(&result); err != nil {
 		return nil, errors.New("provider returned invalid JSON")
 	}
 	return result, nil
+}
+
+func decodeProviderSSE(reader io.Reader, maximum int64) (map[string]any, error) {
+	if maximum < 1 {
+		return nil, errors.New("provider response limit is invalid")
+	}
+	scanner := bufio.NewScanner(io.LimitReader(reader, maximum+1))
+	maximumToken := int(min(maximum, 8<<20))
+	scanner.Buffer(make([]byte, 64<<10), maximumToken)
+	var eventName string
+	var data strings.Builder
+	var lastResponse map[string]any
+	consumed := int64(0)
+	flush := func() (map[string]any, error) {
+		defer func() {
+			eventName = ""
+			data.Reset()
+		}()
+		raw := strings.TrimSpace(data.String())
+		if raw == "" || raw == "[DONE]" {
+			return nil, nil
+		}
+		var event map[string]any
+		if json.Unmarshal([]byte(raw), &event) != nil {
+			return nil, errors.New("provider returned invalid SSE data")
+		}
+		eventType, _ := event["type"].(string)
+		if eventType == "error" || eventType == "response.failed" || eventName == "error" || eventName == "response.failed" {
+			return nil, errors.New("provider returned a failed Responses event")
+		}
+		if response, ok := event["response"].(map[string]any); ok {
+			lastResponse = response
+			if eventType == "response.completed" || eventName == "response.completed" {
+				return response, nil
+			}
+		}
+		if _, hasID := event["id"].(string); hasID {
+			if _, hasOutput := event["output"].([]any); hasOutput {
+				lastResponse = event
+			}
+		}
+		return nil, nil
+	}
+	for scanner.Scan() {
+		line := scanner.Text()
+		consumed += int64(len(line) + 1)
+		if consumed > maximum {
+			return nil, errors.New("provider response exceeded limit")
+		}
+		if line == "" || line == "\r" {
+			result, err := flush()
+			if err != nil || result != nil {
+				return result, err
+			}
+			continue
+		}
+		line = strings.TrimSuffix(line, "\r")
+		switch {
+		case strings.HasPrefix(line, "event:"):
+			eventName = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+		case strings.HasPrefix(line, "data:"):
+			if data.Len() > 0 {
+				data.WriteByte('\n')
+			}
+			data.WriteString(strings.TrimSpace(strings.TrimPrefix(line, "data:")))
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, errors.New("provider returned invalid SSE stream")
+	}
+	if data.Len() > 0 {
+		result, err := flush()
+		if err != nil || result != nil {
+			return result, err
+		}
+	}
+	if lastResponse != nil {
+		return lastResponse, nil
+	}
+	return nil, errors.New("provider SSE stream ended without a response")
 }
 
 func strictFunctionTool(tool map[string]any) bool {

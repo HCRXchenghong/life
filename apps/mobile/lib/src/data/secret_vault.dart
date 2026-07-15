@@ -7,8 +7,9 @@ abstract interface class SecretStore {
 }
 
 class SecretVault implements SecretStore {
-  SecretVault({FlutterSecureStorage? storage})
-    : _storage =
+  SecretVault({required String accountId, FlutterSecureStorage? storage})
+    : _accountId = _validatedAccountId(accountId),
+      _storage =
           storage ??
           const FlutterSecureStorage(
             aOptions: AndroidOptions(
@@ -22,21 +23,38 @@ class SecretVault implements SecretStore {
           );
 
   final FlutterSecureStorage _storage;
+  final String _accountId;
   static const _prefix = 'daylink.secret.v1.';
 
-  @override
-  Future<void> write(String reference, String secret) {
-    if (reference.isEmpty || secret.isEmpty) {
-      throw ArgumentError('Secret reference and value must be non-empty');
+  String _key(String reference) {
+    if (reference.isEmpty ||
+        reference.length > 200 ||
+        reference.contains(RegExp(r'[\r\n\x00]'))) {
+      throw ArgumentError('Secret reference is invalid');
     }
-    return _storage.write(key: '$_prefix$reference', value: secret);
+    return '$_prefix$_accountId.$reference';
   }
 
   @override
-  Future<String?> read(String reference) =>
-      _storage.read(key: '$_prefix$reference');
+  Future<void> write(String reference, String secret) {
+    if (secret.isEmpty) throw ArgumentError('Secret value must be non-empty');
+    return _storage.write(key: _key(reference), value: secret);
+  }
+
+  @override
+  Future<String?> read(String reference) => _storage.read(key: _key(reference));
 
   @override
   Future<void> delete(String reference) =>
-      _storage.delete(key: '$_prefix$reference');
+      _storage.delete(key: _key(reference));
+}
+
+String _validatedAccountId(String value) {
+  final normalized = value.toLowerCase();
+  if (!RegExp(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+  ).hasMatch(normalized)) {
+    throw ArgumentError.value(value, 'accountId', 'Invalid account ID');
+  }
+  return normalized;
 }

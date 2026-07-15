@@ -15,6 +15,8 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
 
 正式环境应在 Caddy 前配置 TLS，或把 Caddyfile 的站点地址改为正式域名以使用 Caddy 自动 HTTPS；Compose 已持久化 `/data` 和 `/config`。数据库与 API 只在内部 Docker 网络，不要额外映射端口。
 
+Daylink 部署栈不得安装或暴露面向 App 的 SSH Agent，不得挂载宿主机目录、Docker Socket 或特权设备。用户在 App 中连接的是其自行添加的 SSH 主机；这些主机的 Agent 能力与 Daylink 后台部署机完全隔离。
+
 备份至少包含 `mysql-data`、`generated-assets` 和 Caddy 数据卷。恢复演练必须验证数据库迁移版本、管理员 TOTP、App 登录、投票链接和密文同步游标。
 
 ## 局域网 HTTPS

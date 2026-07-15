@@ -962,6 +962,101 @@ p {
 
 /* Settings and dialogs */
 
+.admin-settings-card + .admin-settings-card {
+  margin-top: 18px;
+}
+
+.admin-settings-ai {
+  overflow: visible;
+  padding: 20px;
+}
+
+.admin-settings-ai > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.admin-settings-ai > header h2 {
+  font-size: 16px;
+}
+
+.admin-settings-ai > header p,
+.admin-settings-models {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.admin-settings-ai form {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-settings-ai form > label,
+.admin-invite-result > label {
+  display: grid;
+  gap: 7px;
+  color: #3d424a;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.admin-settings-ai input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  outline: none;
+  background: var(--surface);
+  padding: 9px 12px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.admin-settings-ai input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgb(78 131 253 / 12%);
+}
+
+.admin-settings-ai-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.admin-settings-ai-actions > button:not(.admin-accounts-primary),
+.admin-invite-link button {
+  min-height: 40px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 0 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.admin-settings-test-image {
+  width: 112px;
+  display: grid;
+  gap: 7px;
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.admin-settings-test-image img {
+  width: 112px;
+  aspect-ratio: 1;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  object-fit: cover;
+}
+
 .admin-settings-row {
   min-height: 84px;
 }
@@ -1049,6 +1144,86 @@ p {
   padding: 9px 11px;
   color: var(--danger);
   font-size: 12px;
+}
+
+.admin-account-create-choices {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-account-create-choices > button {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 16px;
+  color: var(--text);
+  text-align: left;
+}
+
+.admin-account-create-choices > button:hover {
+  border-color: #adc4ff;
+  background: var(--primary-soft);
+}
+
+.admin-account-create-choices strong {
+  font-size: 14px;
+}
+
+.admin-account-create-choices span,
+.admin-invite-hint,
+.admin-invite-result > p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.admin-invite-result {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-invite-link {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.admin-invite-link a {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: var(--primary-hover);
+  font-size: 12px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-invite-result code {
+  width: max-content;
+  border-radius: 8px;
+  background: var(--background);
+  padding: 10px 12px;
+  color: var(--text);
+  font-size: 16px;
+  letter-spacing: 1.5px;
+}
+
+.admin-invite-success-mark {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  margin-bottom: 20px;
+  border-radius: 50%;
+  background: var(--success-soft);
+  color: var(--success);
+  font-size: 24px;
+  font-weight: 700;
 }
 
 /* Public poll */

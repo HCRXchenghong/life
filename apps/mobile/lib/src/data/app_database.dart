@@ -320,7 +320,8 @@ class SharePollRefs extends Table {
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.executor);
 
-  factory AppDatabase.open() => AppDatabase(_openConnection());
+  factory AppDatabase.openForAccount(String accountId) =>
+      AppDatabase(_openConnection(accountId));
   factory AppDatabase.inMemory() => AppDatabase(NativeDatabase.memory());
 
   @override
@@ -359,10 +360,18 @@ class AppDatabase extends _$AppDatabase {
   );
 }
 
-LazyDatabase _openConnection() {
+LazyDatabase _openConnection(String accountId) {
+  if (!RegExp(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+    caseSensitive: false,
+  ).hasMatch(accountId)) {
+    throw ArgumentError.value(accountId, 'accountId', 'Invalid account ID');
+  }
   return LazyDatabase(() async {
     final directory = await getApplicationSupportDirectory();
-    final dataDirectory = Directory(p.join(directory.path, 'daylink'));
+    final dataDirectory = Directory(
+      p.join(directory.path, 'daylink', 'accounts', accountId.toLowerCase()),
+    );
     await dataDirectory.create(recursive: true);
     return NativeDatabase.createInBackground(
       File(p.join(dataDirectory.path, 'app.db')),

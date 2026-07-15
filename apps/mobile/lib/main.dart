@@ -70,15 +70,18 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
 class DaylinkRuntime implements AppRuntime {
   DaylinkRuntime._(this.services);
 
-  final DaylinkServices services;
+  final DaylinkServices? services;
 
-  static Future<DaylinkRuntime> start() async {
-    return DaylinkRuntime._(await DaylinkServices.start());
-  }
+  /// Signed-out startup never opens an account database. The login flow will
+  /// replace this runtime with [startForAccount] after server authentication.
+  static Future<DaylinkRuntime> start() async => DaylinkRuntime._(null);
+
+  static Future<DaylinkRuntime> startForAccount(String accountId) async =>
+      DaylinkRuntime._(await DaylinkServices.start(accountId: accountId));
 
   @override
-  Future<void> reconcile() => services.reconcile();
+  Future<void> reconcile() => services?.reconcile() ?? Future<void>.value();
 
   @override
-  Future<void> close() => services.close();
+  Future<void> close() => services?.close() ?? Future<void>.value();
 }

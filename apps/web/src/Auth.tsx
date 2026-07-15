@@ -25,7 +25,7 @@ export function AdminSetup({ onCreated }: { onCreated: () => void }) {
     }
   }
   return (
-    <AuthFrame privacy="用户内容由客户端端到端加密，管理员无法读取">
+    <AuthFrame>
       <h1>创建管理员账号</h1>
       <p className="admin-auth-subtitle">用于登录 Daylink 管理后台</p>
       <form className="admin-auth-form" onSubmit={submit}>
@@ -129,8 +129,8 @@ export function PendingSetup() {
   return <AuthFrame privacy="初始化会话将在 10 分钟后失效"><h1>管理员初始化中</h1><p className="admin-auth-subtitle">已有设备正在创建管理员账号，请稍后重试</p></AuthFrame>;
 }
 
-function AuthFrame({ children, privacy }: { children: ReactNode; privacy: string }) {
-  return <main className="admin-auth-shell"><Brand /><div className="admin-auth-stage"><section className="admin-auth-content">{children}</section><p className="admin-auth-privacy">{privacy}</p></div></main>;
+function AuthFrame({ children, privacy }: { children: ReactNode; privacy?: string }) {
+  return <main className="admin-auth-shell"><Brand /><div className="admin-auth-stage"><section className="admin-auth-content">{children}</section>{privacy && <p className="admin-auth-privacy">{privacy}</p>}</div></main>;
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {

@@ -500,6 +500,8 @@ func auditActorLabel(actor string) string {
 		return "App 用户"
 	case strings.HasPrefix(actor, "poll-manager:"):
 		return "投票管理员"
+	case strings.HasPrefix(actor, "invitation:"):
+		return "受邀成员"
 	default:
 		return "系统"
 	}
@@ -524,6 +526,8 @@ func auditActionLabel(action string) string {
 		"app_account.enable":         "启用 App 账号",
 		"app_account.disable":        "停用 App 账号",
 		"app_account.reset_password": "重置 App 密码",
+		"app_invitation.create":      "创建一次性邀请",
+		"app_invitation.consume":     "使用一次性邀请",
 		"ai_provider.save":           "保存 AI 服务配置",
 		"ai_provider.test":           "测试 AI 服务连接",
 		"ai_gateway.response":        "调用 AI 对话服务",
@@ -542,7 +546,7 @@ func auditTargetLabel(targetType string) string {
 	labels := map[string]string{
 		"admin_account": "管理员账号", "admin_session": "管理员会话", "app_account": "App 账号",
 		"app_session": "App 会话", "ai_provider": "AI 服务", "generated_asset": "生成图片",
-		"share_poll": "时间投票", "audit_event": "安全审计日志",
+		"share_poll": "时间投票", "audit_event": "安全审计日志", "app_invitation": "App 邀请",
 	}
 	if label, ok := labels[targetType]; ok {
 		return label
@@ -653,8 +657,15 @@ func nullableInt(value sql.NullInt64) any {
 
 func parseImageData(value string) ([]byte, error) {
 	decoded, err := base64.StdEncoding.DecodeString(value)
+	if err != nil {
+		return nil, fmt.Errorf("生图服务返回了无效图片")
+	}
+	return validatePNGImage(decoded)
+}
+
+func validatePNGImage(decoded []byte) ([]byte, error) {
 	const pngSignature = "\x89PNG\r\n\x1a\n"
-	if err != nil || len(decoded) < len(pngSignature) || len(decoded) > 32<<20 ||
+	if len(decoded) < len(pngSignature) || len(decoded) > 32<<20 ||
 		string(decoded[:len(pngSignature)]) != pngSignature {
 		return nil, fmt.Errorf("生图服务返回了无效图片")
 	}
