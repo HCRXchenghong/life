@@ -27,6 +27,8 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
 
 App 账号有两种并行创建方式：管理员原有的“账号 + 初始密码”手动创建流程保持不变；也可以生成带独立邀请码的一次性邀请链接，有效期可选 1 天、1 周或 1 月，成功注册一个账号后立即失效。App 本身只提供登录入口，不提供公开注册。
 
+AI 同时提供“本地 AI”和“SSH Agent”两种执行模式，并按 App 账号合并计量。本地 AI 由 Go 网关调用后台配置的第三方 Responses/Images API；SSH Agent 在用户自己的主机运行隔离 Codex，通过短期账号凭证访问同一网关，永远拿不到上游 API Key。Plus、Pro 同时受自然周和自然月额度约束，Max 不设用量额度；套餐只能由管理员按周卡、月卡、季度卡或年卡发放、续期、切换和取消。
+
 生产环境必须使用 HTTPS。`AUTH_SECRET_MASTER_KEY` 和 `AI_SECRET_MASTER_KEY` 必须分别生成，不得复用。Compose 通过分离的 `MYSQL_*` 变量构造连接配置，随机密码无需手工拼接到 DSN；Secret 只通过部署环境注入，不写入仓库。
 
 ## 本地开发
@@ -56,6 +58,8 @@ Vite 会把 `/api` 代理到 `127.0.0.1:8080`，后台地址为 `http://localhos
 - 管理员和 App 密码使用不同 pepper 域、随机盐与 600,000 次 PBKDF2-SHA256。
 - App 使用 15 分钟访问令牌和 30 天一次性轮换刷新令牌；数据库只存令牌哈希。
 - 第三方 AI API Key 使用独立主密钥 AES-GCM 加密，只写入、不回显，也不会写入 Codex 配置或发送到 SSH 主机。
+- SSH Agent 只接收不超过 12 小时且不超过套餐到期日的账号级短期 AI 凭证；App 退出、改密、停用账号或取消套餐会撤销对应凭证。
+- Plus/Pro 对话按 1 单位、生图按 5 单位原子预占，失败释放、成功入账，并同时检查周/月额度；Max 仅免除用量额度，仍保留鉴权、超时和防滥用速率保护。
 - AI 地址和 API Key 只在后台设置页配置；服务会自动识别 Responses 与生图模型。Word、Excel 和 PowerPoint 只使用用户主动提交的结构化内容在内存中生成，响应不包含服务端路径，App 文件按账号保存到设备隔离目录。
 - AI 上游只允许无凭据、无查询参数的公网 HTTPS 地址；运行时重新解析 DNS、拒绝私网地址和重定向，错误响应不回传上游正文。
 - 用户自行添加的 SSH 主机与 Daylink 部署服务器是两个安全域：前者可在审批、超时、取消和审计规则下使用完整 Agent 工具；后者不提供 Agent/SSH API，不挂载宿主机目录或 Docker Socket，App 用户和 AI 无法读取其文件、目录、日志或终端。

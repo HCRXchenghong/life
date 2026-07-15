@@ -732,6 +732,7 @@ p {
 }
 
 .admin-accounts-status,
+.admin-plan-badge,
 .admin-audit-outcome,
 .admin-audit-risk {
   flex: 0 0 auto;
@@ -740,6 +741,31 @@ p {
   font-size: 11px;
   line-height: 1.2;
   font-weight: 600;
+}
+
+.admin-plan-badge {
+  border: 1px solid #cdd9ff;
+  background: #f2f5ff;
+  color: #315fc7;
+  white-space: nowrap;
+}
+
+.admin-plan-badge.pro {
+  border-color: #c8d3f7;
+  background: #edf2ff;
+  color: #274fa6;
+}
+
+.admin-plan-badge.max {
+  border-color: #d8d3f5;
+  background: #f5f2ff;
+  color: #6247aa;
+}
+
+.admin-plan-badge.none {
+  border-color: var(--line);
+  background: var(--background);
+  color: var(--muted);
 }
 
 .admin-accounts-status.active,
@@ -1015,6 +1041,42 @@ p {
   padding: 9px 12px;
   color: var(--text);
   font-size: 14px;
+}
+
+.admin-settings-ai select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 9px 12px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.admin-plan-limit-grid {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) minmax(0, 1fr);
+  align-items: end;
+  gap: 12px;
+}
+
+.admin-plan-limit-grid > strong {
+  align-self: center;
+  font-size: 14px;
+}
+
+.admin-plan-limit-grid label {
+  display: grid;
+  gap: 7px;
+  color: #3d424a;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.admin-danger-button {
+  margin-right: auto;
+  color: var(--danger) !important;
 }
 
 .admin-settings-ai input:focus {

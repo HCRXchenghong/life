@@ -141,8 +141,9 @@ function Action({ title, detail, href }: { title: string; detail: string; href: 
   return <article className="admin-overview-action"><div><h2>{title}</h2><p>{detail}</p></div><NavLink href={href}>管理<span>›</span></NavLink></article>;
 }
 
-type Account = { id: string; username: string; status: string; passwordChangeRequired: boolean; lockedUntil: string | null; lastLoginAt: string | null; createdAt: string };
-type AccountDialog = Account | "choose" | "create" | "invite" | null;
+type Subscription = { plan: "plus" | "pro" | "max"; cardType: "week" | "month" | "quarter" | "year"; startsAt: string; expiresAt: string; active: boolean };
+type Account = { id: string; username: string; status: string; passwordChangeRequired: boolean; lockedUntil: string | null; lastLoginAt: string | null; createdAt: string; subscription: Subscription | null };
+type AccountDialog = "choose" | "create" | "invite" | { type: "password" | "subscription"; account: Account } | null;
 type Invitation = { path: string; code: string; expiresAt: string };
 
 function Accounts() {
@@ -162,7 +163,7 @@ function Accounts() {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.currentTarget));
     try {
-      await api("/api/admin/app-accounts", { method: dialog === "create" ? "POST" : "PATCH", body: JSON.stringify(dialog === "create" ? values : { ...values, id: typeof dialog === "object" ? dialog?.id : undefined, action: "reset_password" }) });
+      await api("/api/admin/app-accounts", { method: dialog === "create" ? "POST" : "PATCH", body: JSON.stringify(dialog === "create" ? values : { ...values, id: dialog && typeof dialog === "object" ? dialog.account.id : undefined, action: "reset_password" }) });
       closeDialog();
       setMessage("账号已保存");
       await load();
@@ -191,16 +192,44 @@ function Accounts() {
     await load();
   }
 
+  async function saveSubscription(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!dialog || typeof dialog !== "object" || dialog.type !== "subscription") return;
+    const values = Object.fromEntries(new FormData(event.currentTarget));
+    try {
+      await api("/api/admin/app-subscriptions", {
+        method: "POST",
+        body: JSON.stringify({ accountId: dialog.account.id, action: "grant", ...values }),
+      });
+      closeDialog();
+      setMessage("AI 套餐已更新");
+      await load();
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : "套餐保存失败"); }
+  }
+
+  async function revokeSubscription(account: Account) {
+    try {
+      await api("/api/admin/app-subscriptions", {
+        method: "POST",
+        body: JSON.stringify({ accountId: account.id, action: "revoke" }),
+      });
+      closeDialog();
+      setMessage("AI 套餐已取消，远程 Agent 凭证已撤销");
+      await load();
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : "套餐取消失败"); }
+  }
+
   return (
     <Page kicker="App 账号" title="成员账号" subtitle="管理登录状态、密码和一次性邀请" action={<button className="admin-accounts-primary" onClick={() => { setMessage(""); setDialog("choose"); }}>创建账号</button>}>
       {message && <p className="admin-accounts-notice">{message}</p>}
       <section className="admin-accounts-list">
         {accounts.length === 0 && <EmptyState title="还没有 App 账号" detail="创建账号后，成员即可登录并在不同设备间同步数据。" />}
-        {accounts.map((account) => <article className="admin-accounts-row" key={account.id}><span className="admin-accounts-row-avatar">{account.username[0].toUpperCase()}</span><div className="admin-accounts-row-copy"><h2>{account.username}</h2><p>{account.passwordChangeRequired ? "等待修改初始密码" : account.lastLoginAt ? `最近登录 ${new Date(account.lastLoginAt).toLocaleString()}` : "尚未登录"}</p></div><span className={`admin-accounts-status ${account.status}`}>{account.status === "active" ? "正常" : "已停用"}</span><div className="admin-accounts-actions"><button onClick={() => setDialog(account)}>重置密码</button><button onClick={() => void toggle(account)}>{account.status === "active" ? "停用" : "启用"}</button></div></article>)}
+        {accounts.map((account) => <article className="admin-accounts-row" key={account.id}><span className="admin-accounts-row-avatar">{account.username[0].toUpperCase()}</span><div className="admin-accounts-row-copy"><h2>{account.username}</h2><p>{account.passwordChangeRequired ? "等待修改初始密码" : account.lastLoginAt ? `最近登录 ${new Date(account.lastLoginAt).toLocaleString()}` : "尚未登录"}</p></div>{account.subscription?.active ? <span className={`admin-plan-badge ${account.subscription.plan}`}>{planName(account.subscription.plan)} · {new Date(account.subscription.expiresAt).toLocaleDateString("zh-CN")} 到期</span> : <span className="admin-plan-badge none">无套餐</span>}<span className={`admin-accounts-status ${account.status}`}>{account.status === "active" ? "正常" : "已停用"}</span><div className="admin-accounts-actions"><button onClick={() => setDialog({ type: "subscription", account })}>套餐</button><button onClick={() => setDialog({ type: "password", account })}>重置密码</button><button onClick={() => void toggle(account)}>{account.status === "active" ? "停用" : "启用"}</button></div></article>)}
       </section>
       {dialog === "choose" && <Dialog title="选择创建方式" onClose={closeDialog}><div className="admin-account-create-choices"><button onClick={() => setDialog("create")}><strong>手动创建</strong><span>管理员设置账号和初始密码</span></button><button onClick={() => setDialog("invite")}><strong>链接邀请</strong><span>成员通过一次性链接自行设置账号</span></button></div></Dialog>}
-      {(dialog === "create" || (dialog && typeof dialog === "object")) && <Dialog title={dialog === "create" ? "创建 App 账号" : `重置 ${dialog.username} 的密码`} onClose={closeDialog}><form onSubmit={save}>{dialog === "create" && <label>App 账号<input name="username" minLength={4} maxLength={32} required autoFocus /></label>}<label>密码<input name="password" type="password" minLength={12} maxLength={128} required /></label><label>确认密码<input name="confirmPassword" type="password" minLength={12} maxLength={128} required /></label><footer><button type="button" onClick={closeDialog}>取消</button><button className="admin-accounts-primary">保存</button></footer></form></Dialog>}
+      {(dialog === "create" || (dialog && typeof dialog === "object" && dialog.type === "password")) && <Dialog title={dialog === "create" ? "创建 App 账号" : `重置 ${dialog.account.username} 的密码`} onClose={closeDialog}><form onSubmit={save}>{dialog === "create" && <label>App 账号<input name="username" minLength={4} maxLength={32} required autoFocus /></label>}<label>密码<input name="password" type="password" minLength={12} maxLength={128} required /></label><label>确认密码<input name="confirmPassword" type="password" minLength={12} maxLength={128} required /></label><footer><button type="button" onClick={closeDialog}>取消</button><button className="admin-accounts-primary">保存</button></footer></form></Dialog>}
       {dialog === "invite" && <Dialog title="链接邀请" onClose={closeDialog}>{!invitation ? <form onSubmit={createInvitation}><label>有效期<select name="validity" defaultValue="week"><option value="day">1 天</option><option value="week">1 周</option><option value="month">1 月</option></select></label><p className="admin-invite-hint">链接只能注册一个账号，成功注册后立即失效。</p><footer><button type="button" onClick={closeDialog}>取消</button><button className="admin-accounts-primary">生成邀请</button></footer></form> : <div className="admin-invite-result"><label>邀请链接<div className="admin-invite-link"><a href={invitation.path} target="_blank" rel="noreferrer">{new URL(invitation.path, window.location.origin).toString()}</a><button type="button" onClick={() => void copyInvitation()}>复制</button></div></label><label>邀请码<code>{invitation.code}</code></label><p>邀请码只显示这一次。成员打开链接后仍需手动输入邀请码，有效期至 {new Date(invitation.expiresAt).toLocaleString("zh-CN")}。</p></div>}</Dialog>}
+      {dialog && typeof dialog === "object" && dialog.type === "subscription" && <Dialog title={`${dialog.account.username} 的 AI 套餐`} onClose={closeDialog}><form onSubmit={saveSubscription}><label>套餐<select name="plan" defaultValue={dialog.account.subscription?.plan ?? "plus"}><option value="plus">Plus</option><option value="pro">Pro</option><option value="max">Max（无限额）</option></select></label><label>时长<select name="cardType" defaultValue="month"><option value="week">周卡</option><option value="month">月卡</option><option value="quarter">季度卡</option><option value="year">年卡</option></select></label><p className="admin-invite-hint">同套餐会从当前到期日续期；更换套餐从现在重新计算。只有后台管理员可以发放。</p><footer>{dialog.account.subscription && <button type="button" className="admin-danger-button" onClick={() => void revokeSubscription(dialog.account)}>取消套餐</button>}<button type="button" onClick={closeDialog}>关闭</button><button className="admin-accounts-primary">确认发放</button></footer></form></Dialog>}
     </Page>
   );
 }
@@ -235,6 +264,7 @@ function Audit() {
 
 type Provider = { id: string; baseUrl: string; textModel: string; imageModel: string | null; apiKeyHint: string };
 type GeneratedAsset = { id: string; url: string; createdAt: string };
+type PlanLimit = { plan: "plus" | "pro"; weeklyUnits: number; monthlyUnits: number; updatedAt: string };
 
 function Settings() {
   const [dialog, setDialog] = useState<"password" | "totp" | null>(null);
@@ -243,12 +273,17 @@ function Settings() {
   const [qr, setQR] = useState("");
   const [ai, setAI] = useState<Provider | null>(null);
   const [testAsset, setTestAsset] = useState<GeneratedAsset | null>(null);
+  const [plans, setPlans] = useState<PlanLimit[]>([]);
 
   const loadAI = useCallback(async () => {
     const result = await api<{ setting: Provider | null }>("/api/admin/ai-settings");
     setAI(result.setting);
   }, []);
-  useEffect(() => { void loadAI(); }, [loadAI]);
+  const loadPlans = useCallback(async () => {
+    const result = await api<{ plans: PlanLimit[] }>("/api/admin/ai-plans");
+    setPlans(result.plans);
+  }, []);
+  useEffect(() => { void loadAI(); void loadPlans(); }, [loadAI, loadPlans]);
 
   async function saveAI(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -277,6 +312,22 @@ function Settings() {
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : "生图测试失败"); }
   }
 
+  async function savePlans(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    try {
+      const result = await api<{ plans: PlanLimit[] }>("/api/admin/ai-plans", {
+        method: "POST",
+        body: JSON.stringify({
+          plus: { weeklyUnits: Number(form.get("plusWeekly")), monthlyUnits: Number(form.get("plusMonthly")) },
+          pro: { weeklyUnits: Number(form.get("proWeekly")), monthlyUnits: Number(form.get("proMonthly")) },
+        }),
+      });
+      setPlans(result.plans);
+      setMessage("Plus / Pro 周额度与月额度已保存");
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : "套餐额度保存失败"); }
+  }
+
   async function password(event: FormEvent<HTMLFormElement>) { event.preventDefault(); try { await api("/api/admin/security/password", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget))) }); window.location.replace("/admin"); } catch (reason) { setMessage(reason instanceof Error ? reason.message : "修改失败"); } }
   async function totp(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = Object.fromEntries(new FormData(event.currentTarget)); try { if (!enrollment) { const result = await api<{ secret: string; uri: string }>("/api/admin/security/totp", { method: "POST", body: JSON.stringify({ action: "start", currentPassword: form.currentPassword, currentCode: form.currentCode }) }); setEnrollment(result); setQR(await QRCode.toDataURL(result.uri, { width: 360, margin: 0 })); } else { await api("/api/admin/security/totp", { method: "POST", body: JSON.stringify({ action: "verify", code: form.code }) }); window.location.replace("/admin"); } } catch (reason) { setMessage(reason instanceof Error ? reason.message : "操作失败"); } }
   async function closeTotp() {
@@ -299,6 +350,17 @@ function Settings() {
         </form>
         {testAsset && <a className="admin-settings-test-image" href={testAsset.url} target="_blank" rel="noreferrer"><img src={testAsset.url} alt="AI 生图测试结果" /><span>生图测试结果</span></a>}
       </section>
+      <section className="admin-settings-card admin-settings-ai admin-settings-plans">
+        <header><div><h2>AI 套餐额度</h2><p>本地 AI 与 SSH Agent 共用账号额度；生图按 5 单位、对话按 1 单位计费</p></div><span className="admin-plan-badge max">Max 无限额</span></header>
+        <form key={plans.map((item) => `${item.plan}:${item.weeklyUnits}:${item.monthlyUnits}`).join("|")} onSubmit={savePlans}>
+          <div className="admin-plan-limit-grid">
+            <strong>Plus</strong><label>每周单位<input name="plusWeekly" type="number" min="1" max="10000000" required defaultValue={plans.find((item) => item.plan === "plus")?.weeklyUnits || ""} /></label><label>每月单位<input name="plusMonthly" type="number" min="1" max="10000000" required defaultValue={plans.find((item) => item.plan === "plus")?.monthlyUnits || ""} /></label>
+            <strong>Pro</strong><label>每周单位<input name="proWeekly" type="number" min="1" max="10000000" required defaultValue={plans.find((item) => item.plan === "pro")?.weeklyUnits || ""} /></label><label>每月单位<input name="proMonthly" type="number" min="1" max="10000000" required defaultValue={plans.find((item) => item.plan === "pro")?.monthlyUnits || ""} /></label>
+          </div>
+          <p className="admin-settings-models">月额度不得低于周额度，Pro 不得低于 Plus。自然周按 UTC 周一重置，自然月 1 日重置。</p>
+          <div className="admin-settings-ai-actions"><button className="admin-accounts-primary">保存套餐额度</button></div>
+        </form>
+      </section>
       <section className="admin-settings-card">
         <div className="admin-settings-row"><div className="admin-settings-row-copy"><h3>登录密码</h3><p>修改后撤销全部后台会话</p></div><button onClick={() => { setMessage(""); setDialog("password"); }}>修改密码</button></div>
         <div className="admin-settings-row"><div className="admin-settings-row-copy"><h3>双重验证</h3><p>Microsoft Authenticator</p></div><button onClick={() => { setMessage(""); setEnrollment(null); setDialog("totp"); }}>重新绑定</button></div>
@@ -307,6 +369,10 @@ function Settings() {
       {dialog === "totp" && <Dialog title="重新绑定双重验证" onClose={() => void closeTotp()}><form onSubmit={totp}>{!enrollment ? <><label>当前密码<input name="currentPassword" type="password" required /></label><label>当前动态验证码<input name="currentCode" inputMode="numeric" pattern="[0-9]{6}" required /></label></> : <><div className="admin-settings-qr"><img src={qr} width="176" height="176" alt="新的双重验证二维码" /></div><div className="admin-auth-secret"><code>{enrollment.secret}</code></div><label>新动态验证码<input name="code" inputMode="numeric" pattern="[0-9]{6}" required /></label></>}{message && <p className="admin-accounts-dialog-error">{message}</p>}<footer><button type="button" onClick={() => void closeTotp()}>取消</button><button className="admin-accounts-primary">{enrollment ? "验证并绑定" : "继续"}</button></footer></form></Dialog>}
     </Page>
   );
+}
+
+function planName(plan: Subscription["plan"]) {
+  return plan === "plus" ? "Plus" : plan === "pro" ? "Pro" : "Max";
 }
 
 function Dialog({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {

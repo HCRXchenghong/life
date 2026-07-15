@@ -19,13 +19,14 @@ import (
 )
 
 type publicAppAccount struct {
-	ID                     string     `json:"id"`
-	Username               string     `json:"username"`
-	Status                 string     `json:"status"`
-	PasswordChangeRequired bool       `json:"passwordChangeRequired"`
-	LockedUntil            *time.Time `json:"lockedUntil"`
-	LastLoginAt            *time.Time `json:"lastLoginAt"`
-	CreatedAt              time.Time  `json:"createdAt"`
+	ID                     string                `json:"id"`
+	Username               string                `json:"username"`
+	Status                 string                `json:"status"`
+	PasswordChangeRequired bool                  `json:"passwordChangeRequired"`
+	LockedUntil            *time.Time            `json:"lockedUntil"`
+	LastLoginAt            *time.Time            `json:"lastLoginAt"`
+	CreatedAt              time.Time             `json:"createdAt"`
+	Subscription           *publicAISubscription `json:"subscription"`
 }
 
 type publicProvider struct {
@@ -92,8 +93,10 @@ func (s *Server) handleAdminAppAccounts(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) listAppAccounts(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.QueryContext(r.Context(), `SELECT id, username, status, password_change_required,
-      locked_until, last_login_at, created_at FROM app_accounts ORDER BY created_at DESC LIMIT 500`)
+	rows, err := s.db.QueryContext(r.Context(), `SELECT a.id, a.username, a.status, a.password_change_required,
+      a.locked_until, a.last_login_at, a.created_at, sub.plan, sub.card_type, sub.starts_at, sub.expires_at
+      FROM app_accounts a LEFT JOIN app_ai_subscriptions sub ON sub.account_id = a.id
+      ORDER BY a.created_at DESC LIMIT 500`)
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "数据库暂时不可用")
 		return
@@ -102,8 +105,10 @@ func (s *Server) listAppAccounts(w http.ResponseWriter, r *http.Request) {
 	accounts := make([]publicAppAccount, 0)
 	for rows.Next() {
 		var account publicAppAccount
-		var locked, login sql.NullTime
-		if err := rows.Scan(&account.ID, &account.Username, &account.Status, &account.PasswordChangeRequired, &locked, &login, &account.CreatedAt); err != nil {
+		var locked, login, subscriptionStart, subscriptionExpiry sql.NullTime
+		var subscriptionPlan, cardType sql.NullString
+		if err := rows.Scan(&account.ID, &account.Username, &account.Status, &account.PasswordChangeRequired,
+			&locked, &login, &account.CreatedAt, &subscriptionPlan, &cardType, &subscriptionStart, &subscriptionExpiry); err != nil {
 			writeError(w, http.StatusServiceUnavailable, "database_unavailable", "数据库暂时不可用")
 			return
 		}
@@ -112,6 +117,12 @@ func (s *Server) listAppAccounts(w http.ResponseWriter, r *http.Request) {
 		}
 		if login.Valid {
 			account.LastLoginAt = &login.Time
+		}
+		if subscriptionPlan.Valid && cardType.Valid && subscriptionStart.Valid && subscriptionExpiry.Valid {
+			account.Subscription = &publicAISubscription{
+				Plan: subscriptionPlan.String, CardType: cardType.String, StartsAt: subscriptionStart.Time,
+				ExpiresAt: subscriptionExpiry.Time, Active: subscriptionExpiry.Time.After(time.Now().UTC()),
+			}
 		}
 		accounts = append(accounts, account)
 	}
@@ -203,6 +214,9 @@ func (s *Server) updateAppAccount(w http.ResponseWriter, r *http.Request, identi
 		if err == nil {
 			_, err = tx.ExecContext(r.Context(), "UPDATE app_sessions SET revoked_at = UTC_TIMESTAMP(6) WHERE account_id = ? AND revoked_at IS NULL", input.ID)
 		}
+		if err == nil {
+			_, err = tx.ExecContext(r.Context(), "UPDATE ai_gateway_tokens SET revoked_at = UTC_TIMESTAMP(6) WHERE account_id = ? AND revoked_at IS NULL", input.ID)
+		}
 	case "reset_password":
 		if input.Password != input.ConfirmPassword {
 			err = errors.New("两次输入的密码不一致")
@@ -218,6 +232,9 @@ func (s *Server) updateAppAccount(w http.ResponseWriter, r *http.Request, identi
 		}
 		if err == nil {
 			_, err = tx.ExecContext(r.Context(), "UPDATE app_sessions SET revoked_at = UTC_TIMESTAMP(6) WHERE account_id = ? AND revoked_at IS NULL", input.ID)
+		}
+		if err == nil {
+			_, err = tx.ExecContext(r.Context(), "UPDATE ai_gateway_tokens SET revoked_at = UTC_TIMESTAMP(6) WHERE account_id = ? AND revoked_at IS NULL", input.ID)
 		}
 	default:
 		err = errors.New("不支持的账号操作")
@@ -509,32 +526,38 @@ func auditActorLabel(actor string) string {
 
 func auditActionLabel(action string) string {
 	labels := map[string]string{
-		"admin.enrollment.authorize": "授权管理员初始化",
-		"admin.enrollment.started":   "开始绑定双重验证",
-		"admin.enrollment.cancelled": "取消管理员初始化",
-		"admin.enrollment.verify":    "验证双重验证码",
-		"admin.enrollment.completed": "完成管理员初始化",
-		"admin.login":                "管理员登录",
-		"admin.password.change":      "修改管理员密码",
-		"admin.totp.rebind":          "重新绑定双重验证",
-		"admin.audit.download":       "下载安全审计日志",
-		"app.login":                  "App 账号登录",
-		"app.logout":                 "App 账号退出",
-		"app.session.refresh":        "刷新 App 会话",
-		"app.password.change":        "修改 App 密码",
-		"app_account.create":         "创建 App 账号",
-		"app_account.enable":         "启用 App 账号",
-		"app_account.disable":        "停用 App 账号",
-		"app_account.reset_password": "重置 App 密码",
-		"app_invitation.create":      "创建一次性邀请",
-		"app_invitation.consume":     "使用一次性邀请",
-		"ai_provider.save":           "保存 AI 服务配置",
-		"ai_provider.test":           "测试 AI 服务连接",
-		"ai_gateway.response":        "调用 AI 对话服务",
-		"ai_gateway.image":           "调用 AI 生图服务",
-		"image.generate":             "生成图片",
-		"poll.create":                "创建时间投票",
-		"poll.finalize":              "确定投票时间",
+		"admin.enrollment.authorize":  "授权管理员初始化",
+		"admin.enrollment.started":    "开始绑定双重验证",
+		"admin.enrollment.cancelled":  "取消管理员初始化",
+		"admin.enrollment.verify":     "验证双重验证码",
+		"admin.enrollment.completed":  "完成管理员初始化",
+		"admin.login":                 "管理员登录",
+		"admin.password.change":       "修改管理员密码",
+		"admin.totp.rebind":           "重新绑定双重验证",
+		"admin.audit.download":        "下载安全审计日志",
+		"app.login":                   "App 账号登录",
+		"app.logout":                  "App 账号退出",
+		"app.session.refresh":         "刷新 App 会话",
+		"app.password.change":         "修改 App 密码",
+		"app_account.create":          "创建 App 账号",
+		"app_account.enable":          "启用 App 账号",
+		"app_account.disable":         "停用 App 账号",
+		"app_account.reset_password":  "重置 App 密码",
+		"app_invitation.create":       "创建一次性邀请",
+		"app_invitation.consume":      "使用一次性邀请",
+		"app_subscription.grant":      "发放 AI 套餐",
+		"app_subscription.revoke":     "取消 AI 套餐",
+		"ai_provider.save":            "保存 AI 服务配置",
+		"ai_provider.test":            "测试 AI 服务连接",
+		"ai_plan_limits.update":       "更新 AI 套餐额度",
+		"ai_gateway_token.create":     "创建远程 Agent 凭证",
+		"ai_gateway.response":         "调用 AI 对话服务",
+		"ai_gateway.image":            "调用 AI 生图服务",
+		"ai_gateway.remote.responses": "远程 Agent 调用 AI 对话",
+		"ai_gateway.remote.image":     "远程 Agent 调用 AI 生图",
+		"image.generate":              "生成图片",
+		"poll.create":                 "创建时间投票",
+		"poll.finalize":               "确定投票时间",
 	}
 	if label, ok := labels[action]; ok {
 		return label
@@ -547,6 +570,7 @@ func auditTargetLabel(targetType string) string {
 		"admin_account": "管理员账号", "admin_session": "管理员会话", "app_account": "App 账号",
 		"app_session": "App 会话", "ai_provider": "AI 服务", "generated_asset": "生成图片",
 		"share_poll": "时间投票", "audit_event": "安全审计日志", "app_invitation": "App 邀请",
+		"ai_gateway_token": "远程 Agent 凭证", "ai_plan": "AI 套餐额度",
 	}
 	if label, ok := labels[targetType]; ok {
 		return label

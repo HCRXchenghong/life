@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../data/ai_provider_repository.dart';
+import '../data/ai_gateway_client.dart';
 import '../data/app_database.dart';
 import '../data/artifact_client.dart';
 import '../data/artifact_repository.dart';
@@ -146,12 +147,31 @@ class DaylinkServices {
   Future<AgentCodexAppServerTransport> startRemoteCodex({
     required NativeAgentChannel channel,
     required String cwd,
-    String? model,
-  }) => AgentCodexAppServerTransport.start(
-    request: channel.requestPayload,
-    cwd: cwd,
-    model: model,
-  );
+    required Uri apiBaseUri,
+    required String mobileToken,
+  }) async {
+    final gateway = AiGatewayClient(
+      apiBaseUri: apiBaseUri,
+      mobileToken: mobileToken,
+    );
+    try {
+      final credential = await gateway.createRemoteCredential();
+      return AgentCodexAppServerTransport.start(
+        request: channel.requestPayload,
+        cwd: cwd,
+        gatewayBaseUrl: credential.baseUrl,
+        gatewayToken: credential.token,
+        model: credential.model,
+      );
+    } finally {
+      gateway.close();
+    }
+  }
+
+  AiGatewayClient configureAI({
+    required Uri apiBaseUri,
+    required String mobileToken,
+  }) => AiGatewayClient(apiBaseUri: apiBaseUri, mobileToken: mobileToken);
 
   Future<void> reconcile() => notifications.reconcile();
 

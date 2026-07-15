@@ -48,6 +48,9 @@ void main() {
           throw StateError('unexpected request');
         },
         cwd: '/home/daylink/project',
+        gatewayBaseUrl: Uri.parse('https://daylink.example/v1'),
+        gatewayToken: 'dlkc_test-token',
+        model: 'gpt-5.3-codex',
       );
       final firstMessage = transport.messages.first;
 
@@ -64,6 +67,10 @@ void main() {
 
       expect(stopped, isTrue);
       expect(requests.first['type'], 'codex_start');
+      final config = requests.first['config']! as Map<String, Object?>;
+      expect(config['gateway_base_url'], 'https://daylink.example/v1');
+      expect(config['gateway_token'], 'dlkc_test-token');
+      expect(config['model'], 'gpt-5.3-codex');
       expect(
         requests.any((request) => request['type'] == 'codex_message'),
         isTrue,
@@ -80,6 +87,9 @@ void main() {
           return const {};
         },
         cwd: '../project',
+        gatewayBaseUrl: Uri.parse('https://daylink.example/v1'),
+        gatewayToken: 'dlkc_test-token',
+        model: 'gpt-5.3-codex',
       ),
       throwsArgumentError,
     );

@@ -320,6 +320,85 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
+  /admin/app-subscriptions:
+    post:
+      security:
+        - adminSession: []
+      operationId: manageAppAiSubscription
+      description: Grants, extends, replaces, or revokes an App AI subscription. This operation is available only to an authenticated administrator.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  additionalProperties: false
+                  required: [accountId, action, plan, cardType]
+                  properties:
+                    accountId: { type: string, format: uuid }
+                    action: { const: grant }
+                    plan: { enum: [plus, pro, max] }
+                    cardType: { enum: [week, month, quarter, year] }
+                - type: object
+                  additionalProperties: false
+                  required: [accountId, action]
+                  properties:
+                    accountId: { type: string, format: uuid }
+                    action: { const: revoke }
+      responses:
+        "200":
+          description: Current subscription, or null after revocation.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [subscription]
+                properties:
+                  subscription:
+                    oneOf:
+                      - { $ref: "#/components/schemas/AiSubscription" }
+                      - { type: "null" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/Error" }
+  /admin/ai-plans:
+    get:
+      security:
+        - adminSession: []
+      operationId: listAiPlanLimits
+      responses:
+        "200":
+          description: Plus and Pro weekly/monthly limits. Max is always unlimited.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [plans]
+                properties:
+                  plans:
+                    type: array
+                    items: { $ref: "#/components/schemas/AiPlanLimit" }
+    post:
+      security:
+        - adminSession: []
+      operationId: updateAiPlanLimits
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [plus, pro]
+              properties:
+                plus: { $ref: "#/components/schemas/AiPlanLimitInput" }
+                pro: { $ref: "#/components/schemas/AiPlanLimitInput" }
+      responses:
+        "200": { description: Limits saved. }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /admin/providers:
     get:
       security:
@@ -504,6 +583,50 @@ paths:
         "200": { $ref: "#/components/responses/AppAuthenticated" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { $ref: "#/components/responses/Error" }
+  /app/ai-entitlement:
+    get:
+      security:
+        - appAccessToken: []
+      operationId: getAppAiEntitlement
+      responses:
+        "200":
+          description: Subscription state and account-level usage shared by local AI and SSH Agent modes.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [entitlement]
+                properties:
+                  entitlement: { $ref: "#/components/schemas/AiEntitlement" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /app/ai-remote-token:
+    post:
+      security:
+        - appAccessToken: []
+      operationId: createRemoteAgentAiCredential
+      description: Creates a short-lived account-scoped Codex gateway token. The upstream provider key is never returned.
+      responses:
+        "201":
+          description: Short-lived credential bounded by subscription expiry.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [gateway]
+                properties:
+                  gateway:
+                    type: object
+                    additionalProperties: false
+                    required: [baseUrl, token, model, expiresAt]
+                    properties:
+                      baseUrl: { type: string, format: uri, pattern: "^https://" }
+                      token: { type: string, pattern: "^dlkc_", writeOnly: true }
+                      model: { type: string }
+                      expiresAt: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/Error" }
   /health:
     get:
       security: []
@@ -541,6 +664,7 @@ paths:
             application/json:
               schema: { type: object }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/Error" }
         "502": { $ref: "#/components/responses/Error" }
   /assistant/images:
     post:
@@ -585,6 +709,7 @@ paths:
                         b64_json: { type: string, contentEncoding: base64 }
                         revised_prompt: { type: [string, "null"] }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/Error" }
         "502": { $ref: "#/components/responses/Error" }
   /polls:
     get:
@@ -779,6 +904,61 @@ paths:
           content:
             text/event-stream: {}
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/responses:
+    servers:
+      - url: https://{daylinkHost}
+        variables:
+          daylinkHost:
+            default: daylink.example.com
+    post:
+      security:
+        - aiGatewayToken: []
+      operationId: proxyRemoteCodexResponse
+      description: OpenAI Responses-compatible proxy for Codex running on an App user's SSH host. Requests are billed to that App account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200": { description: JSON or SSE Responses payload. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+  /v1/models:
+    servers:
+      - url: https://{daylinkHost}
+        variables:
+          daylinkHost:
+            default: daylink.example.com
+    get:
+      security:
+        - aiGatewayToken: []
+      operationId: listRemoteCodexModels
+      responses:
+        "200": { description: Models exposed by the configured Daylink AI provider. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/images/generations:
+    servers:
+      - url: https://{daylinkHost}
+        variables:
+          daylinkHost:
+            default: daylink.example.com
+    post:
+      security:
+        - aiGatewayToken: []
+      operationId: proxyRemoteCodexImage
+      description: OpenAI Images-compatible proxy billed at five account units per successful request.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200": { description: OpenAI Images-compatible payload. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     adminSession:
@@ -797,6 +977,10 @@ components:
       type: http
       scheme: bearer
       bearerFormat: Daylink-App-Access
+    aiGatewayToken:
+      type: http
+      scheme: bearer
+      bearerFormat: Daylink-Remote-Agent
   parameters:
     PublicToken:
       name: publicToken
@@ -885,7 +1069,7 @@ components:
     AppAccount:
       type: object
       additionalProperties: false
-      required: [id, username, passwordChangeRequired, status, lockedUntil, lastLoginAt, createdAt]
+      required: [id, username, passwordChangeRequired, status, lockedUntil, lastLoginAt, createdAt, subscription]
       properties:
         id: { type: string, format: uuid }
         username: { type: string }
@@ -894,6 +1078,54 @@ components:
         lockedUntil: { type: [string, "null"], format: date-time }
         lastLoginAt: { type: [string, "null"], format: date-time }
         createdAt: { type: string, format: date-time }
+        subscription:
+          oneOf:
+            - { $ref: "#/components/schemas/AiSubscription" }
+            - { type: "null" }
+    AiSubscription:
+      type: object
+      additionalProperties: false
+      required: [plan, cardType, startsAt, expiresAt, active]
+      properties:
+        plan: { enum: [plus, pro, max] }
+        cardType: { enum: [week, month, quarter, year] }
+        startsAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        active: { type: boolean }
+    AiPlanLimitInput:
+      type: object
+      additionalProperties: false
+      required: [weeklyUnits, monthlyUnits]
+      properties:
+        weeklyUnits: { type: integer, minimum: 0, maximum: 10000000 }
+        monthlyUnits: { type: integer, minimum: 0, maximum: 10000000 }
+    AiPlanLimit:
+      allOf:
+        - $ref: "#/components/schemas/AiPlanLimitInput"
+        - type: object
+          required: [plan, updatedAt]
+          properties:
+            plan: { enum: [plus, pro] }
+            updatedAt: { type: string, format: date-time }
+    AiEntitlement:
+      type: object
+      additionalProperties: false
+      required: [active, weeklyUsed, weeklyLimit, weeklyResetsAt, monthlyUsed, monthlyLimit, monthlyResetsAt, supportedModes]
+      properties:
+        active: { type: boolean }
+        plan: { enum: [plus, pro, max] }
+        cardType: { enum: [week, month, quarter, year] }
+        startsAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        weeklyUsed: { type: integer, minimum: 0 }
+        weeklyLimit: { type: [integer, "null"], minimum: 0 }
+        weeklyResetsAt: { type: string, format: date-time }
+        monthlyUsed: { type: integer, minimum: 0 }
+        monthlyLimit: { type: [integer, "null"], minimum: 0 }
+        monthlyResetsAt: { type: string, format: date-time }
+        supportedModes:
+          type: array
+          items: { enum: [local_ai, ssh_agent] }
     AppTokenPair:
       type: object
       additionalProperties: false

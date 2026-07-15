@@ -124,6 +124,17 @@ func (s *Server) handleAssistantResponses(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "invalid_request", "input 无效")
 		return
 	}
+	reservation, err := s.reserveAIUsage(r.Context(), identity.AccountID, "local_ai", "responses", 1)
+	if err != nil {
+		if !writeAIEntitlementError(w, err) {
+			writeError(w, http.StatusServiceUnavailable, "billing_unavailable", "AI 计费服务暂时不可用")
+		}
+		return
+	}
+	charged := false
+	defer func() {
+		s.finishAIUsage(context.WithoutCancel(r.Context()), reservation, charged)
+	}()
 	body := map[string]any{
 		"model": provider.TextModel, "input": parsedInput, "tools": tools,
 		"store": true, "parallel_tool_calls": false,
@@ -141,6 +152,7 @@ func (s *Server) handleAssistantResponses(w http.ResponseWriter, r *http.Request
 		return
 	}
 	responseID, _ := result["id"].(string)
+	charged = true
 	s.finishAIRun(r.Context(), runID, "succeeded", "", "", responseID)
 	s.audit(r.Context(), "app:"+identity.AccountID, "ai_gateway.response", "ai_provider", provider.ID, "allowed", "medium")
 	writeJSON(w, http.StatusOK, result)
@@ -168,12 +180,24 @@ func (s *Server) handleAssistantImages(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "image_provider_unavailable", "生图服务不可用")
 		return
 	}
+	reservation, err := s.reserveAIUsage(r.Context(), identity.AccountID, "local_ai", "image", 5)
+	if err != nil {
+		if !writeAIEntitlementError(w, err) {
+			writeError(w, http.StatusServiceUnavailable, "billing_unavailable", "AI 计费服务暂时不可用")
+		}
+		return
+	}
+	charged := false
+	defer func() {
+		s.finishAIUsage(context.WithoutCancel(r.Context()), reservation, charged)
+	}()
 	image, revised, err := s.generateImage(r.Context(), provider, key, input)
 	if err != nil {
 		s.audit(r.Context(), "app:"+identity.AccountID, "ai_gateway.image", "ai_provider", provider.ID, "failed", "medium")
 		writeError(w, http.StatusBadGateway, "provider_error", "生图服务请求失败")
 		return
 	}
+	charged = true
 	s.audit(r.Context(), "app:"+identity.AccountID, "ai_gateway.image", "ai_provider", provider.ID, "allowed", "medium")
 	writeJSON(w, http.StatusOK, map[string]any{"created": time.Now().Unix(), "data": []map[string]any{{"b64_json": base64.StdEncoding.EncodeToString(image), "revised_prompt": revised}}})
 }

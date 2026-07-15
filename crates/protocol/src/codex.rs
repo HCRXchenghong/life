@@ -11,6 +11,10 @@ pub struct CodexThreadConfig {
     pub approval_policy: ApprovalPolicy,
     pub sandbox: SandboxMode,
     pub service_name: String,
+    #[serde(default)]
+    pub gateway_base_url: Option<String>,
+    #[serde(default)]
+    pub gateway_token: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -1,8 +1,8 @@
 :80 {
   encode zstd gzip
 
-  @api path /api/*
-  handle @api {
+  @backend path /api/* /v1/*
+  handle @backend {
     reverse_proxy api:8080
   }
 

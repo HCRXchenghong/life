@@ -14,7 +14,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use bytes::BytesMut;
 use daylink_protocol::{
     AgentCapability, AgentError, AgentErrorCode, AgentRequest, AgentResponse, CodexJsonRpcMessage,
-    Envelope, EnvelopeKind, FrameCodec, PROTOCOL_VERSION,
+    CodexThreadConfig, Envelope, EnvelopeKind, FrameCodec, PROTOCOL_VERSION,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -36,6 +36,7 @@ const MAX_COMMAND_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 struct AgentState {
     allowed_roots: Arc<Vec<PathBuf>>,
     transfer_root: Arc<PathBuf>,
+    codex_root: Arc<PathBuf>,
     codex_sessions: Arc<Mutex<HashMap<Uuid, CodexProcess>>>,
 }
 
@@ -43,6 +44,7 @@ struct CodexProcess {
     child: Child,
     stdin: ChildStdin,
     messages: mpsc::Receiver<CodexJsonRpcMessage>,
+    session_dir: PathBuf,
 }
 
 #[tokio::main]
@@ -76,9 +78,16 @@ async fn main() -> Result<()> {
     let transfer_root = allowed_roots[0].join(".daylink/transfers");
     tokio::fs::create_dir_all(&transfer_root).await?;
     set_owner_only_directory_permissions(&transfer_root)?;
+    let codex_root = allowed_roots[0].join(".daylink/codex-sessions");
+    if codex_root.exists() {
+        tokio::fs::remove_dir_all(&codex_root).await?;
+    }
+    tokio::fs::create_dir_all(&codex_root).await?;
+    set_owner_only_directory_permissions(&codex_root)?;
     let state = AgentState {
         allowed_roots: Arc::new(allowed_roots),
         transfer_root: Arc::new(transfer_root),
+        codex_root: Arc::new(codex_root),
         codex_sessions: Arc::new(Mutex::new(HashMap::new())),
     };
     if arguments.iter().any(|argument| argument == "--stdio") {
@@ -326,7 +335,7 @@ async fn handle_request(request: AgentRequest, state: &AgentState) -> Result<Age
             value: docker_logs(&container, lines).await?,
         }),
         AgentRequest::CodexStart { config } => {
-            let session_id = codex_start(state, &config.cwd).await?;
+            let session_id = codex_start(state, &config).await?;
             Ok(AgentResponse::CodexStarted { session_id })
         }
         AgentRequest::CodexMessage {
@@ -1067,20 +1076,12 @@ fn command_text(program: &str, arguments: &[&str]) -> Option<String> {
         .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned())
 }
 
-async fn codex_start(state: &AgentState, cwd: &str) -> Result<Uuid> {
-    let cwd = checked_path(state, cwd)?;
+async fn codex_start(state: &AgentState, config: &CodexThreadConfig) -> Result<Uuid> {
+    let cwd = checked_path(state, &config.cwd)?;
     if !cwd.is_dir() {
         bail!("Codex cwd is not a directory")
     }
-    let mut child = Command::new("codex")
-        .arg("app-server")
-        .current_dir(cwd)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .context("start codex app-server")?;
+    let (session_id, session_dir, mut child) = spawn_codex_app_server(state, config, &cwd).await?;
     let stdin = child.stdin.take().context("Codex stdin unavailable")?;
     let stdout = child.stdout.take().context("Codex stdout unavailable")?;
     let stderr = child.stderr.take().context("Codex stderr unavailable")?;
@@ -1107,20 +1108,90 @@ async fn codex_start(state: &AgentState, cwd: &str) -> Result<Uuid> {
     });
     tokio::spawn(async move {
         let mut lines = BufReader::new(stderr).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            warn!(message = %line, "Codex app-server stderr");
+        let mut count = 0_u64;
+        while let Ok(Some(_line)) = lines.next_line().await {
+            count = count.saturating_add(1);
+        }
+        if count > 0 {
+            warn!(
+                line_count = count,
+                "Codex app-server emitted suppressed stderr"
+            );
         }
     });
-    let session_id = Uuid::new_v4();
     state.codex_sessions.lock().await.insert(
         session_id,
         CodexProcess {
             child,
             stdin,
             messages: receiver,
+            session_dir,
         },
     );
     Ok(session_id)
+}
+
+async fn spawn_codex_app_server(
+    state: &AgentState,
+    config: &CodexThreadConfig,
+    cwd: &Path,
+) -> Result<(Uuid, PathBuf, Child)> {
+    let gateway_base_url = validate_codex_gateway_url(
+        config
+            .gateway_base_url
+            .as_deref()
+            .ok_or_else(|| anyhow!("Daylink AI gateway URL is required"))?,
+    )?;
+    let gateway_token = config
+        .gateway_token
+        .as_deref()
+        .filter(|token| {
+            token.starts_with("dlkc_")
+                && token.len() <= 300
+                && !token
+                    .chars()
+                    .any(|character| character.is_control() || character.is_whitespace())
+        })
+        .ok_or_else(|| anyhow!("Daylink AI gateway token is invalid"))?;
+    let model = config
+        .model
+        .as_deref()
+        .filter(|model| {
+            !model.is_empty()
+                && model.len() <= 120
+                && model.chars().all(|character| {
+                    character.is_ascii_alphanumeric() || "-._:/".contains(character)
+                })
+        })
+        .ok_or_else(|| anyhow!("Daylink AI model is invalid"))?;
+    let session_id = Uuid::new_v4();
+    let session_dir = state.codex_root.join(session_id.to_string());
+    tokio::fs::create_dir(&session_dir).await?;
+    set_owner_only_directory_permissions(&session_dir)?;
+    let config_path = session_dir.join("config.toml");
+    tokio::fs::write(&config_path, render_codex_config(gateway_base_url, model)).await?;
+    set_owner_only_permissions(&config_path)?;
+    let spawned = Command::new("codex")
+        .arg("app-server")
+        .current_dir(cwd)
+        .env("CODEX_HOME", &session_dir)
+        .env("DAYLINK_CODEX_TOKEN", gateway_token)
+        .env_remove("OPENAI_API_KEY")
+        .env_remove("OPENAI_API_TOKEN")
+        .env_remove("CODEX_API_KEY")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn();
+    let child = match spawned {
+        Ok(child) => child,
+        Err(error) => {
+            let _ = tokio::fs::remove_dir_all(&session_dir).await;
+            return Err(error).context("start codex app-server");
+        }
+    };
+    Ok((session_id, session_dir, child))
 }
 
 async fn codex_send(
@@ -1159,9 +1230,55 @@ async fn codex_stop(state: &AgentState, session_id: Uuid) -> Result<()> {
         .await
         .remove(&session_id)
         .ok_or_else(|| anyhow!("Codex session not found"))?;
-    process.child.kill().await?;
-    let _status = process.child.wait().await?;
+    let kill_result = process.child.kill().await;
+    let wait_result = process.child.wait().await;
+    let cleanup_result = tokio::fs::remove_dir_all(&process.session_dir).await;
+    if let Err(error) = cleanup_result {
+        return Err(error).context("remove isolated Codex session directory");
+    }
+    if let Err(error) = wait_result {
+        return Err(error).context("wait for Codex app-server");
+    }
+    if let Err(error) = kill_result
+        && error.kind() != std::io::ErrorKind::InvalidInput
+    {
+        return Err(error).context("stop Codex app-server");
+    }
     Ok(())
+}
+
+fn validate_codex_gateway_url(raw: &str) -> Result<&str> {
+    let value = raw.trim_end_matches('/');
+    let authority_and_path = value
+        .strip_prefix("https://")
+        .ok_or_else(|| anyhow!("Daylink AI gateway must use HTTPS"))?;
+    let (authority, path) = authority_and_path
+        .split_once('/')
+        .ok_or_else(|| anyhow!("Daylink AI gateway path is invalid"))?;
+    if authority.is_empty()
+        || authority.contains('@')
+        || !authority
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || ".-:[]".contains(character))
+        || path != "v1"
+        || value.len() > 2048
+        || value
+            .chars()
+            .any(|character| character.is_control() || character.is_whitespace())
+        || value.contains('?')
+        || value.contains('#')
+    {
+        bail!("Daylink AI gateway URL is invalid")
+    }
+    Ok(value)
+}
+
+fn render_codex_config(gateway_base_url: &str, model: &str) -> String {
+    let quoted_url = serde_json::to_string(gateway_base_url).expect("gateway URL is serializable");
+    let quoted_model = serde_json::to_string(model).expect("model is serializable");
+    format!(
+        "model = {quoted_model}\nmodel_provider = \"daylink\"\n\n[model_providers.daylink]\nname = \"Daylink\"\nbase_url = {quoted_url}\nenv_key = \"DAYLINK_CODEX_TOKEN\"\nwire_api = \"responses\"\n"
+    )
 }
 
 fn agent_error(code: AgentErrorCode, message: String, retryable: bool) -> AgentError {
@@ -1194,13 +1311,18 @@ mod tests {
     async fn test_state() -> (AgentState, PathBuf) {
         let root = std::env::temp_dir().join(format!("daylink-agent-test-{}", Uuid::new_v4()));
         let transfer_root = root.join(".daylink/transfers");
+        let codex_root = root.join(".daylink/codex-sessions");
         tokio::fs::create_dir_all(&transfer_root)
             .await
             .expect("create test dirs");
+        tokio::fs::create_dir_all(&codex_root)
+            .await
+            .expect("create codex test dir");
         (
             AgentState {
                 allowed_roots: Arc::new(vec![root.canonicalize().expect("canonical root")]),
                 transfer_root: Arc::new(transfer_root),
+                codex_root: Arc::new(codex_root),
                 codex_sessions: Arc::new(Mutex::new(HashMap::new())),
             },
             root,
@@ -1252,5 +1374,16 @@ mod tests {
         assert!(require_approval("").is_err());
         assert!(require_approval("approved-123").is_ok());
         tokio::fs::remove_dir_all(root).await.expect("cleanup");
+    }
+
+    #[test]
+    fn codex_gateway_config_references_environment_without_persisting_token() {
+        let config = render_codex_config("https://daylink.example/v1", "gpt-5.3-codex");
+        assert!(config.contains("env_key = \"DAYLINK_CODEX_TOKEN\""));
+        assert!(config.contains("wire_api = \"responses\""));
+        assert!(!config.contains("dlkc_"));
+        assert!(validate_codex_gateway_url("https://daylink.example/v1").is_ok());
+        assert!(validate_codex_gateway_url("http://daylink.example/v1").is_err());
+        assert!(validate_codex_gateway_url("https://name@daylink.example/v1").is_err());
     }
 }

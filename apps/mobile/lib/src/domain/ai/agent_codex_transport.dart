@@ -17,12 +17,28 @@ class AgentCodexAppServerTransport implements CodexAppServerTransport {
   static Future<AgentCodexAppServerTransport> start({
     required CodexAgentRequest request,
     required String cwd,
-    String? model,
+    required Uri gatewayBaseUrl,
+    required String gatewayToken,
+    required String model,
     String approvalPolicy = 'on_risk',
     String sandbox = 'workspace_write',
   }) async {
     if (!cwd.startsWith('/')) {
       throw ArgumentError('Codex working directory must be absolute');
+    }
+    if (!gatewayBaseUrl.isScheme('https') ||
+        gatewayBaseUrl.userInfo.isNotEmpty ||
+        gatewayBaseUrl.query.isNotEmpty ||
+        gatewayBaseUrl.fragment.isNotEmpty ||
+        !gatewayBaseUrl.path.endsWith('/v1')) {
+      throw ArgumentError('Codex gateway must be an HTTPS /v1 URL');
+    }
+    if (!gatewayToken.startsWith('dlkc_') ||
+        gatewayToken.length > 300 ||
+        gatewayToken.runes.any(
+          (character) => character <= 0x20 || character == 0x7f,
+        )) {
+      throw ArgumentError('Codex gateway token is invalid');
     }
     final response = await request({
       'type': 'codex_start',
@@ -32,6 +48,11 @@ class AgentCodexAppServerTransport implements CodexAppServerTransport {
         'approval_policy': approvalPolicy,
         'sandbox': sandbox,
         'service_name': 'daylink_mobile',
+        'gateway_base_url': gatewayBaseUrl.toString().replaceFirst(
+          RegExp(r'/$'),
+          '',
+        ),
+        'gateway_token': gatewayToken,
       },
     });
     if (response['type'] != 'codex_started' ||

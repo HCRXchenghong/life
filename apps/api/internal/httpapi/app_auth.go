@@ -145,6 +145,7 @@ func (s *Server) handleAppSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = s.db.ExecContext(r.Context(), "UPDATE app_sessions SET revoked_at = UTC_TIMESTAMP(6) WHERE id = ?", identity.SessionID)
+	_, _ = s.db.ExecContext(r.Context(), "UPDATE ai_gateway_tokens SET revoked_at = UTC_TIMESTAMP(6) WHERE app_session_id = ? AND revoked_at IS NULL", identity.SessionID)
 	s.audit(r.Context(), "app:"+identity.AccountID, "app.logout", "app_session", identity.SessionID, "allowed", "low")
 	writeJSON(w, http.StatusOK, map[string]any{"loggedOut": true})
 }
@@ -184,6 +185,9 @@ func (s *Server) handleAppPassword(w http.ResponseWriter, r *http.Request) {
 		digest.Algorithm, digest.Hash, digest.Salt, digest.Iterations, identity.AccountID)
 	if err == nil {
 		_, err = tx.ExecContext(r.Context(), "UPDATE app_sessions SET revoked_at = UTC_TIMESTAMP(6) WHERE account_id = ? AND revoked_at IS NULL", identity.AccountID)
+	}
+	if err == nil {
+		_, err = tx.ExecContext(r.Context(), "UPDATE ai_gateway_tokens SET revoked_at = UTC_TIMESTAMP(6) WHERE account_id = ? AND revoked_at IS NULL", identity.AccountID)
 	}
 	var pair appTokenPair
 	if err == nil {
