@@ -165,6 +165,7 @@ class DaylinkServices {
         gatewayBaseUrl: credential.baseUrl,
         gatewayToken: credential.token,
         model: credential.model,
+        reasoningEffort: credential.reasoningEffort,
       );
     } finally {
       gateway.close();

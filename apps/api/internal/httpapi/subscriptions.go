@@ -12,15 +12,15 @@ import (
 )
 
 const (
-	maximumAIQuotaUnits   = 10_000_000
+	maximumAIQuotaTokens  = int64(1_000_000_000_000_000)
 	aiUsageReservationTTL = 10 * time.Minute
 )
 
 type publicAIPlanLimit struct {
-	Plan         string    `json:"plan"`
-	WeeklyUnits  int       `json:"weeklyUnits"`
-	MonthlyUnits int       `json:"monthlyUnits"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	Plan          string    `json:"plan"`
+	WeeklyTokens  int64     `json:"weeklyTokens"`
+	MonthlyTokens int64     `json:"monthlyTokens"`
+	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
 type publicAISubscription struct {
@@ -37,17 +37,18 @@ type publicAIEntitlement struct {
 	CardType        string     `json:"cardType,omitempty"`
 	StartsAt        *time.Time `json:"startsAt,omitempty"`
 	ExpiresAt       *time.Time `json:"expiresAt,omitempty"`
-	WeeklyUsed      int        `json:"weeklyUsed"`
-	WeeklyLimit     *int       `json:"weeklyLimit"`
+	WeeklyUsed      int64      `json:"weeklyUsed"`
+	WeeklyLimit     *int64     `json:"weeklyLimit"`
 	WeeklyResetsAt  time.Time  `json:"weeklyResetsAt"`
-	MonthlyUsed     int        `json:"monthlyUsed"`
-	MonthlyLimit    *int       `json:"monthlyLimit"`
+	MonthlyUsed     int64      `json:"monthlyUsed"`
+	MonthlyLimit    *int64     `json:"monthlyLimit"`
 	MonthlyResetsAt time.Time  `json:"monthlyResetsAt"`
 	SupportedModes  []string   `json:"supportedModes"`
 }
 
 type aiUsageReservation struct {
-	ID string
+	ID             string
+	ReservedTokens int64
 }
 
 type aiEntitlementError struct {
@@ -76,19 +77,19 @@ func (s *Server) handleAdminAIPlanLimits(w http.ResponseWriter, r *http.Request)
 	}
 	var input struct {
 		Plus struct {
-			WeeklyUnits  int `json:"weeklyUnits"`
-			MonthlyUnits int `json:"monthlyUnits"`
+			WeeklyTokens  int64 `json:"weeklyTokens"`
+			MonthlyTokens int64 `json:"monthlyTokens"`
 		} `json:"plus"`
 		Pro struct {
-			WeeklyUnits  int `json:"weeklyUnits"`
-			MonthlyUnits int `json:"monthlyUnits"`
+			WeeklyTokens  int64 `json:"weeklyTokens"`
+			MonthlyTokens int64 `json:"monthlyTokens"`
 		} `json:"pro"`
 	}
 	if err := decodeJSON(r, &input); err != nil ||
-		!validAIPlanLimit(input.Plus.WeeklyUnits, input.Plus.MonthlyUnits) ||
-		!validAIPlanLimit(input.Pro.WeeklyUnits, input.Pro.MonthlyUnits) ||
-		(input.Plus.WeeklyUnits > 0 && input.Pro.WeeklyUnits > 0 && input.Pro.WeeklyUnits < input.Plus.WeeklyUnits) ||
-		(input.Plus.MonthlyUnits > 0 && input.Pro.MonthlyUnits > 0 && input.Pro.MonthlyUnits < input.Plus.MonthlyUnits) {
+		!validAIPlanLimit(input.Plus.WeeklyTokens, input.Plus.MonthlyTokens) ||
+		!validAIPlanLimit(input.Pro.WeeklyTokens, input.Pro.MonthlyTokens) ||
+		(input.Plus.WeeklyTokens > 0 && input.Pro.WeeklyTokens > 0 && input.Pro.WeeklyTokens < input.Plus.WeeklyTokens) ||
+		(input.Plus.MonthlyTokens > 0 && input.Pro.MonthlyTokens > 0 && input.Pro.MonthlyTokens < input.Plus.MonthlyTokens) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "套餐额度无效，Pro 额度不能低于 Plus")
 		return
 	}
@@ -99,14 +100,14 @@ func (s *Server) handleAdminAIPlanLimits(w http.ResponseWriter, r *http.Request)
 	}
 	defer func() { _ = tx.Rollback() }()
 	for _, plan := range []struct {
-		name         string
-		weeklyUnits  int
-		monthlyUnits int
-	}{{"plus", input.Plus.WeeklyUnits, input.Plus.MonthlyUnits}, {"pro", input.Pro.WeeklyUnits, input.Pro.MonthlyUnits}} {
+		name          string
+		weeklyTokens  int64
+		monthlyTokens int64
+	}{{"plus", input.Plus.WeeklyTokens, input.Plus.MonthlyTokens}, {"pro", input.Pro.WeeklyTokens, input.Pro.MonthlyTokens}} {
 		_, err = tx.ExecContext(r.Context(), `INSERT INTO ai_plan_limits
           (plan, weekly_units, monthly_units, updated_by_admin_id) VALUES (?, ?, ?, ?)
           ON DUPLICATE KEY UPDATE weekly_units = VALUES(weekly_units), monthly_units = VALUES(monthly_units),
-          updated_by_admin_id = VALUES(updated_by_admin_id)`, plan.name, plan.weeklyUnits, plan.monthlyUnits, identity.ID)
+			updated_by_admin_id = VALUES(updated_by_admin_id)`, plan.name, plan.weeklyTokens, plan.monthlyTokens, identity.ID)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "plan_update_failed", "套餐额度保存失败")
 			return
@@ -161,7 +162,7 @@ func (s *Server) handleAdminAppSubscription(w http.ResponseWriter, r *http.Reque
 			break
 		}
 		if input.Plan != "max" {
-			var weekly, monthly int
+			var weekly, monthly int64
 			if scanErr := tx.QueryRowContext(r.Context(), "SELECT weekly_units, monthly_units FROM ai_plan_limits WHERE plan = ?", input.Plan).Scan(&weekly, &monthly); scanErr != nil || weekly < 1 || monthly < 1 {
 				err = errors.New("请先在设置中配置该套餐的周额度和月额度")
 				break
@@ -230,7 +231,7 @@ func (s *Server) listAIPlanLimits(ctx context.Context) ([]publicAIPlanLimit, err
 	limits := make([]publicAIPlanLimit, 0, 2)
 	for rows.Next() {
 		var limit publicAIPlanLimit
-		if err := rows.Scan(&limit.Plan, &limit.WeeklyUnits, &limit.MonthlyUnits, &limit.UpdatedAt); err != nil {
+		if err := rows.Scan(&limit.Plan, &limit.WeeklyTokens, &limit.MonthlyTokens, &limit.UpdatedAt); err != nil {
 			return nil, err
 		}
 		limits = append(limits, limit)
@@ -268,15 +269,15 @@ func (s *Server) loadAIEntitlement(ctx context.Context, accountID string, now ti
 	entitlement.StartsAt, entitlement.ExpiresAt = &startsAt, &expiresAt
 	entitlement.Active = expiresAt.After(now)
 	if entitlement.Plan != "max" {
-		var weekly, monthly int
+		var weekly, monthly int64
 		if err := s.db.QueryRowContext(ctx, "SELECT weekly_units, monthly_units FROM ai_plan_limits WHERE plan = ?", entitlement.Plan).Scan(&weekly, &monthly); err != nil {
 			return publicAIEntitlement{}, err
 		}
 		entitlement.WeeklyLimit, entitlement.MonthlyLimit = &weekly, &monthly
 	}
 	if err := s.db.QueryRowContext(ctx, `SELECT
-      COALESCE(SUM(CASE WHEN created_at >= ? THEN units ELSE 0 END), 0),
-      COALESCE(SUM(CASE WHEN created_at >= ? THEN units ELSE 0 END), 0)
+		COALESCE(SUM(CASE WHEN created_at >= ? THEN CASE WHEN status = 'reserved' THEN reserved_units ELSE units END ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN created_at >= ? THEN CASE WHEN status = 'reserved' THEN reserved_units ELSE units END ELSE 0 END), 0)
 		FROM ai_usage_events WHERE account_id = ? AND
 		(status = 'charged' OR (status = 'reserved' AND created_at >= ?))`,
 		weekStart, monthStart, accountID, now.Add(-aiUsageReservationTTL)).
@@ -286,8 +287,9 @@ func (s *Server) loadAIEntitlement(ctx context.Context, accountID string, now ti
 	return entitlement, nil
 }
 
-func (s *Server) reserveAIUsage(ctx context.Context, accountID, mode, kind string, units int) (aiUsageReservation, error) {
-	if !validAIMode(mode) || (kind != "responses" && kind != "image") || units < 1 || units > 100 {
+func (s *Server) reserveAIUsage(ctx context.Context, accountID, mode, kind, model string, reservedTokens int64) (aiUsageReservation, error) {
+	if !validAIMode(mode) || (kind != "responses" && kind != "image") ||
+		reservedTokens < 1 || reservedTokens > 16_000_000 || len(model) < 1 || len(model) > 120 {
 		return aiUsageReservation{}, &aiEntitlementError{Code: "invalid_usage", Message: "AI 用量请求无效"}
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -306,7 +308,7 @@ func (s *Server) reserveAIUsage(ctx context.Context, accountID, mode, kind strin
 		return aiUsageReservation{}, err
 	}
 	if plan != "max" {
-		var weeklyLimit, monthlyLimit int
+		var weeklyLimit, monthlyLimit int64
 		if err := tx.QueryRowContext(ctx, "SELECT weekly_units, monthly_units FROM ai_plan_limits WHERE plan = ?", plan).Scan(&weeklyLimit, &monthlyLimit); err != nil {
 			return aiUsageReservation{}, err
 		}
@@ -314,20 +316,20 @@ func (s *Server) reserveAIUsage(ctx context.Context, accountID, mode, kind strin
 			return aiUsageReservation{}, &aiEntitlementError{Code: "plan_not_configured", Message: "该套餐额度尚未配置"}
 		}
 		weekStart, _, monthStart, _ := aiQuotaWindows(time.Now().UTC())
-		var weeklyUsed, monthlyUsed int
+		var weeklyUsed, monthlyUsed int64
 		if err := tx.QueryRowContext(ctx, `SELECT
-          COALESCE(SUM(CASE WHEN created_at >= ? THEN units ELSE 0 END), 0),
-          COALESCE(SUM(CASE WHEN created_at >= ? THEN units ELSE 0 END), 0)
+		  COALESCE(SUM(CASE WHEN created_at >= ? THEN CASE WHEN status = 'reserved' THEN reserved_units ELSE units END ELSE 0 END), 0),
+		  COALESCE(SUM(CASE WHEN created_at >= ? THEN CASE WHEN status = 'reserved' THEN reserved_units ELSE units END ELSE 0 END), 0)
 			FROM ai_usage_events WHERE account_id = ? AND
 			(status = 'charged' OR (status = 'reserved' AND created_at >= ?))`,
 			weekStart, monthStart, accountID, time.Now().UTC().Add(-aiUsageReservationTTL)).
 			Scan(&weeklyUsed, &monthlyUsed); err != nil {
 			return aiUsageReservation{}, err
 		}
-		if weeklyUsed+units > weeklyLimit {
+		if weeklyUsed+reservedTokens > weeklyLimit {
 			return aiUsageReservation{}, &aiEntitlementError{Code: "weekly_quota_exceeded", Message: "本周 AI 额度已用完"}
 		}
-		if monthlyUsed+units > monthlyLimit {
+		if monthlyUsed+reservedTokens > monthlyLimit {
 			return aiUsageReservation{}, &aiEntitlementError{Code: "monthly_quota_exceeded", Message: "本月 AI 额度已用完"}
 		}
 	}
@@ -336,26 +338,29 @@ func (s *Server) reserveAIUsage(ctx context.Context, accountID, mode, kind strin
 		return aiUsageReservation{}, err
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO ai_usage_events
-      (id, account_id, mode, kind, units, status) VALUES (?, ?, ?, ?, ?, 'reserved')`,
-		id, accountID, mode, kind, units); err != nil {
+	  (id, account_id, mode, kind, model, units, reserved_units, status)
+	  VALUES (?, ?, ?, ?, ?, 0, ?, 'reserved')`, id, accountID, mode, kind, model, reservedTokens); err != nil {
 		return aiUsageReservation{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return aiUsageReservation{}, err
 	}
-	return aiUsageReservation{ID: id}, nil
+	return aiUsageReservation{ID: id, ReservedTokens: reservedTokens}, nil
 }
 
-func (s *Server) finishAIUsage(ctx context.Context, reservation aiUsageReservation, charged bool) {
+func (s *Server) finishAIUsage(ctx context.Context, reservation aiUsageReservation, usage *providerTokenUsage) {
 	if reservation.ID == "" {
 		return
 	}
-	status := "released"
-	if charged {
-		status = "charged"
+	if usage == nil || usage.TotalTokens < 1 {
+		_, _ = s.db.ExecContext(ctx, `UPDATE ai_usage_events SET status = 'released', reserved_units = 0,
+		  finalized_at = UTC_TIMESTAMP(6) WHERE id = ? AND status = 'reserved'`, reservation.ID)
+		return
 	}
-	_, _ = s.db.ExecContext(ctx, `UPDATE ai_usage_events SET status = ?, finalized_at = UTC_TIMESTAMP(6)
-      WHERE id = ? AND status = 'reserved'`, status, reservation.ID)
+	_, _ = s.db.ExecContext(ctx, `UPDATE ai_usage_events SET status = 'charged', units = ?, reserved_units = 0,
+	  input_tokens = ?, output_tokens = ?, cached_input_tokens = ?, reasoning_tokens = ?,
+	  finalized_at = UTC_TIMESTAMP(6) WHERE id = ? AND status = 'reserved'`, usage.TotalTokens,
+		usage.InputTokens, usage.OutputTokens, usage.CachedInputTokens, usage.ReasoningTokens, reservation.ID)
 }
 
 func writeAIEntitlementError(w http.ResponseWriter, err error) bool {
@@ -367,8 +372,8 @@ func writeAIEntitlementError(w http.ResponseWriter, err error) bool {
 	return true
 }
 
-func validAIPlanLimit(weekly, monthly int) bool {
-	return weekly >= 0 && monthly >= 0 && weekly <= maximumAIQuotaUnits && monthly <= maximumAIQuotaUnits &&
+func validAIPlanLimit(weekly, monthly int64) bool {
+	return weekly >= 0 && monthly >= 0 && weekly <= maximumAIQuotaTokens && monthly <= maximumAIQuotaTokens &&
 		((weekly == 0 && monthly == 0) || (weekly > 0 && monthly >= weekly))
 }
 

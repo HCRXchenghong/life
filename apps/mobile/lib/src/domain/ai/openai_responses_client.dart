@@ -35,10 +35,13 @@ class OpenAiResponsesClient {
     var toolCallCount = 0;
     while (round++ < maxToolRounds) {
       final body = <String, Object?>{
-        if (provider.kind != AiProviderKind.daylinkGateway)
-          'model': provider.textModel,
+        'model': provider.textModel,
         if (provider.kind == AiProviderKind.daylinkGateway)
           'providerId': provider.id,
+        if (provider.kind == AiProviderKind.daylinkGateway)
+          'reasoningEffort': provider.reasoningEffort.name,
+        if (provider.kind != AiProviderKind.daylinkGateway)
+          'reasoning': {'effort': provider.reasoningEffort.name},
         'input': nextInput,
         'tools': tools.specs.map((spec) => spec.toResponsesTool()).toList(),
         'store': true,

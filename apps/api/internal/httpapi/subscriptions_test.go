@@ -8,7 +8,7 @@ import (
 func TestAIPlanLimitValidation(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
-		weekly, monthly int
+		weekly, monthly int64
 		valid           bool
 	}{
 		{0, 0, true},
@@ -16,7 +16,7 @@ func TestAIPlanLimitValidation(t *testing.T) {
 		{400, 100, false},
 		{0, 100, false},
 		{-1, 100, false},
-		{100, maximumAIQuotaUnits + 1, false},
+		{100, maximumAIQuotaTokens + 1, false},
 	} {
 		if actual := validAIPlanLimit(test.weekly, test.monthly); actual != test.valid {
 			t.Fatalf("validAIPlanLimit(%d, %d) = %v, want %v", test.weekly, test.monthly, actual, test.valid)

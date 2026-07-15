@@ -135,6 +135,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /api/app/auth/session", s.handleAppSession)
 	s.mux.HandleFunc("POST /api/app/auth/password", s.handleAppPassword)
 	s.mux.HandleFunc("GET /api/app/ai-settings", s.handleAppAISettings)
+	s.mux.HandleFunc("PUT /api/app/ai-preferences", s.handleAppAIPreferences)
 	s.mux.HandleFunc("GET /api/app/ai-entitlement", s.handleAppAIEntitlement)
 	s.mux.HandleFunc("POST /api/app/ai-remote-token", s.handleAppAIRemoteToken)
 	s.mux.HandleFunc("POST /api/assistant/responses", s.handleAssistantResponses)
@@ -162,7 +163,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status": "ok", "service": "daylink-api", "version": "0.4.0", "time": time.Now().UTC(),
+		"status": "ok", "service": "daylink-api", "version": "0.5.0", "time": time.Now().UTC(),
 	})
 }
 

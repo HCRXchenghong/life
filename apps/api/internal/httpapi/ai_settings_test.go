@@ -24,10 +24,38 @@ func TestSelectProviderModelsPrefersResponsesAndImageModels(t *testing.T) {
 	}
 }
 
-func TestSelectProviderModelsRequiresImageCapability(t *testing.T) {
+func TestSelectProviderModelsAllowsTextOnlyProviders(t *testing.T) {
 	t.Parallel()
-	_, _, ok := selectProviderModels([]string{"gpt-5.4", "text-embedding-3-large"})
-	if ok {
-		t.Fatal("provider without image model must not be accepted")
+	text, image, ok := selectProviderModels([]string{"claude-sonnet-4", "text-embedding-3-large"})
+	if !ok || text != "claude-sonnet-4" || image != "" {
+		t.Fatalf("text-only provider selected %q, %q, %v", text, image, ok)
+	}
+}
+
+func TestProviderModelEntriesAcceptsCompatibleShapes(t *testing.T) {
+	t.Parallel()
+	for _, raw := range []string{
+		`{"data":[{"id":"gpt-5.4"}]}`,
+		`{"models":["gpt-5.4"]}`,
+		`[{"id":"gpt-5.4"}]`,
+	} {
+		models, err := providerModelEntries([]byte(raw))
+		if err != nil || len(models) != 1 || models[0] != "gpt-5.4" {
+			t.Fatalf("providerModelEntries(%s) = %#v, %v", raw, models, err)
+		}
+	}
+}
+
+func TestReasoningEffortsMatchAppContract(t *testing.T) {
+	t.Parallel()
+	for _, effort := range []string{"low", "medium", "high", "xhigh"} {
+		if !validAIReasoningEffort(effort) {
+			t.Fatalf("%s should be supported", effort)
+		}
+	}
+	for _, effort := range []string{"", "minimal", "max", "ultra"} {
+		if validAIReasoningEffort(effort) {
+			t.Fatalf("%s should be rejected", effort)
+		}
 	}
 }

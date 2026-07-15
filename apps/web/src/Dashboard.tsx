@@ -262,9 +262,10 @@ function Audit() {
   return <Page kicker="安全审计" title="安全事件" subtitle="不记录密码、API Key、提示词或用户内容" action={action}>{message && <p className="admin-accounts-notice">{message}</p>}<section className="admin-audit-list">{result.events.length === 0 && <EmptyState title="暂无安全事件" detail="后台的登录和配置操作会显示在这里。" />}{result.events.map((event) => <article className="admin-audit-row" key={event.id}><div className="admin-audit-row-copy"><h2>{event.actionLabel}</h2><p>{event.actorLabel} · {event.targetTypeLabel} · {new Date(event.createdAt).toLocaleString("zh-CN")}</p></div><span className={`admin-audit-outcome ${event.outcome}`}>{event.outcomeLabel}</span><span className={`admin-audit-risk ${event.risk}`}>{event.riskLabel}</span></article>)}</section><nav className="admin-audit-pagination" aria-label="安全审计分页"><p>共 {result.total} 条 · 第 {result.page} / {result.totalPages} 页</p><div><button disabled={result.page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>上一页</button><button disabled={result.page >= result.totalPages} onClick={() => setPage((current) => Math.min(result.totalPages, current + 1))}>下一页</button></div></nav></Page>;
 }
 
-type Provider = { id: string; baseUrl: string; textModel: string; imageModel: string | null; apiKeyHint: string };
+type ProviderModel = { id: string; kind: "text" | "image" | "other" };
+type Provider = { id: string; baseUrl: string; textModel: string; imageModel: string | null; apiKeyHint: string; models?: ProviderModel[] };
 type GeneratedAsset = { id: string; url: string; createdAt: string };
-type PlanLimit = { plan: "plus" | "pro"; weeklyUnits: number; monthlyUnits: number; updatedAt: string };
+type PlanLimit = { plan: "plus" | "pro"; weeklyTokens: number; monthlyTokens: number; updatedAt: string };
 
 function Settings() {
   const [dialog, setDialog] = useState<"password" | "totp" | null>(null);
@@ -287,10 +288,13 @@ function Settings() {
 
   async function saveAI(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const formElement = event.currentTarget;
+    const values = Object.fromEntries(new FormData(formElement));
     try {
-      const result = await api<{ setting: Provider }>("/api/admin/ai-settings", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(event.currentTarget))) });
+      const result = await api<{ setting: Provider }>("/api/admin/ai-settings", { method: "POST", body: JSON.stringify(values) });
       setAI(result.setting);
-      event.currentTarget.reset();
+      const keyInput = formElement.elements.namedItem("apiKey");
+      if (keyInput instanceof HTMLInputElement) keyInput.value = "";
       setMessage("AI 服务已加密保存并自动识别模型");
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : "AI 配置保存失败"); }
   }
@@ -319,8 +323,8 @@ function Settings() {
       const result = await api<{ plans: PlanLimit[] }>("/api/admin/ai-plans", {
         method: "POST",
         body: JSON.stringify({
-          plus: { weeklyUnits: Number(form.get("plusWeekly")), monthlyUnits: Number(form.get("plusMonthly")) },
-          pro: { weeklyUnits: Number(form.get("proWeekly")), monthlyUnits: Number(form.get("proMonthly")) },
+          plus: { weeklyTokens: yiTokens(form.get("plusWeekly")), monthlyTokens: yiTokens(form.get("plusMonthly")) },
+          pro: { weeklyTokens: yiTokens(form.get("proWeekly")), monthlyTokens: yiTokens(form.get("proMonthly")) },
         }),
       });
       setPlans(result.plans);
@@ -345,17 +349,17 @@ function Settings() {
         <form onSubmit={saveAI}>
           <label>API 地址<input name="baseUrl" type="url" required defaultValue={ai?.baseUrl ?? ""} placeholder="https://api.example.com" /></label>
           <label>API Key<input name="apiKey" type="password" required={!ai} autoComplete="off" placeholder={ai ? `已保存 · ${ai.apiKeyHint}（留空不修改）` : "输入 API Key"} /></label>
-          {ai && <p className="admin-settings-models">已自动选择 {ai.textModel}{ai.imageModel ? ` · ${ai.imageModel}` : ""}</p>}
-          <div className="admin-settings-ai-actions"><button className="admin-accounts-primary">加密保存</button>{ai && <><button type="button" onClick={() => void testAI()}>测试 API</button><button type="button" onClick={() => void testImage()}>测试生图</button></>}</div>
+		  {ai && <p className="admin-settings-models">已同步 {(ai.models ?? []).filter((model) => model.kind === "text").length} 个对话模型{ai.imageModel ? `、${(ai.models ?? []).filter((model) => model.kind === "image").length} 个生图模型` : ""} · 默认 {ai.textModel}</p>}
+		  <div className="admin-settings-ai-actions"><button className="admin-accounts-primary">加密保存</button>{ai && <><button type="button" onClick={() => void testAI()}>测试 API</button>{ai.imageModel && <button type="button" onClick={() => void testImage()}>测试生图</button>}</>}</div>
         </form>
         {testAsset && <a className="admin-settings-test-image" href={testAsset.url} target="_blank" rel="noreferrer"><img src={testAsset.url} alt="AI 生图测试结果" /><span>生图测试结果</span></a>}
       </section>
       <section className="admin-settings-card admin-settings-ai admin-settings-plans">
-        <header><div><h2>AI 套餐额度</h2><p>本地 AI 与 SSH Agent 共用账号额度；生图按 5 单位、对话按 1 单位计费</p></div><span className="admin-plan-badge max">Max 无限额</span></header>
-        <form key={plans.map((item) => `${item.plan}:${item.weeklyUnits}:${item.monthlyUnits}`).join("|")} onSubmit={savePlans}>
+        <header><div><h2>AI 套餐额度</h2><p>本地 AI 与 SSH Agent 共用额度，按上游返回的真实 token 结算</p></div><span className="admin-plan-badge max">Max 无限额</span></header>
+        <form key={plans.map((item) => `${item.plan}:${item.weeklyTokens}:${item.monthlyTokens}`).join("|")} onSubmit={savePlans}>
           <div className="admin-plan-limit-grid">
-            <strong>Plus</strong><label>每周单位<input name="plusWeekly" type="number" min="1" max="10000000" required defaultValue={plans.find((item) => item.plan === "plus")?.weeklyUnits || ""} /></label><label>每月单位<input name="plusMonthly" type="number" min="1" max="10000000" required defaultValue={plans.find((item) => item.plan === "plus")?.monthlyUnits || ""} /></label>
-            <strong>Pro</strong><label>每周单位<input name="proWeekly" type="number" min="1" max="10000000" required defaultValue={plans.find((item) => item.plan === "pro")?.weeklyUnits || ""} /></label><label>每月单位<input name="proMonthly" type="number" min="1" max="10000000" required defaultValue={plans.find((item) => item.plan === "pro")?.monthlyUnits || ""} /></label>
+            <strong>Plus</strong><label>每周（亿 token）<input name="plusWeekly" type="number" min="0.01" step="0.01" max="10000000" required defaultValue={tokensInYi(plans.find((item) => item.plan === "plus")?.weeklyTokens)} /></label><label>每月（亿 token）<input name="plusMonthly" type="number" min="0.01" step="0.01" max="10000000" required defaultValue={tokensInYi(plans.find((item) => item.plan === "plus")?.monthlyTokens)} /></label>
+            <strong>Pro</strong><label>每周（亿 token）<input name="proWeekly" type="number" min="0.01" step="0.01" max="10000000" required defaultValue={tokensInYi(plans.find((item) => item.plan === "pro")?.weeklyTokens)} /></label><label>每月（亿 token）<input name="proMonthly" type="number" min="0.01" step="0.01" max="10000000" required defaultValue={tokensInYi(plans.find((item) => item.plan === "pro")?.monthlyTokens)} /></label>
           </div>
           <p className="admin-settings-models">月额度不得低于周额度，Pro 不得低于 Plus。自然周按 UTC 周一重置，自然月 1 日重置。</p>
           <div className="admin-settings-ai-actions"><button className="admin-accounts-primary">保存套餐额度</button></div>
@@ -369,6 +373,16 @@ function Settings() {
       {dialog === "totp" && <Dialog title="重新绑定双重验证" onClose={() => void closeTotp()}><form onSubmit={totp}>{!enrollment ? <><label>当前密码<input name="currentPassword" type="password" required /></label><label>当前动态验证码<input name="currentCode" inputMode="numeric" pattern="[0-9]{6}" required /></label></> : <><div className="admin-settings-qr"><img src={qr} width="176" height="176" alt="新的双重验证二维码" /></div><div className="admin-auth-secret"><code>{enrollment.secret}</code></div><label>新动态验证码<input name="code" inputMode="numeric" pattern="[0-9]{6}" required /></label></>}{message && <p className="admin-accounts-dialog-error">{message}</p>}<footer><button type="button" onClick={() => void closeTotp()}>取消</button><button className="admin-accounts-primary">{enrollment ? "验证并绑定" : "继续"}</button></footer></form></Dialog>}
     </Page>
   );
+}
+
+function yiTokens(value: FormDataEntryValue | null) {
+  const yi = Number(value);
+  return Number.isFinite(yi) ? Math.round(yi * 100_000_000) : 0;
+}
+
+function tokensInYi(value?: number) {
+  if (!value) return "";
+  return Number((value / 100_000_000).toFixed(8));
 }
 
 function planName(plan: Subscription["plan"]) {

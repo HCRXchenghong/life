@@ -30,15 +30,16 @@ type publicAppAccount struct {
 }
 
 type publicProvider struct {
-	ID         string    `json:"id"`
-	Name       string    `json:"name"`
-	Kind       string    `json:"kind"`
-	BaseURL    string    `json:"baseUrl"`
-	TextModel  string    `json:"textModel"`
-	ImageModel *string   `json:"imageModel"`
-	APIKeyHint string    `json:"apiKeyHint"`
-	Enabled    bool      `json:"enabled"`
-	UpdatedAt  time.Time `json:"updatedAt"`
+	ID         string          `json:"id"`
+	Name       string          `json:"name"`
+	Kind       string          `json:"kind"`
+	BaseURL    string          `json:"baseUrl"`
+	TextModel  string          `json:"textModel"`
+	ImageModel *string         `json:"imageModel"`
+	APIKeyHint string          `json:"apiKeyHint"`
+	Enabled    bool            `json:"enabled"`
+	UpdatedAt  time.Time       `json:"updatedAt"`
+	Models     []publicAIModel `json:"models,omitempty"`
 }
 
 type publicAuditEvent struct {
@@ -402,6 +403,9 @@ func (s *Server) providerMetadata(ctx context.Context, providerID, adminID strin
 			&image, &provider.APIKeyHint, &provider.Enabled, &provider.UpdatedAt)
 	if image.Valid {
 		provider.ImageModel = &image.String
+	}
+	if err == nil {
+		provider.Models, err = s.listProviderModels(ctx, provider.ID, true)
 	}
 	return provider, err
 }

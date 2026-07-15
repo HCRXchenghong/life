@@ -28,17 +28,40 @@ class AiGatewayClient {
   Future<DaylinkAiConfiguration> localConfiguration() async {
     final payload = await _request('GET', 'app/ai-settings');
     final provider = payload['provider']! as Map<String, Object?>;
+    final models = (provider['models'] as List<Object?>? ?? const [])
+        .whereType<Map<String, Object?>>()
+        .where((model) => model['kind'] == 'text' && model['id'] is String)
+        .map((model) => model['id']! as String)
+        .toList(growable: false);
+    final selectedModel =
+        provider['selectedTextModel'] as String? ??
+        provider['textModel']! as String;
     return DaylinkAiConfiguration(
       provider: AiProviderModel(
         id: provider['id']! as String,
         name: provider['name']! as String,
         kind: AiProviderKind.daylinkGateway,
         baseUrl: Uri.parse(provider['baseUrl']! as String),
-        textModel: provider['textModel']! as String,
+        textModel: selectedModel,
         imageModel: provider['imageModel'] as String?,
+        availableTextModels: models,
+        reasoningEffort: AiReasoningEffort.parse(
+          provider['reasoningEffort'] as String? ?? 'medium',
+        ),
         secretRef: 'daylink-session',
       ),
       accessToken: _mobileToken,
+    );
+  }
+
+  Future<void> updatePreferences({
+    required String model,
+    required AiReasoningEffort reasoningEffort,
+  }) async {
+    await _request(
+      'PUT',
+      'app/ai-preferences',
+      body: {'textModel': model, 'reasoningEffort': reasoningEffort.name},
     );
   }
 
@@ -72,18 +95,27 @@ class AiGatewayClient {
       baseUrl: baseUrl,
       token: token,
       model: gateway['model']! as String,
+      reasoningEffort: AiReasoningEffort.parse(
+        gateway['reasoningEffort'] as String? ?? 'medium',
+      ),
       expiresAt: DateTime.parse(gateway['expiresAt']! as String).toUtc(),
     );
   }
 
-  Future<Map<String, Object?>> _request(String method, String path) async {
+  Future<Map<String, Object?>> _request(
+    String method,
+    String path, {
+    Map<String, Object?>? body,
+  }) async {
     final request = http.Request(method, _apiBaseUri.resolve(path))
       ..headers.addAll({
         'accept': 'application/json',
         'authorization': 'Bearer $_mobileToken',
         if (method != 'GET') 'content-type': 'application/json',
       });
-    if (method != 'GET') request.body = '{}';
+    if (method != 'GET') {
+      request.body = jsonEncode(body ?? const <String, Object?>{});
+    }
     final response = await _http
         .send(request)
         .timeout(const Duration(seconds: 30));
@@ -160,12 +192,14 @@ class RemoteAiGatewayCredential {
     required this.baseUrl,
     required this.token,
     required this.model,
+    required this.reasoningEffort,
     required this.expiresAt,
   });
 
   final Uri baseUrl;
   final String token;
   final String model;
+  final AiReasoningEffort reasoningEffort;
   final DateTime expiresAt;
 }
 

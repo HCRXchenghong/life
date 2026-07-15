@@ -1164,12 +1164,20 @@ async fn spawn_codex_app_server(
                 })
         })
         .ok_or_else(|| anyhow!("Daylink AI model is invalid"))?;
+    let reasoning_effort = config.reasoning_effort.as_deref().unwrap_or("medium");
+    if !matches!(reasoning_effort, "low" | "medium" | "high" | "xhigh") {
+        bail!("Daylink AI reasoning effort is invalid")
+    }
     let session_id = Uuid::new_v4();
     let session_dir = state.codex_root.join(session_id.to_string());
     tokio::fs::create_dir(&session_dir).await?;
     set_owner_only_directory_permissions(&session_dir)?;
     let config_path = session_dir.join("config.toml");
-    tokio::fs::write(&config_path, render_codex_config(gateway_base_url, model)).await?;
+    tokio::fs::write(
+        &config_path,
+        render_codex_config(gateway_base_url, model, reasoning_effort),
+    )
+    .await?;
     set_owner_only_permissions(&config_path)?;
     let spawned = Command::new("codex")
         .arg("app-server")
@@ -1273,11 +1281,13 @@ fn validate_codex_gateway_url(raw: &str) -> Result<&str> {
     Ok(value)
 }
 
-fn render_codex_config(gateway_base_url: &str, model: &str) -> String {
+fn render_codex_config(gateway_base_url: &str, model: &str, reasoning_effort: &str) -> String {
     let quoted_url = serde_json::to_string(gateway_base_url).expect("gateway URL is serializable");
     let quoted_model = serde_json::to_string(model).expect("model is serializable");
+    let quoted_effort =
+        serde_json::to_string(reasoning_effort).expect("reasoning effort is serializable");
     format!(
-        "model = {quoted_model}\nmodel_provider = \"daylink\"\n\n[model_providers.daylink]\nname = \"Daylink\"\nbase_url = {quoted_url}\nenv_key = \"DAYLINK_CODEX_TOKEN\"\nwire_api = \"responses\"\n"
+        "model = {quoted_model}\nmodel_reasoning_effort = {quoted_effort}\nmodel_provider = \"daylink\"\n\n[model_providers.daylink]\nname = \"Daylink\"\nbase_url = {quoted_url}\nenv_key = \"DAYLINK_CODEX_TOKEN\"\nwire_api = \"responses\"\n"
     )
 }
 
@@ -1378,9 +1388,10 @@ mod tests {
 
     #[test]
     fn codex_gateway_config_references_environment_without_persisting_token() {
-        let config = render_codex_config("https://daylink.example/v1", "gpt-5.3-codex");
+        let config = render_codex_config("https://daylink.example/v1", "gpt-5.3-codex", "xhigh");
         assert!(config.contains("env_key = \"DAYLINK_CODEX_TOKEN\""));
         assert!(config.contains("wire_api = \"responses\""));
+        assert!(config.contains("model_reasoning_effort = \"xhigh\""));
         assert!(!config.contains("dlkc_"));
         assert!(validate_codex_gateway_url("https://daylink.example/v1").is_ok());
         assert!(validate_codex_gateway_url("http://daylink.example/v1").is_err());

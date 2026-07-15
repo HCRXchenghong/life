@@ -94,6 +94,8 @@ func (s *Server) handleAssistantResponses(w http.ResponseWriter, r *http.Request
 	}
 	var input struct {
 		ProviderID         string            `json:"providerId"`
+		Model              string            `json:"model,omitempty"`
+		ReasoningEffort    string            `json:"reasoningEffort,omitempty"`
 		Input              json.RawMessage   `json:"input"`
 		Tools              []json.RawMessage `json:"tools"`
 		PreviousResponseID string            `json:"previous_response_id,omitempty"`
@@ -119,30 +121,37 @@ func (s *Server) handleAssistantResponses(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusNotFound, "not_found", "AI 服务不可用")
 		return
 	}
+	preference, err := s.resolveAISelection(r.Context(), identity.AccountID, provider, input.Model, input.ReasoningEffort)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_ai_preference", "所选模型或推理强度不可用")
+		return
+	}
 	var parsedInput any
 	if json.Unmarshal(input.Input, &parsedInput) != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "input 无效")
 		return
 	}
-	reservation, err := s.reserveAIUsage(r.Context(), identity.AccountID, "local_ai", "responses", 1)
+	body := map[string]any{
+		"model": preference.TextModel, "input": parsedInput, "tools": tools,
+		"store": true, "parallel_tool_calls": false,
+		"reasoning": map[string]any{"effort": preference.ReasoningEffort},
+	}
+	if input.PreviousResponseID != "" && len(input.PreviousResponseID) <= 200 {
+		body["previous_response_id"] = input.PreviousResponseID
+	}
+	reservation, err := s.reserveAIUsage(r.Context(), identity.AccountID, "local_ai", "responses",
+		preference.TextModel, estimateResponseReservation(len(input.Input), body))
 	if err != nil {
 		if !writeAIEntitlementError(w, err) {
 			writeError(w, http.StatusServiceUnavailable, "billing_unavailable", "AI 计费服务暂时不可用")
 		}
 		return
 	}
-	charged := false
+	var actualUsage *providerTokenUsage
 	defer func() {
-		s.finishAIUsage(context.WithoutCancel(r.Context()), reservation, charged)
+		s.finishAIUsage(context.WithoutCancel(r.Context()), reservation, actualUsage)
 	}()
-	body := map[string]any{
-		"model": provider.TextModel, "input": parsedInput, "tools": tools,
-		"store": true, "parallel_tool_calls": false,
-	}
-	if input.PreviousResponseID != "" && len(input.PreviousResponseID) <= 200 {
-		body["previous_response_id"] = input.PreviousResponseID
-	}
-	runID := s.startAIRun(r.Context(), identity.AccountID, provider.ID, "assistant", provider.TextModel,
+	runID := s.startAIRun(r.Context(), identity.AccountID, provider.ID, "assistant", preference.TextModel,
 		security.PrivateHash(s.cfg.AIMasterKey, "ai-request", string(input.Input)))
 	result, err := s.postProviderJSON(r.Context(), provider, key, "/responses", body, 32<<20)
 	if err != nil {
@@ -152,7 +161,9 @@ func (s *Server) handleAssistantResponses(w http.ResponseWriter, r *http.Request
 		return
 	}
 	responseID, _ := result["id"].(string)
-	charged = true
+	if usage, ok := extractProviderTokenUsage(result); ok {
+		actualUsage = &usage
+	}
 	s.finishAIRun(r.Context(), runID, "succeeded", "", "", responseID)
 	s.audit(r.Context(), "app:"+identity.AccountID, "ai_gateway.response", "ai_provider", provider.ID, "allowed", "medium")
 	writeJSON(w, http.StatusOK, result)
@@ -180,24 +191,25 @@ func (s *Server) handleAssistantImages(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "image_provider_unavailable", "生图服务不可用")
 		return
 	}
-	reservation, err := s.reserveAIUsage(r.Context(), identity.AccountID, "local_ai", "image", 5)
+	reservation, err := s.reserveAIUsage(r.Context(), identity.AccountID, "local_ai", "image",
+		*provider.ImageModel, estimateImageReservation())
 	if err != nil {
 		if !writeAIEntitlementError(w, err) {
 			writeError(w, http.StatusServiceUnavailable, "billing_unavailable", "AI 计费服务暂时不可用")
 		}
 		return
 	}
-	charged := false
+	var actualUsage *providerTokenUsage
 	defer func() {
-		s.finishAIUsage(context.WithoutCancel(r.Context()), reservation, charged)
+		s.finishAIUsage(context.WithoutCancel(r.Context()), reservation, actualUsage)
 	}()
-	image, revised, err := s.generateImage(r.Context(), provider, key, input)
+	image, revised, usage, err := s.generateImage(r.Context(), provider, key, input)
 	if err != nil {
 		s.audit(r.Context(), "app:"+identity.AccountID, "ai_gateway.image", "ai_provider", provider.ID, "failed", "medium")
 		writeError(w, http.StatusBadGateway, "provider_error", "生图服务请求失败")
 		return
 	}
-	charged = true
+	actualUsage = usage
 	s.audit(r.Context(), "app:"+identity.AccountID, "ai_gateway.image", "ai_provider", provider.ID, "allowed", "medium")
 	writeJSON(w, http.StatusOK, map[string]any{"created": time.Now().Unix(), "data": []map[string]any{{"b64_json": base64.StdEncoding.EncodeToString(image), "revised_prompt": revised}}})
 }
@@ -231,7 +243,7 @@ func (s *Server) generateAdminImage(w http.ResponseWriter, r *http.Request, iden
 	}
 	runID := s.startAIRun(r.Context(), identity.ID, provider.ID, "image", *provider.ImageModel,
 		security.PrivateHash(s.cfg.AIMasterKey, "ai-request", input.Prompt))
-	image, revised, err := s.generateImage(r.Context(), provider, key, input)
+	image, revised, _, err := s.generateImage(r.Context(), provider, key, input)
 	if err != nil {
 		s.finishAIRun(r.Context(), runID, "failed", "image_generation_failed", "Image provider request failed", "")
 		writeError(w, http.StatusBadGateway, "image_generation_failed", "生图失败，请检查服务配置")
@@ -265,10 +277,10 @@ func (s *Server) generateAdminImage(w http.ResponseWriter, r *http.Request, iden
 	}})
 }
 
-func (s *Server) generateImage(ctx context.Context, provider providerSecret, key string, input imageRequest) ([]byte, any, error) {
+func (s *Server) generateImage(ctx context.Context, provider providerSecret, key string, input imageRequest) ([]byte, any, *providerTokenUsage, error) {
 	input.Prompt = strings.TrimSpace(input.Prompt)
 	if len(input.Prompt) == 0 || len(input.Prompt) > 8000 {
-		return nil, nil, errors.New("invalid prompt")
+		return nil, nil, nil, errors.New("invalid prompt")
 	}
 	if input.Size == "" {
 		input.Size = "1024x1024"
@@ -285,22 +297,26 @@ func (s *Server) generateImage(ctx context.Context, provider providerSecret, key
 	validSize := input.Size == "1024x1024" || input.Size == "1536x1024" || input.Size == "1024x1536"
 	validQuality := input.Quality == "low" || input.Quality == "medium" || input.Quality == "high"
 	if !validSize || !validQuality || input.N != 1 || input.Format != "png" {
-		return nil, nil, errors.New("invalid image options")
+		return nil, nil, nil, errors.New("invalid image options")
 	}
 	result, err := s.postProviderJSON(ctx, provider, key, "/images/generations", map[string]any{
 		"model": *provider.ImageModel, "prompt": input.Prompt, "n": 1, "size": input.Size,
 		"quality": input.Quality, "output_format": "png",
 	}, 40<<20)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
+	}
+	var usage *providerTokenUsage
+	if parsed, ok := extractProviderTokenUsage(result); ok {
+		usage = &parsed
 	}
 	data, ok := result["data"].([]any)
 	if !ok || len(data) != 1 {
-		return nil, nil, errors.New("provider returned no image")
+		return nil, nil, usage, errors.New("provider returned no image")
 	}
 	first, ok := data[0].(map[string]any)
 	if !ok {
-		return nil, nil, errors.New("provider returned invalid image")
+		return nil, nil, usage, errors.New("provider returned invalid image")
 	}
 	b64, _ := first["b64_json"].(string)
 	image, err := parseImageData(b64)
@@ -308,7 +324,7 @@ func (s *Server) generateImage(ctx context.Context, provider providerSecret, key
 		remoteURL, _ := first["url"].(string)
 		image, err = s.downloadGeneratedImage(ctx, remoteURL)
 	}
-	return image, first["revised_prompt"], err
+	return image, first["revised_prompt"], usage, err
 }
 
 func (s *Server) downloadGeneratedImage(ctx context.Context, rawURL string) ([]byte, error) {
@@ -390,6 +406,7 @@ func (s *Server) postProviderJSON(ctx context.Context, provider providerSecret, 
 		return decodeProviderSSE(response.Body, maximum)
 	}
 	decoder := json.NewDecoder(io.LimitReader(response.Body, maximum))
+	decoder.UseNumber()
 	var result map[string]any
 	if err := decoder.Decode(&result); err != nil {
 		return nil, errors.New("provider returned invalid JSON")
@@ -417,8 +434,8 @@ func decodeProviderSSE(reader io.Reader, maximum int64) (map[string]any, error) 
 		if raw == "" || raw == "[DONE]" {
 			return nil, nil
 		}
-		var event map[string]any
-		if json.Unmarshal([]byte(raw), &event) != nil {
+		event, decodeErr := decodeProviderEvent([]byte(raw))
+		if decodeErr != nil {
 			return nil, errors.New("provider returned invalid SSE data")
 		}
 		eventType, _ := event["type"].(string)

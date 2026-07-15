@@ -8,6 +8,8 @@ use crate::{ApprovalPolicy, SandboxMode};
 pub struct CodexThreadConfig {
     pub cwd: String,
     pub model: Option<String>,
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
     pub approval_policy: ApprovalPolicy,
     pub sandbox: SandboxMode,
     pub service_name: String,

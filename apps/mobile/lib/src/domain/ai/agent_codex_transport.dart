@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../../platform/native_core_service.dart';
+import 'ai_models.dart';
 import 'codex_app_server_client.dart';
 
 typedef CodexAgentRequest =
@@ -20,6 +21,7 @@ class AgentCodexAppServerTransport implements CodexAppServerTransport {
     required Uri gatewayBaseUrl,
     required String gatewayToken,
     required String model,
+    AiReasoningEffort reasoningEffort = AiReasoningEffort.medium,
     String approvalPolicy = 'on_risk',
     String sandbox = 'workspace_write',
   }) async {
@@ -45,6 +47,7 @@ class AgentCodexAppServerTransport implements CodexAppServerTransport {
       'config': {
         'cwd': cwd,
         'model': model,
+        'reasoning_effort': reasoningEffort.name,
         'approval_policy': approvalPolicy,
         'sandbox': sandbox,
         'service_name': 'daylink_mobile',

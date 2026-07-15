@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Daylink Go API
-  version: 0.4.0
+  version: 0.5.0
   description: >-
     HTTP contract for the Daylink mobile client, public time polls, AI gateway,
     and Web administration. Administrative routes use an HttpOnly administrator
@@ -362,6 +362,46 @@ paths:
                       - { type: "null" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/Error" }
+  /admin/ai-settings:
+    get:
+      security:
+        - adminSession: []
+      operationId: getDefaultAiProvider
+      responses:
+        "200":
+          description: Current provider metadata or null. The API Key is never returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [setting]
+                properties:
+                  setting:
+                    oneOf:
+                      - { $ref: "#/components/schemas/AiProvider" }
+                      - { type: "null" }
+    post:
+      security:
+        - adminSession: []
+      operationId: saveDefaultAiProvider
+      description: Encrypts the write-only API Key and refreshes the provider model catalog from /models.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [baseUrl]
+              properties:
+                baseUrl: { type: string, format: uri, pattern: "^https://" }
+                apiKey: { type: string, maxLength: 4096, format: password, writeOnly: true }
+      responses:
+        "200": { description: Provider and model catalog refreshed. }
+        "201": { description: Provider and model catalog created. }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "502": { $ref: "#/components/responses/Error" }
   /admin/ai-plans:
     get:
       security:
@@ -583,6 +623,46 @@ paths:
         "200": { $ref: "#/components/responses/AppAuthenticated" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "429": { $ref: "#/components/responses/Error" }
+  /app/ai-settings:
+    get:
+      security:
+        - appAccessToken: []
+      operationId: getAppAiSettings
+      responses:
+        "200":
+          description: Account-safe model catalog and current selection. No upstream API Key is returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [provider]
+                properties:
+                  provider: { $ref: "#/components/schemas/AppAiProvider" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/Error" }
+  /app/ai-preferences:
+    put:
+      security:
+        - appAccessToken: []
+      operationId: updateAppAiPreferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AiPreference" }
+      responses:
+        "200":
+          description: Account-scoped selection saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [preference]
+                properties:
+                  preference: { $ref: "#/components/schemas/AiPreference" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /app/ai-entitlement:
     get:
       security:
@@ -619,11 +699,12 @@ paths:
                   gateway:
                     type: object
                     additionalProperties: false
-                    required: [baseUrl, token, model, expiresAt]
+                    required: [baseUrl, token, model, reasoningEffort, expiresAt]
                     properties:
                       baseUrl: { type: string, format: uri, pattern: "^https://" }
                       token: { type: string, pattern: "^dlkc_", writeOnly: true }
                       model: { type: string }
+                      reasoningEffort: { $ref: "#/components/schemas/AiReasoningEffort" }
                       expiresAt: { type: string, format: date-time }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "402": { $ref: "#/components/responses/Error" }
@@ -948,7 +1029,7 @@ paths:
       security:
         - aiGatewayToken: []
       operationId: proxyRemoteCodexImage
-      description: OpenAI Images-compatible proxy billed at five account units per successful request.
+      description: OpenAI Images-compatible proxy billed from provider-reported token usage.
       requestBody:
         required: true
         content:
@@ -1033,6 +1114,46 @@ components:
         apiKeyHint: { type: string }
         enabled: { type: boolean }
         updatedAt: { type: string, format: date-time }
+        models:
+          type: array
+          items: { $ref: "#/components/schemas/AiModel" }
+    AiModel:
+      type: object
+      additionalProperties: false
+      required: [id, kind]
+      properties:
+        id: { type: string, minLength: 1, maxLength: 120, pattern: "^[A-Za-z0-9._:/-]+$" }
+        kind: { enum: [text, image, other] }
+    AiReasoningEffort:
+      type: string
+      enum: [low, medium, high, xhigh]
+    AiPreference:
+      type: object
+      additionalProperties: false
+      required: [textModel, reasoningEffort]
+      properties:
+        textModel: { type: string, minLength: 1, maxLength: 120 }
+        reasoningEffort: { $ref: "#/components/schemas/AiReasoningEffort" }
+    AppAiProvider:
+      type: object
+      additionalProperties: false
+      required: [id, name, kind, baseUrl, textModel, imageModel, enabled, models, selectedTextModel, reasoningEffort, reasoningEfforts]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        kind: { const: daylinkGateway }
+        baseUrl: { type: string, format: uri }
+        textModel: { type: string }
+        imageModel: { type: [string, "null"] }
+        enabled: { const: true }
+        models:
+          type: array
+          items: { $ref: "#/components/schemas/AiModel" }
+        selectedTextModel: { type: string }
+        reasoningEffort: { $ref: "#/components/schemas/AiReasoningEffort" }
+        reasoningEfforts:
+          type: array
+          items: { $ref: "#/components/schemas/AiReasoningEffort" }
     CreateAiProviderRequest:
       type: object
       additionalProperties: false
@@ -1095,10 +1216,10 @@ components:
     AiPlanLimitInput:
       type: object
       additionalProperties: false
-      required: [weeklyUnits, monthlyUnits]
+      required: [weeklyTokens, monthlyTokens]
       properties:
-        weeklyUnits: { type: integer, minimum: 0, maximum: 10000000 }
-        monthlyUnits: { type: integer, minimum: 0, maximum: 10000000 }
+        weeklyTokens: { type: integer, minimum: 0, maximum: 1000000000000000 }
+        monthlyTokens: { type: integer, minimum: 0, maximum: 1000000000000000 }
     AiPlanLimit:
       allOf:
         - $ref: "#/components/schemas/AiPlanLimitInput"
@@ -1153,6 +1274,8 @@ components:
       required: [providerId, input, tools]
       properties:
         providerId: { type: string, maxLength: 64 }
+        model: { type: string, minLength: 1, maxLength: 120 }
+        reasoningEffort: { $ref: "#/components/schemas/AiReasoningEffort" }
         input:
           oneOf:
             - { type: string, maxLength: 128000 }

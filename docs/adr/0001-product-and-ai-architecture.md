@@ -20,8 +20,10 @@ Responses API 适合多轮、工具和生图；Codex app-server 是深度嵌入 
 
 第三方 AI Provider 与 Codex 原生配置保持分离：Daylink Assistant 的 Key 由设备保险库或 Web
 服务端密钥库保存；Codex app-server 使用远端主机的用户级 Codex 配置。自定义 Codex Provider
-通过 `model_provider`、`model_providers.<id>.base_url`、`env_key` 与
-`wire_api = "responses"` 配置，Daylink 不把 Web 保存的 Key 写入远端配置或进程参数。
+通过 `model_provider`、`model_providers.<id>.base_url`、`env_key`、
+`wire_api = "responses"` 与 `model_reasoning_effort` 配置。模型目录由 Go 网关自动同步，App
+账号只保存自己的选模和 low / medium / high / xhigh 推理强度；Daylink 不把 Web 保存的 Key
+写入远端配置或进程参数。计费只采用上游 Responses/Images 返回的真实 usage，不按请求次数估算。
 
 ## 后果
 

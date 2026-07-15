@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"database/sql"
@@ -55,6 +56,11 @@ func (s *Server) handleAppAIRemoteToken(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusServiceUnavailable, "ai_unavailable", "AI 服务暂时不可用")
 		return
 	}
+	preference, err := s.resolveAISelection(r.Context(), identity.AccountID, provider, "", "")
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "ai_unavailable", "AI 模型目录暂时不可用")
+		return
+	}
 	now := time.Now().UTC()
 	expiresAt := now.Add(aiGatewayTokenTTL)
 	if entitlement.ExpiresAt.Before(expiresAt) {
@@ -79,7 +85,8 @@ func (s *Server) handleAppAIRemoteToken(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"gateway": map[string]any{
 			"baseUrl": strings.TrimRight(s.cfg.PublicOrigin, "/") + "/v1",
-			"token":   token, "model": provider.TextModel, "expiresAt": expiresAt,
+			"token":   token, "model": preference.TextModel,
+			"reasoningEffort": preference.ReasoningEffort, "expiresAt": expiresAt,
 		},
 	})
 }
@@ -93,9 +100,14 @@ func (s *Server) handleAIGatewayModels(w http.ResponseWriter, r *http.Request) {
 		writeGatewayError(w, http.StatusServiceUnavailable, "ai_unavailable", "AI 服务暂时不可用")
 		return
 	}
-	models := []map[string]any{{"id": provider.TextModel, "object": "model", "owned_by": "daylink"}}
-	if provider.ImageModel != nil {
-		models = append(models, map[string]any{"id": *provider.ImageModel, "object": "model", "owned_by": "daylink"})
+	catalog, err := s.listProviderModels(r.Context(), provider.ID, true)
+	if err != nil {
+		writeGatewayError(w, http.StatusServiceUnavailable, "ai_unavailable", "AI 模型目录暂时不可用")
+		return
+	}
+	models := make([]map[string]any, 0, len(catalog))
+	for _, model := range catalog {
+		models = append(models, map[string]any{"id": model.ID, "object": "model", "owned_by": "daylink", "kind": model.Kind})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": models})
 }
@@ -105,7 +117,7 @@ func (s *Server) handleAIGatewayResponses(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	s.proxyAIGatewayRequest(w, r, identity, "responses", 1, "/responses", false)
+	s.proxyAIGatewayRequest(w, r, identity, "responses", "/responses", false)
 }
 
 func (s *Server) handleAIGatewayImages(w http.ResponseWriter, r *http.Request) {
@@ -113,10 +125,10 @@ func (s *Server) handleAIGatewayImages(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.proxyAIGatewayRequest(w, r, identity, "image", 5, "/images/generations", true)
+	s.proxyAIGatewayRequest(w, r, identity, "image", "/images/generations", true)
 }
 
-func (s *Server) proxyAIGatewayRequest(w http.ResponseWriter, r *http.Request, identity *aiGatewayIdentity, kind string, units int, upstreamPath string, image bool) {
+func (s *Server) proxyAIGatewayRequest(w http.ResponseWriter, r *http.Request, identity *aiGatewayIdentity, kind, upstreamPath string, image bool) {
 	if retry, err := s.consumeRateLimit(r.Context(), r, "ai_gateway_"+kind, identity.AccountID, 180); err != nil {
 		writeGatewayError(w, http.StatusServiceUnavailable, "rate_limit_unavailable", "鉴权服务暂时不可用")
 		return
@@ -139,10 +151,42 @@ func (s *Server) proxyAIGatewayRequest(w http.ResponseWriter, r *http.Request, i
 		writeGatewayError(w, http.StatusServiceUnavailable, "ai_unavailable", "AI 服务暂时不可用")
 		return
 	}
+	selectedModel := ""
 	if image {
-		body["model"] = *provider.ImageModel
+		selectedModel, _ = body["model"].(string)
+		if selectedModel == "" {
+			selectedModel = *provider.ImageModel
+		}
+		enabled, checkErr := s.modelIsEnabled(r.Context(), provider.ID, selectedModel, "image")
+		if checkErr != nil {
+			writeGatewayError(w, http.StatusServiceUnavailable, "ai_unavailable", "AI 模型目录暂时不可用")
+			return
+		}
+		if !enabled {
+			writeGatewayError(w, http.StatusBadRequest, "model_not_found", "所选生图模型不可用")
+			return
+		}
+		body["model"] = selectedModel
 	} else {
-		body["model"] = provider.TextModel
+		requestedModel, _ := body["model"].(string)
+		requestedEffort, valid := reasoningEffortFromBody(body)
+		if !valid {
+			writeGatewayError(w, http.StatusBadRequest, "invalid_reasoning_effort", "推理强度仅支持 low、medium、high、xhigh")
+			return
+		}
+		preference, selectionErr := s.resolveAISelection(r.Context(), identity.AccountID, provider, requestedModel, requestedEffort)
+		if selectionErr != nil {
+			writeGatewayError(w, http.StatusBadRequest, "model_not_found", "所选模型或推理强度不可用")
+			return
+		}
+		selectedModel = preference.TextModel
+		body["model"] = selectedModel
+		reasoning, _ := body["reasoning"].(map[string]any)
+		if reasoning == nil {
+			reasoning = make(map[string]any)
+		}
+		reasoning["effort"] = preference.ReasoningEffort
+		body["reasoning"] = reasoning
 		body["store"] = false
 	}
 	encoded, err := json.Marshal(body)
@@ -150,16 +194,20 @@ func (s *Server) proxyAIGatewayRequest(w http.ResponseWriter, r *http.Request, i
 		writeGatewayError(w, http.StatusBadRequest, "invalid_request", "请求 JSON 无效")
 		return
 	}
-	reservation, err := s.reserveAIUsage(r.Context(), identity.AccountID, "ssh_agent", kind, units)
+	reservedTokens := estimateImageReservation()
+	if !image {
+		reservedTokens = estimateResponseReservation(len(encoded), body)
+	}
+	reservation, err := s.reserveAIUsage(r.Context(), identity.AccountID, "ssh_agent", kind, selectedModel, reservedTokens)
 	if err != nil {
 		if !writeAIGatewayEntitlementError(w, err) {
 			writeGatewayError(w, http.StatusServiceUnavailable, "billing_unavailable", "AI 计费服务暂时不可用")
 		}
 		return
 	}
-	charged := false
+	var actualUsage *providerTokenUsage
 	defer func() {
-		s.finishAIUsage(context.WithoutCancel(r.Context()), reservation, charged)
+		s.finishAIUsage(context.WithoutCancel(r.Context()), reservation, actualUsage)
 	}()
 	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost,
 		strings.TrimRight(provider.BaseURL, "/")+upstreamPath, bytes.NewReader(encoded))
@@ -183,7 +231,6 @@ func (s *Server) proxyAIGatewayRequest(w http.ResponseWriter, r *http.Request, i
 		writeGatewayError(w, http.StatusBadGateway, "provider_error", "AI 服务请求失败")
 		return
 	}
-	charged = true
 	contentType := response.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "application/json"
@@ -195,8 +242,73 @@ func (s *Server) proxyAIGatewayRequest(w http.ResponseWriter, r *http.Request, i
 	if flusher, ok := w.(http.Flusher); ok && strings.HasPrefix(strings.ToLower(contentType), "text/event-stream") {
 		writer = &flushingWriter{writer: w, flusher: flusher}
 	}
-	_, _ = io.Copy(writer, io.LimitReader(response.Body, maximumGatewayOutput))
-	s.audit(context.WithoutCancel(r.Context()), "app:"+identity.AccountID, "ai_gateway.remote."+kind, "ai_provider", provider.ID, "allowed", "medium")
+	usage, copyErr := copyProviderResponse(writer, response.Body, contentType, maximumGatewayOutput)
+	if copyErr == nil {
+		actualUsage = usage
+		s.audit(context.WithoutCancel(r.Context()), "app:"+identity.AccountID, "ai_gateway.remote."+kind, "ai_provider", provider.ID, "allowed", "medium")
+	}
+}
+
+func reasoningEffortFromBody(body map[string]any) (string, bool) {
+	reasoning, ok := body["reasoning"].(map[string]any)
+	if !ok {
+		return "", body["reasoning"] == nil
+	}
+	effort, _ := reasoning["effort"].(string)
+	return effort, effort == "" || validAIReasoningEffort(effort)
+}
+
+func copyProviderResponse(writer io.Writer, reader io.Reader, contentType string, maximum int64) (*providerTokenUsage, error) {
+	if !strings.HasPrefix(strings.ToLower(contentType), "text/event-stream") {
+		content, err := io.ReadAll(io.LimitReader(reader, maximum+1))
+		if err != nil || int64(len(content)) > maximum {
+			return nil, errors.New("provider response exceeded limit")
+		}
+		if _, err := writer.Write(content); err != nil {
+			return nil, err
+		}
+		payload, err := decodeProviderEvent(content)
+		if err != nil {
+			return nil, nil
+		}
+		if usage, ok := extractProviderTokenUsage(payload); ok {
+			return &usage, nil
+		}
+		return nil, nil
+	}
+	buffered := bufio.NewReader(io.LimitReader(reader, maximum+1))
+	consumed := int64(0)
+	var latest *providerTokenUsage
+	for {
+		line, err := buffered.ReadBytes('\n')
+		consumed += int64(len(line))
+		if consumed > maximum {
+			return nil, errors.New("provider response exceeded limit")
+		}
+		if len(line) > 0 {
+			if _, writeErr := writer.Write(line); writeErr != nil {
+				return nil, writeErr
+			}
+			trimmed := bytes.TrimSpace(line)
+			if bytes.HasPrefix(trimmed, []byte("data:")) {
+				data := bytes.TrimSpace(bytes.TrimPrefix(trimmed, []byte("data:")))
+				if len(data) > 0 && !bytes.Equal(data, []byte("[DONE]")) {
+					if payload, decodeErr := decodeProviderEvent(data); decodeErr == nil {
+						if usage, ok := extractProviderTokenUsage(payload); ok {
+							captured := usage
+							latest = &captured
+						}
+					}
+				}
+			}
+		}
+		if errors.Is(err, io.EOF) {
+			return latest, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
 }
 
 func (s *Server) requireAIGateway(w http.ResponseWriter, r *http.Request) (*aiGatewayIdentity, bool) {

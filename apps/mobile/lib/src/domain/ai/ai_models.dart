@@ -5,6 +5,22 @@ enum AiProviderKind {
   daylinkGateway,
 }
 
+enum AiReasoningEffort {
+  low,
+  medium,
+  high,
+  xhigh;
+
+  static AiReasoningEffort parse(String value) => values.firstWhere(
+    (effort) => effort.name == value,
+    orElse: () => throw ArgumentError.value(
+      value,
+      'value',
+      'unsupported reasoning effort',
+    ),
+  );
+}
+
 class AiProviderModel {
   const AiProviderModel({
     required this.id,
@@ -14,6 +30,8 @@ class AiProviderModel {
     required this.textModel,
     required this.secretRef,
     this.imageModel,
+    this.availableTextModels = const [],
+    this.reasoningEffort = AiReasoningEffort.medium,
     this.enabled = true,
   });
 
@@ -23,6 +41,8 @@ class AiProviderModel {
   final Uri baseUrl;
   final String textModel;
   final String? imageModel;
+  final List<String> availableTextModels;
+  final AiReasoningEffort reasoningEffort;
   final String secretRef;
   final bool enabled;
 }

@@ -22,7 +22,14 @@ void main() {
                 'kind': 'daylinkGateway',
                 'baseUrl': 'https://daylink.example/api',
                 'textModel': 'gpt-5.3-codex',
+                'selectedTextModel': 'gpt-5.4',
                 'imageModel': 'gpt-image-1.5',
+                'models': [
+                  {'id': 'gpt-5.3-codex', 'kind': 'text'},
+                  {'id': 'gpt-5.4', 'kind': 'text'},
+                  {'id': 'gpt-image-1.5', 'kind': 'image'},
+                ],
+                'reasoningEffort': 'high',
                 'enabled': true,
               },
             }),
@@ -56,10 +63,27 @@ void main() {
                 'baseUrl': 'https://daylink.example/v1',
                 'token': 'dlkc_short-lived',
                 'model': 'gpt-5.3-codex',
+                'reasoningEffort': 'xhigh',
                 'expiresAt': '2026-07-15T12:00:00Z',
               },
             }),
             201,
+            headers: {'content-type': 'application/json'},
+          );
+        case '/api/app/ai-preferences':
+          expect(request.method, 'PUT');
+          expect(jsonDecode(request.body), {
+            'textModel': 'gpt-5.3-codex',
+            'reasoningEffort': 'xhigh',
+          });
+          return http.Response(
+            jsonEncode({
+              'preference': {
+                'textModel': 'gpt-5.3-codex',
+                'reasoningEffort': 'xhigh',
+              },
+            }),
+            200,
             headers: {'content-type': 'application/json'},
           );
       }
@@ -73,10 +97,17 @@ void main() {
 
     final local = await client.localConfiguration();
     final entitlement = await client.entitlement();
+    await client.updatePreferences(
+      model: 'gpt-5.3-codex',
+      reasoningEffort: AiReasoningEffort.xhigh,
+    );
     final remote = await client.createRemoteCredential();
 
     expect(local.provider.kind, AiProviderKind.daylinkGateway);
     expect(local.provider.imageModel, 'gpt-image-1.5');
+    expect(local.provider.textModel, 'gpt-5.4');
+    expect(local.provider.availableTextModels, ['gpt-5.3-codex', 'gpt-5.4']);
+    expect(local.provider.reasoningEffort, AiReasoningEffort.high);
     expect(local.accessToken, 'dlka_app-access');
     expect(entitlement.plan, 'pro');
     expect(entitlement.supportedModes, [
@@ -85,6 +116,7 @@ void main() {
     ]);
     expect(remote.token, 'dlkc_short-lived');
     expect(remote.baseUrl.toString(), 'https://daylink.example/v1');
+    expect(remote.reasoningEffort, AiReasoningEffort.xhigh);
     expect(requests.last.method, 'POST');
     expect(requests.last.body, '{}');
     client.close();

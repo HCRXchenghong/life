@@ -1,4 +1,5 @@
 import 'package:daylink_mobile/src/domain/ai/agent_codex_transport.dart';
+import 'package:daylink_mobile/src/domain/ai/ai_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -51,6 +52,7 @@ void main() {
         gatewayBaseUrl: Uri.parse('https://daylink.example/v1'),
         gatewayToken: 'dlkc_test-token',
         model: 'gpt-5.3-codex',
+        reasoningEffort: AiReasoningEffort.xhigh,
       );
       final firstMessage = transport.messages.first;
 
@@ -71,6 +73,7 @@ void main() {
       expect(config['gateway_base_url'], 'https://daylink.example/v1');
       expect(config['gateway_token'], 'dlkc_test-token');
       expect(config['model'], 'gpt-5.3-codex');
+      expect(config['reasoning_effort'], 'xhigh');
       expect(
         requests.any((request) => request['type'] == 'codex_message'),
         isTrue,
