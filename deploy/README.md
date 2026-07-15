@@ -21,7 +21,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
 
 局域网运行使用 Caddy 内部 CA，避免管理员密码、2FA、App 登录和同步数据通过 Wi-Fi 明文传输：
 
-1. 用 `scutil --get LocalHostName` 查询 Mac 的局域网名称。在 `.env` 中设置 `PUBLIC_ORIGIN=https://<名称>.local:8443`、`LAN_SITE_ADDRESS=https://<名称>.local` 和 `HTTPS_PORT=8443`。局域网客户端应使用这个主机名，以保证 TLS SNI 和证书匹配。
+1. 查询宿主机的局域网 IP。在 `.env` 中设置 `PUBLIC_ORIGIN=https://<局域网IP>:8443`、`LAN_SITE_ADDRESS=https://<局域网IP>`、`LAN_TLS_SERVER_NAME=<局域网IP>` 和 `HTTPS_PORT=8443`。`LAN_TLS_SERVER_NAME` 让未发送 IP-SNI 的客户端也能选择正确证书。
 2. 运行：
 
 ```text
@@ -29,4 +29,4 @@ docker compose --env-file deploy/.env -p daylink -f deploy/docker-compose.yml -f
 ```
 
 3. 从 `daylink_caddy-data` 卷导出 `/data/caddy/pki/authorities/local/root.crt`，并仅在需要访问 Daylink 的电脑或手机上安装为受信任根证书。
-4. 浏览器和 Flutter App 使用 `https://<名称>.local:8443`。不要在正式公网部署中使用内部 CA。
+4. 浏览器和 Flutter App 使用 `https://<局域网IP>:8443`。不要在正式公网部署中使用内部 CA。

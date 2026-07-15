@@ -2,6 +2,7 @@ services:
   web:
     environment:
       LAN_SITE_ADDRESS: ${LAN_SITE_ADDRESS:?set LAN_SITE_ADDRESS}
+      LAN_TLS_SERVER_NAME: ${LAN_TLS_SERVER_NAME:?set LAN_TLS_SERVER_NAME}
     ports: !override
       - "${HTTPS_PORT:-8443}:443"
     volumes:

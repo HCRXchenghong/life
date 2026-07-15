@@ -1,5 +1,6 @@
 {
 	skip_install_trust
+	default_sni {$LAN_TLS_SERVER_NAME}
 }
 
 {$LAN_SITE_ADDRESS} {
