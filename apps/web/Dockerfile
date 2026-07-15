@@ -8,4 +8,4 @@ RUN npm run build
 FROM caddy:2.10-alpine
 COPY --from=build /src/dist /srv
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
-EXPOSE 80
+EXPOSE 80 443

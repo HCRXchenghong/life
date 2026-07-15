@@ -1,0 +1,8 @@
+services:
+  web:
+    environment:
+      LAN_SITE_ADDRESS: ${LAN_SITE_ADDRESS:?set LAN_SITE_ADDRESS}
+    ports: !override
+      - "${HTTPS_PORT:-8443}:443"
+    volumes:
+      - ./Caddyfile.lan:/etc/caddy/Caddyfile:ro
