@@ -27,7 +27,7 @@ void main() {
     expect(find.textContaining('注册'), findsNothing);
   });
 
-  testWidgets('login form submits credentials and leaves the login gate', (
+  testWidgets('login form submits credentials and opens password setup', (
     tester,
   ) async {
     final authentication = _FakeAuthentication();
@@ -57,10 +57,82 @@ void main() {
 
     expect(authentication.lastUsername, 'daylink-user');
     expect(authentication.lastPassword, 'temporary-password');
+    expect(find.text('设置新密码'), findsOneWidget);
+    expect(find.byKey(const Key('password-current')), findsOneWidget);
+    expect(find.byKey(const Key('password-new')), findsOneWidget);
+    expect(find.byKey(const Key('password-confirm')), findsOneWidget);
+  });
+
+  testWidgets('first-login password change rotates session and enters app', (
+    tester,
+  ) async {
+    final authentication = _FakeAuthentication(
+      restored: _FakeAuthentication.session(
+        username: 'first-login-user',
+        passwordChangeRequired: true,
+      ),
+    );
+    await tester.pumpWidget(
+      DaylinkApp(
+        authentication: authentication,
+        runtimeFactory: (_, _) async => _FakeRuntime(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('首次登录需要修改密码'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('password-current')),
+      'Temporary1!',
+    );
+    await tester.enterText(
+      find.byKey(const Key('password-new')),
+      'Replacement2!',
+    );
+    await tester.enterText(
+      find.byKey(const Key('password-confirm')),
+      'Replacement2!',
+    );
+    tester.testTextInput.hide();
+    final submit = find.byKey(const Key('password-submit'));
+    await tester.ensureVisible(submit);
+    await tester.pumpAndSettle();
+    await tester.tap(submit);
+    await tester.pumpAndSettle();
+
+    expect(authentication.lastCurrentPassword, 'Temporary1!');
+    expect(authentication.lastNewPassword, 'Replacement2!');
     expect(
       find.byKey(const Key('authenticated-page-pending-review')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('password setup logout returns immediately to login', (
+    tester,
+  ) async {
+    final authentication = _FakeAuthentication(
+      restored: _FakeAuthentication.session(
+        username: 'first-login-user',
+        passwordChangeRequired: true,
+      ),
+    );
+    await tester.pumpWidget(
+      DaylinkApp(
+        authentication: authentication,
+        runtimeFactory: (_, _) async => _FakeRuntime(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final logout = find.byKey(const Key('password-logout'));
+    await tester.ensureVisible(logout);
+    await tester.pumpAndSettle();
+    await tester.tap(logout);
+    await tester.pumpAndSettle();
+
+    expect(authentication.loggedOut, isTrue);
+    expect(find.text('登录 Daylink'), findsOneWidget);
   });
 
   testWidgets('server revocation immediately returns to login', (tester) async {
@@ -110,7 +182,10 @@ class _FakeAuthentication implements AppAuthentication {
   final AppSessionCredentials? restored;
   String? lastUsername;
   String? lastPassword;
+  String? lastCurrentPassword;
+  String? lastNewPassword;
   bool cleared = false;
+  bool loggedOut = false;
 
   @override
   Uri get apiBaseUri => Uri.parse('https://daylink.example/api/');
@@ -121,6 +196,19 @@ class _FakeAuthentication implements AppAuthentication {
   @override
   Future<void> clear() async {
     cleared = true;
+  }
+
+  @override
+  Future<AppSessionCredentials> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    lastCurrentPassword = currentPassword;
+    lastNewPassword = newPassword;
+    return session(
+      username: restored?.username ?? 'daylink-user',
+      passwordChangeRequired: false,
+    );
   }
 
   @override
@@ -135,6 +223,12 @@ class _FakeAuthentication implements AppAuthentication {
     lastUsername = username;
     lastPassword = password;
     return session(username: username, passwordChangeRequired: true);
+  }
+
+  @override
+  Future<void> logout() async {
+    loggedOut = true;
+    cleared = true;
   }
 
   @override

@@ -16,6 +16,11 @@ abstract interface class AppAuthentication {
     required String password,
     required String deviceName,
   });
+  Future<AppSessionCredentials> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  });
+  Future<void> logout();
   Future<String?> accessToken();
   Future<bool> refresh();
   Future<void> clear();
@@ -184,6 +189,51 @@ class AppAuthenticator implements AppAuthentication {
   }
 
   @override
+  Future<AppSessionCredentials> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    await _refreshing;
+    final current = _current ?? await _store.read();
+    if (current == null) {
+      throw const AppAuthenticationException(
+        '登录已失效，请重新登录',
+        sessionRejected: true,
+      );
+    }
+    final credentials = await _client.changePassword(
+      current,
+      currentPassword: currentPassword,
+      newPassword: newPassword,
+    );
+    try {
+      await _store.write(credentials);
+    } on Object {
+      _current = null;
+      try {
+        await _store.clear();
+      } on Object {
+        // The original secure-storage failure is intentionally hidden.
+      }
+      throw const AppAuthenticationException('登录凭据保存失败，请重新登录');
+    }
+    _current = credentials;
+    return credentials;
+  }
+
+  @override
+  Future<void> logout() async {
+    await _refreshing;
+    final current = _current ?? await _store.read();
+    await clear();
+    try {
+      if (current != null) await _client.logout(current);
+    } on AppAuthenticationException {
+      // Local sign-out must complete even when the server is unreachable.
+    }
+  }
+
+  @override
   Future<String?> accessToken() async {
     final current = _current ?? await _store.read();
     _current = current;
@@ -274,17 +324,76 @@ class AppAuthClient {
     return current.withTokens(_requiredMap(result, 'tokens'));
   }
 
-  Future<Map<String, Object?>> _post(
-    String path,
-    Map<String, Object?> body,
-  ) async {
+  Future<AppSessionCredentials> changePassword(
+    AppSessionCredentials current, {
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final passwordError = validateStrongAppPassword(newPassword);
+    if (currentPassword.isEmpty ||
+        utf8.encode(currentPassword).length > 128 ||
+        passwordError != null ||
+        currentPassword == newPassword) {
+      throw AppAuthenticationException(
+        passwordError ??
+            (currentPassword == newPassword ? '新密码不能与当前密码相同' : '请输入当前密码'),
+      );
+    }
+    final result = await _request(
+      'POST',
+      'app/auth/password',
+      body: {'currentPassword': currentPassword, 'newPassword': newPassword},
+      accessToken: current.accessToken,
+    );
+    final account = _requiredMap(result, 'account');
+    final tokens = _requiredMap(result, 'tokens');
+    final credentials = AppSessionCredentials.fromJson({
+      'accountId': account['id'],
+      'username': account['username'],
+      'passwordChangeRequired': account['passwordChangeRequired'],
+      ...tokens,
+    });
+    if (credentials.accountId != current.accountId ||
+        credentials.username != current.username ||
+        credentials.passwordChangeRequired) {
+      throw const AppAuthenticationException('Daylink 服务返回异常');
+    }
+    return credentials;
+  }
+
+  Future<void> logout(AppSessionCredentials current) async {
+    await _request(
+      'DELETE',
+      'app/auth/session',
+      accessToken: current.accessToken,
+    );
+  }
+
+  Future<Map<String, Object?>> _post(String path, Map<String, Object?> body) =>
+      _request('POST', path, body: body);
+
+  Future<Map<String, Object?>> _request(
+    String method,
+    String path, {
+    Map<String, Object?>? body,
+    String? accessToken,
+  }) async {
     try {
-      final request = http.Request('POST', _apiBaseUri.resolve(path))
-        ..headers.addAll({
-          'accept': 'application/json',
-          'content-type': 'application/json',
-        })
-        ..body = jsonEncode(body);
+      final request = http.Request(method, _apiBaseUri.resolve(path));
+      request.headers['accept'] = 'application/json';
+      if (body != null) {
+        request.headers['content-type'] = 'application/json';
+        request.body = jsonEncode(body);
+      }
+      if (accessToken != null) {
+        if (!accessToken.startsWith('dlka_') ||
+            accessToken.length < 32 ||
+            accessToken.length > 256 ||
+            accessToken.contains(RegExp(r'[\r\n]'))) {
+          throw const FormatException();
+        }
+        request.headers['authorization'] = 'Bearer $accessToken';
+      }
       final response = await _http
           .send(request)
           .timeout(const Duration(seconds: 20));
@@ -309,11 +418,13 @@ class AppAuthClient {
         final message = envelope is Map<String, Object?>
             ? envelope['message']
             : null;
+        final code = envelope is Map<String, Object?> ? envelope['code'] : null;
         throw AppAuthenticationException(
           message is String && message.isNotEmpty && message.length <= 200
               ? message
               : '登录失败，请稍后重试',
-          sessionRejected: response.statusCode == 401,
+          sessionRejected:
+              response.statusCode == 401 && code != 'invalid_credentials',
         );
       }
       return decoded;
@@ -329,6 +440,30 @@ class AppAuthClient {
   }
 
   void close() => _http.close();
+}
+
+String? validateStrongAppPassword(String value) {
+  final byteLength = utf8.encode(value).length;
+  if (byteLength < 12 || byteLength > 128) return '密码必须为 12–128 位';
+  var lower = false;
+  var upper = false;
+  var digit = false;
+  var symbol = false;
+  for (final rune in value.runes) {
+    if (rune >= 0x61 && rune <= 0x7A) {
+      lower = true;
+    } else if (rune >= 0x41 && rune <= 0x5A) {
+      upper = true;
+    } else if (rune >= 0x30 && rune <= 0x39) {
+      digit = true;
+    } else {
+      symbol = true;
+    }
+  }
+  if (!lower || !upper || !digit || !symbol) {
+    return '密码必须同时包含大小写字母、数字和符号';
+  }
+  return null;
 }
 
 Uri _validateApiBaseUri(Uri value) {

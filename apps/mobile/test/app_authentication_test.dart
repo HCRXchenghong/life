@@ -89,6 +89,118 @@ void main() {
     expect(refreshed.refreshToken, startsWith('dlkr_d'));
     client.close();
   });
+
+  test(
+    'password change uses bearer auth and rotates the whole session',
+    () async {
+      late http.Request captured;
+      final current = _session(passwordChangeRequired: true);
+      final client = AppAuthClient(
+        apiBaseUri: Uri.parse('https://daylink.example/api/'),
+        httpClient: MockClient((request) async {
+          captured = request;
+          return http.Response(
+            jsonEncode({
+              'account': {
+                'id': current.accountId,
+                'username': current.username,
+                'passwordChangeRequired': false,
+              },
+              'tokens': {
+                'accessToken': 'dlka_${_repeat('c')}',
+                'accessExpiresAt': '2031-01-01T00:00:00Z',
+                'refreshToken': 'dlkr_${_repeat('d')}',
+                'refreshExpiresAt': '2032-01-01T00:00:00Z',
+              },
+            }),
+            200,
+          );
+        }),
+      );
+
+      final changed = await client.changePassword(
+        current,
+        currentPassword: 'Temporary1!',
+        newPassword: 'Replacement2!',
+      );
+
+      expect(captured.method, 'POST');
+      expect(captured.url.path, '/api/app/auth/password');
+      expect(
+        captured.headers['authorization'],
+        'Bearer ${current.accessToken}',
+      );
+      expect(jsonDecode(captured.body), {
+        'currentPassword': 'Temporary1!',
+        'newPassword': 'Replacement2!',
+      });
+      expect(changed.passwordChangeRequired, isFalse);
+      expect(changed.accessToken, startsWith('dlka_c'));
+      expect(changed.refreshToken, startsWith('dlkr_d'));
+      client.close();
+    },
+  );
+
+  test(
+    'logout uses DELETE and clears local credentials on network error',
+    () async {
+      late http.BaseRequest captured;
+      final store = _MemoryCredentialStore(
+        _session(passwordChangeRequired: false),
+      );
+      final authenticator = AppAuthenticator(
+        apiBaseUri: Uri.parse('https://daylink.example/api/'),
+        credentialStore: store,
+        httpClient: MockClient((request) async {
+          captured = request;
+          throw http.ClientException('offline');
+        }),
+      );
+      await authenticator.restore();
+
+      await authenticator.logout();
+
+      expect(captured.method, 'DELETE');
+      expect(captured.url.path, '/api/app/auth/session');
+      expect(captured.headers['authorization'], startsWith('Bearer dlka_'));
+      expect(store.value, isNull);
+      expect(await authenticator.accessToken(), isNull);
+      authenticator.close();
+    },
+  );
+
+  test('password validation matches the server complexity policy', () {
+    expect(validateStrongAppPassword('Replacement2!'), isNull);
+    expect(validateStrongAppPassword('replacement2!'), contains('大小写'));
+    expect(validateStrongAppPassword('Short2!'), contains('12'));
+  });
 }
 
 String _repeat(String value) => List.filled(40, value).join();
+
+AppSessionCredentials _session({required bool passwordChangeRequired}) =>
+    AppSessionCredentials(
+      accountId: '123e4567-e89b-12d3-a456-426614174000',
+      username: 'alice',
+      passwordChangeRequired: passwordChangeRequired,
+      accessToken: 'dlka_${_repeat('a')}',
+      accessExpiresAt: DateTime.utc(2029),
+      refreshToken: 'dlkr_${_repeat('b')}',
+      refreshExpiresAt: DateTime.utc(2030),
+    );
+
+class _MemoryCredentialStore implements AppCredentialStore {
+  _MemoryCredentialStore(this.value);
+
+  AppSessionCredentials? value;
+
+  @override
+  Future<void> clear() async => value = null;
+
+  @override
+  Future<AppSessionCredentials?> read() async => value;
+
+  @override
+  Future<void> write(AppSessionCredentials credentials) async =>
+      value = credentials;
+}

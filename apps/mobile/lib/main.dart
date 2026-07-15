@@ -8,6 +8,7 @@ import 'src/application/daylink_services.dart';
 import 'src/data/app_authentication.dart';
 import 'src/data/app_session_monitor.dart';
 import 'src/presentation/login_page.dart';
+import 'src/presentation/password_change_page.dart';
 
 const _configuredApiBaseUrl = String.fromEnvironment(
   'DAYLINK_API_BASE_URL',
@@ -100,6 +101,71 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _changePassword(
+    String currentPassword,
+    String newPassword,
+  ) async {
+    final previous = _session;
+    if (previous == null || !previous.passwordChangeRequired) {
+      throw const AppAuthenticationException(
+        '登录已失效，请重新登录',
+        sessionRejected: true,
+      );
+    }
+    await _detachRuntime();
+
+    late AppSessionCredentials updated;
+    try {
+      updated = await _authentication.changePassword(
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+      );
+    } on AppAuthenticationException catch (error) {
+      if (error.sessionRejected) {
+        await _authentication.clear();
+        _session = null;
+        if (mounted) setState(() {});
+      } else {
+        try {
+          await _activate(previous);
+        } on Object {
+          await _authentication.clear();
+          _session = null;
+          if (mounted) setState(() {});
+          throw const AppAuthenticationException('本地服务启动失败，请重新登录');
+        }
+      }
+      rethrow;
+    } on Object {
+      try {
+        await _activate(previous);
+      } on Object {
+        await _authentication.clear();
+        _session = null;
+        if (mounted) setState(() {});
+        throw const AppAuthenticationException('本地服务启动失败，请重新登录');
+      }
+      rethrow;
+    }
+
+    try {
+      await _activate(updated);
+    } on Object {
+      await _authentication.clear();
+      _session = null;
+      if (mounted) setState(() {});
+      throw const AppAuthenticationException('本地服务启动失败，请重新登录');
+    }
+  }
+
+  Future<void> _logout() async {
+    await _detachRuntime();
+    final logout = _authentication.logout();
+    _session = null;
+    if (mounted) setState(() {});
+    await logout;
+  }
+
   Future<void> _activate(AppSessionCredentials session) async {
     final runtime = await (widget.runtimeFactory ?? _startRuntime)(
       session,
@@ -128,12 +194,18 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
   Future<void> _handleForcedSignOut(AppRuntime runtime) async {
     if (!identical(_runtime, runtime)) return;
     await _authentication.clear();
-    await runtime.close();
-    await _forcedSignOutSubscription?.cancel();
-    _forcedSignOutSubscription = null;
-    _runtime = null;
+    await _detachRuntime();
     _session = null;
     if (mounted) setState(() {});
+  }
+
+  Future<void> _detachRuntime() async {
+    final subscription = _forcedSignOutSubscription;
+    final runtime = _runtime;
+    _forcedSignOutSubscription = null;
+    _runtime = null;
+    await subscription?.cancel();
+    await runtime?.close();
   }
 
   static Future<AppRuntime> _startRuntime(
@@ -188,6 +260,11 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
         ? const ColoredBox(color: Color(0xFFF7F8FA))
         : _session == null
         ? LoginPage(onLogin: _login)
+        : _session!.passwordChangeRequired
+        ? PasswordChangePage(
+            onChangePassword: _changePassword,
+            onLogout: _logout,
+          )
         : const ColoredBox(
             key: Key('authenticated-page-pending-review'),
             color: Color(0xFFF7F8FA),
