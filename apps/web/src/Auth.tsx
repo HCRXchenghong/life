@@ -130,7 +130,7 @@ export function PendingSetup() {
 }
 
 function AuthFrame({ children, privacy }: { children: ReactNode; privacy: string }) {
-  return <main className="admin-auth-shell"><Brand /><section className="admin-auth-content">{children}</section><p className="admin-auth-privacy">{privacy}</p></main>;
+  return <main className="admin-auth-shell"><Brand /><div className="admin-auth-stage"><section className="admin-auth-content">{children}</section><p className="admin-auth-privacy">{privacy}</p></div></main>;
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {

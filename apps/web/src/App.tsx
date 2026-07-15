@@ -62,11 +62,13 @@ function StatePage({ title, detail, action }: { title: string; detail: string; a
   return (
     <main className="admin-auth-shell">
       <Brand />
-      <section className="admin-auth-content">
-        <h1>{title}</h1>
-        <p className="admin-auth-subtitle">{detail}</p>
-        {action && <button className="admin-auth-primary" onClick={action}>重试</button>}
-      </section>
+      <div className="admin-auth-stage">
+        <section className="admin-auth-content">
+          <h1>{title}</h1>
+          <p className="admin-auth-subtitle">{detail}</p>
+          {action && <button className="admin-auth-primary" onClick={action}>重试</button>}
+        </section>
+      </div>
     </main>
   );
 }
