@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../data/ai_provider_repository.dart';
 import '../data/ai_gateway_client.dart';
+import '../data/app_session_monitor.dart';
 import '../data/app_database.dart';
 import '../data/artifact_client.dart';
 import '../data/artifact_repository.dart';
@@ -43,6 +44,8 @@ class DaylinkServices {
   final OperationsRepository operations;
   final AiProviderRepository aiProviders;
   final OpenAiResponsesClient responses;
+  final List<AppSessionMonitor> _sessionMonitors = [];
+  bool _closed = false;
 
   static Future<DaylinkServices> start({required String accountId}) async {
     final nativeCore = await NativeCoreService.initialize();
@@ -173,9 +176,42 @@ class DaylinkServices {
     required String mobileToken,
   }) => AiGatewayClient(apiBaseUri: apiBaseUri, mobileToken: mobileToken);
 
-  Future<void> reconcile() => notifications.reconcile();
+  AppSessionMonitor monitorSession({
+    required Uri apiBaseUri,
+    required AccessTokenProvider accessToken,
+    required SessionRefreshCallback refreshAccessToken,
+    required SessionActionCallback clearCredentials,
+    required ForcedSignOutCallback onForcedSignOut,
+  }) {
+    if (_closed) throw StateError('Daylink services are closed');
+    final monitor = AppSessionMonitor(
+      apiBaseUri: apiBaseUri,
+      accessToken: accessToken,
+      refreshAccessToken: refreshAccessToken,
+      clearCredentials: clearCredentials,
+      onForcedSignOut: onForcedSignOut,
+      onChanges: reconcile,
+    );
+    _sessionMonitors.add(monitor);
+    monitor.start();
+    return monitor;
+  }
+
+  Future<void> reconcile() async {
+    if (_closed) return;
+    for (final monitor in _sessionMonitors) {
+      await monitor.reconcile();
+    }
+    if (!_closed) await notifications.reconcile();
+  }
 
   Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
+    for (final monitor in _sessionMonitors) {
+      await monitor.close();
+    }
+    _sessionMonitors.clear();
     responses.close();
     await database.close();
   }

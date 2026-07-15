@@ -233,10 +233,25 @@ func (s *Server) handleSyncEvents(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 			return
-		case <-channel:
+		case event := <-channel:
+			if event.Name == "session_revoked" {
+				_, _ = fmt.Fprintf(w, "event: session_revoked\ndata: {\"reason\":%q}\n\n", event.Reason)
+				flusher.Flush()
+				return
+			}
 			_, _ = fmt.Fprint(w, "event: changes\ndata: {}\n\n")
 			flusher.Flush()
 		case <-keepAlive.C:
+			var active bool
+			err := s.db.QueryRowContext(r.Context(), `SELECT EXISTS(
+				SELECT 1 FROM app_sessions s JOIN app_accounts a ON a.id = s.account_id
+				WHERE s.id = ? AND s.account_id = ? AND s.revoked_at IS NULL AND a.status = 'active'
+			)`, identity.SessionID, identity.AccountID).Scan(&active)
+			if err != nil || !active {
+				_, _ = fmt.Fprint(w, "event: session_revoked\ndata: {\"reason\":\"session_revoked\"}\n\n")
+				flusher.Flush()
+				return
+			}
 			_, _ = fmt.Fprint(w, ": keepalive\n\n")
 			flusher.Flush()
 		}

@@ -897,10 +897,10 @@ paths:
   /sync/events:
     get:
       operationId: streamEncryptedSyncEvents
-      description: Account-scoped SSE wake-up stream. Clients always reconcile using /sync/changes after reconnecting.
+      description: Account-scoped SSE wake-up stream. Clients always reconcile using /sync/changes after reconnecting. A session_revoked event requires immediate local credential deletion and return to login.
       responses:
         "200":
-          description: text/event-stream with ready, changes, and keepalive events.
+          description: text/event-stream with ready, changes, session_revoked, and keepalive events. session_revoked data contains only an allowlisted reason.
           content:
             text/event-stream: {}
         "401": { $ref: "#/components/responses/Unauthorized" }

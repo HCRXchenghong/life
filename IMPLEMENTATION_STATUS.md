@@ -1,6 +1,6 @@
 # Daylink 实现状态
 
-更新时间：2026-07-15。本文只记录已经进入源码并经过验证的能力。
+更新时间：2026-07-16。本文只记录已经进入源码并经过验证的能力。
 
 ## 已完成
 
@@ -17,7 +17,7 @@
 | 好友选时间 | App 创建/刷新/定稿、公开 React 投票页、匿名编辑令牌、乐观锁、管理令牌安全存储、定稿导入日程 |
 | Go 后端 | Go 1.25 HTTP API、MySQL 8.4 内嵌迁移、健康检查、超时/关闭、Caddy 同源反代 |
 | Web 后台 | React + Vite；生产初始化口令、首次创建唯一管理员、密码 + Microsoft TOTP、概览/App 账号/安全审计/设置；AI 地址与 Key 已并入设置，独立 AI 页面已移除 |
-| App 鉴权 | 强密码、独立 pepper 域、15 分钟访问令牌、30 天单次轮换刷新令牌、首次改密、5 次失败锁定、停用/重置撤销旧会话；保留管理员手动创建并新增带邀请码的一次性限时邀请 |
+| App 鉴权 | 强密码、独立 pepper 域、15 分钟访问令牌、30 天单次轮换刷新令牌、首次改密、5 次失败锁定、停用/重置撤销旧会话；停用或管理员重置密码会通过账号隔离 SSE 立即通知 App 清理凭证、关闭账号运行时并返回登录态，数据库复核作为断线兜底；保留管理员手动创建并新增带邀请码的一次性限时邀请 |
 | AI 套餐与计费 | 管理员独占 Plus/Pro/Max 发放与取消；周卡/月卡/季度卡/年卡到期；Plus/Pro 同时检查自然周/月额度，Max 不设用量额度；对话 1 单位、生图 5 单位，原子预占、失败释放、成功记账 |
 | AI 网关安全 | Provider Key AES-GCM 只写存储；公网 HTTPS、运行时 DNS 私网阻断、防重定向、固定测试、限流、上游错误正文隔离、PNG 校验；SSH 主机仅获 12 小时内且受套餐到期约束的哈希短期凭证 |
 | 密文同步服务 | 服务端仅存账号隔离的密文、nonce 和版本头；乐观 revision、幂等 operation ID、追加变更日志、增量游标、SSE 唤醒；管理员没有同步读取路由 |
@@ -27,10 +27,10 @@
 
 - Go：`gofmt`、`go test ./...`、`go vet ./...` 通过。
 - React：ESLint、TypeScript、Vite 生产构建与独立部署测试通过，npm audit 为 0。
-- Flutter：`flutter analyze` 0 条诊断，31 项测试通过。Flutter 3.44 的 analysis server 在中文绝对路径上会截断 LSP JSON，本轮在同源码的 ASCII 临时副本复验通过。
+- Flutter：`flutter analyze` 0 条诊断，35 项测试通过。Flutter 3.44 的 analysis server 在中文绝对路径上会截断 LSP JSON，本轮在同源码的 ASCII 临时副本复验通过。
 - Rust：`cargo fmt --all --check`、workspace Clippy `-D warnings`、8 项测试全部通过。
 - 容器：Go 与 React 镜像构建成功；MySQL、API 均健康，Caddy 在局域网 HTTPS 端口运行；API/Web 只读与非特权标志已复验。
-- 黑盒：真实 Caddy → Go → MySQL 链路验证错误初始化口令拒绝、管理员初始化、Microsoft TOTP、同源保护、App 双账号、刷新令牌重放拒绝、跨账号密文隔离、管理员无法读取同步内容、投票和公开投票页。
+- 黑盒：真实 Caddy → Go → MySQL 链路验证错误初始化口令拒绝、管理员初始化、Microsoft TOTP、同源保护、App 双账号、刷新令牌重放拒绝、跨账号密文隔离、管理员无法读取同步内容、投票和公开投票页；实时会话黑盒证明后台停用会在 2 秒门槛内推送 `account_disabled` 并同步撤销数据库会话。
 
 ## 尚未声称完成的边界
 

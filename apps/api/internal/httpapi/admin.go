@@ -251,6 +251,11 @@ func (s *Server) updateAppAccount(w http.ResponseWriter, r *http.Request, identi
 		writeError(w, http.StatusInternalServerError, "update_failed", "账号更新失败")
 		return
 	}
+	if input.Action == "disable" {
+		s.syncHub.revoke(input.ID, "account_disabled")
+	} else if input.Action == "reset_password" {
+		s.syncHub.revoke(input.ID, "credentials_changed")
+	}
 	s.audit(r.Context(), identity.Actor, "app_account."+input.Action, "app_account", input.ID, "allowed", "critical")
 	writeJSON(w, http.StatusOK, map[string]any{"updated": true})
 }
