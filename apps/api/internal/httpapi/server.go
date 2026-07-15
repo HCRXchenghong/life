@@ -91,7 +91,19 @@ func New(cfg config.Config, db *sql.DB, logger *slog.Logger) *Server {
 		}
 	}
 	s.routes()
+	s.reconcileInterruptedAIRuns()
 	return s
+}
+
+func (s *Server) reconcileInterruptedAIRuns() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err := s.db.ExecContext(ctx, `UPDATE ai_runs SET status = 'cancelled',
+      error_code = 'request_interrupted', error_message = 'Request interrupted before completion',
+      completed_at = UTC_TIMESTAMP(6) WHERE status = 'running'`)
+	if err != nil {
+		s.logger.Warn("unable to reconcile interrupted AI runs")
+	}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -111,6 +123,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/admin/security/totp", s.handleAdminTOTP)
 	s.mux.HandleFunc("DELETE /api/admin/security/totp", s.handleAdminTOTPCancel)
 	s.mux.HandleFunc("GET /api/admin/overview", s.handleAdminOverview)
+	s.mux.HandleFunc("GET /api/admin/overview/events", s.handleAdminOverviewEvents)
 	s.mux.HandleFunc("GET /api/admin/app-accounts", s.handleAdminAppAccounts)
 	s.mux.HandleFunc("POST /api/admin/app-accounts", s.handleAdminAppAccounts)
 	s.mux.HandleFunc("PATCH /api/admin/app-accounts", s.handleAdminAppAccounts)

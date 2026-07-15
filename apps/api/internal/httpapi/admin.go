@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -59,20 +60,83 @@ func (s *Server) handleAdminOverview(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	data, err := s.adminOverviewData(r.Context(), identity)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "数据库暂时不可用")
+		return
+	}
+	writeJSON(w, http.StatusOK, data)
+}
+
+func (s *Server) handleAdminOverviewEvents(w http.ResponseWriter, r *http.Request) {
+	identity, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming_unavailable", "实时状态暂时不可用")
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache, no-store")
+	w.Header().Set("X-Accel-Buffering", "no")
+	_, _ = io.WriteString(w, "retry: 1000\n\n")
+	flusher.Flush()
+
+	send := func() bool {
+		data, err := s.adminOverviewData(r.Context(), identity)
+		if err != nil {
+			_, _ = io.WriteString(w, "event: unavailable\ndata: {}\n\n")
+			flusher.Flush()
+			return false
+		}
+		encoded, err := json.Marshal(data)
+		if err != nil {
+			return false
+		}
+		if _, err := fmt.Fprintf(w, "event: overview\ndata: %s\n\n", encoded); err != nil {
+			return false
+		}
+		flusher.Flush()
+		return true
+	}
+	if !send() {
+		return
+	}
+	ticker := time.NewTicker(time.Second)
+	// The HTTP server has a bounded write deadline. EventSource reconnects before
+	// that deadline, preserving real-time delivery without unbounded handlers.
+	lifetime := time.NewTimer(2 * time.Minute)
+	defer ticker.Stop()
+	defer lifetime.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-lifetime.C:
+			return
+		case <-ticker.C:
+			if !send() {
+				return
+			}
+		}
+	}
+}
+
+func (s *Server) adminOverviewData(ctx context.Context, identity *adminIdentity) (map[string]any, error) {
 	var accounts, providers int
-	if err := s.db.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM app_accounts").Scan(&accounts); err != nil {
-		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "数据库暂时不可用")
-		return
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM app_accounts").Scan(&accounts); err != nil {
+		return nil, err
 	}
-	if err := s.db.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM ai_provider_configs WHERE admin_id = ?", identity.ID).Scan(&providers); err != nil {
-		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "数据库暂时不可用")
-		return
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM ai_provider_configs WHERE admin_id = ?", identity.ID).Scan(&providers); err != nil {
+		return nil, err
 	}
-	metrics := s.collectServerMetrics(r.Context())
-	writeJSON(w, http.StatusOK, map[string]any{
+	metrics := s.collectServerMetrics(ctx)
+	return map[string]any{
 		"username": identity.Username, "appAccountCount": accounts, "aiProviderCount": providers,
 		"servers": []serverMetrics{metrics}, "supportedSystems": []string{"windows", "macos", "ubuntu"},
-	})
+	}, nil
 }
 
 func (s *Server) handleAdminAppAccounts(w http.ResponseWriter, r *http.Request) {
@@ -689,7 +753,15 @@ func nullableInt(value sql.NullInt64) any {
 }
 
 func parseImageData(value string) ([]byte, error) {
+	value = strings.TrimSpace(value)
+	const dataPrefix = "data:image/png;base64,"
+	if strings.HasPrefix(strings.ToLower(value), dataPrefix) {
+		value = value[len(dataPrefix):]
+	}
 	decoded, err := base64.StdEncoding.DecodeString(value)
+	if err != nil {
+		decoded, err = base64.RawStdEncoding.DecodeString(value)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("生图服务返回了无效图片")
 	}

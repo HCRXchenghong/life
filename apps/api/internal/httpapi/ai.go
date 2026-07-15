@@ -245,17 +245,23 @@ func (s *Server) generateAdminImage(w http.ResponseWriter, r *http.Request, iden
 		security.PrivateHash(s.cfg.AIMasterKey, "ai-request", input.Prompt))
 	image, revised, _, err := s.generateImage(r.Context(), provider, key, input)
 	if err != nil {
-		s.finishAIRun(r.Context(), runID, "failed", "image_generation_failed", "Image provider request failed", "")
+		status, code, message := "failed", "image_generation_failed", "Image provider request failed"
+		if r.Context().Err() != nil {
+			status, code, message = "cancelled", "request_cancelled", "Request cancelled before completion"
+		}
+		s.finishAIRun(r.Context(), runID, status, code, message, "")
 		writeError(w, http.StatusBadGateway, "image_generation_failed", "生图失败，请检查服务配置")
 		return
 	}
 	assetID, err := security.RandomID()
 	if err != nil {
+		s.finishAIRun(r.Context(), runID, "failed", "asset_storage_failed", "Generated asset storage failed", "")
 		writeError(w, http.StatusInternalServerError, "asset_storage_failed", "图片存储失败")
 		return
 	}
 	path, err := s.writeAsset(assetID, image)
 	if err != nil {
+		s.finishAIRun(r.Context(), runID, "failed", "asset_storage_failed", "Generated asset storage failed", "")
 		writeError(w, http.StatusInternalServerError, "asset_storage_failed", "图片存储失败")
 		return
 	}
@@ -267,6 +273,7 @@ func (s *Server) generateAdminImage(w http.ResponseWriter, r *http.Request, iden
 		security.PrivateHash(s.cfg.AIMasterKey, "ai-request", input.Prompt), len(image), width, height)
 	if err != nil {
 		_ = os.Remove(filepath.Join(s.cfg.AssetDirectory, path))
+		s.finishAIRun(r.Context(), runID, "failed", "asset_storage_failed", "Generated asset storage failed", "")
 		writeError(w, http.StatusInternalServerError, "asset_storage_failed", "图片存储失败")
 		return
 	}
@@ -322,7 +329,11 @@ func (s *Server) generateImage(ctx context.Context, provider providerSecret, key
 	image, err := parseImageData(b64)
 	if err != nil {
 		remoteURL, _ := first["url"].(string)
-		image, err = s.downloadGeneratedImage(ctx, remoteURL)
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(remoteURL)), "data:image/png;base64,") {
+			image, err = parseImageData(remoteURL)
+		} else {
+			image, err = s.downloadGeneratedImage(ctx, remoteURL)
+		}
 	}
 	return image, first["revised_prompt"], usage, err
 }
@@ -577,7 +588,9 @@ func (s *Server) finishAIRun(ctx context.Context, id, status, code, message, res
 	if id == "" {
 		return
 	}
-	_, _ = s.db.ExecContext(ctx, `UPDATE ai_runs SET status = ?, error_code = NULLIF(?, ''),
+	updateCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	_, _ = s.db.ExecContext(updateCtx, `UPDATE ai_runs SET status = ?, error_code = NULLIF(?, ''),
       error_message = NULLIF(?, ''), response_id = NULLIF(?, ''), completed_at = UTC_TIMESTAMP(6)
       WHERE id = ?`, status, code, message, responseID, id)
 }

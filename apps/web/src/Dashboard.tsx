@@ -75,11 +75,28 @@ function Page({ kicker, title, subtitle, action, children }: { kicker: string; t
 
 function Overview() {
   const [data, setData] = useState<OverviewData | null>(null);
+  const [live, setLive] = useState(false);
   const load = useCallback(() => api<OverviewData>("/api/admin/overview").then(setData), []);
   useEffect(() => {
     void load();
-    const timer = window.setInterval(() => void load(), 30_000);
-    return () => window.clearInterval(timer);
+    const EventStream = window.EventSource;
+    if (typeof EventStream !== "function") {
+      const timer = setInterval(() => void load(), 5_000);
+      return () => clearInterval(timer);
+    }
+    const source = new EventStream("/api/admin/overview/events");
+    source.addEventListener("overview", (event) => {
+      try {
+        setData(JSON.parse((event as MessageEvent<string>).data) as OverviewData);
+        setLive(true);
+      } catch {
+        setLive(false);
+      }
+    });
+    source.addEventListener("unavailable", () => setLive(false));
+    source.onopen = () => setLive(true);
+    source.onerror = () => setLive(false);
+    return () => source.close();
   }, [load]);
   return (
     <Page kicker="概览" title="开始使用 Daylink" subtitle="账号与部署服务器运行状态">
@@ -89,7 +106,7 @@ function Overview() {
       </div>
       <section className="admin-server-section">
         <header>
-          <div><h2>服务器状态</h2><p>每 30 秒自动更新 · 支持 Windows、macOS 和 Ubuntu</p></div>
+          <div><h2>服务器状态</h2><p>{live ? "实时更新中" : "正在连接实时状态"} · 支持 Windows、macOS 和 Ubuntu</p></div>
           <button className="admin-audit-refresh" onClick={() => void load()}>刷新数据</button>
         </header>
         <div className="admin-server-list">
@@ -274,6 +291,7 @@ function Settings() {
   const [qr, setQR] = useState("");
   const [ai, setAI] = useState<Provider | null>(null);
   const [testAsset, setTestAsset] = useState<GeneratedAsset | null>(null);
+  const [testingImage, setTestingImage] = useState(false);
   const [plans, setPlans] = useState<PlanLimit[]>([]);
 
   const loadAI = useCallback(async () => {
@@ -308,12 +326,15 @@ function Settings() {
   }
 
   async function testImage() {
-    if (!ai) return;
+    if (!ai || testingImage) return;
+    setTestingImage(true);
+    setMessage("正在生成测试图片，可能需要几分钟，请勿重复点击或刷新页面");
     try {
       const result = await api<{ asset: GeneratedAsset }>("/api/admin/images", { method: "POST", body: JSON.stringify({ providerId: ai.id, prompt: "A minimal blue paper airplane icon on a white background", size: "1024x1024", quality: "low" }) });
       setTestAsset({ ...result.asset, createdAt: new Date().toISOString() });
       setMessage("生图调用正常");
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : "生图测试失败"); }
+    finally { setTestingImage(false); }
   }
 
   async function savePlans(event: FormEvent<HTMLFormElement>) {
@@ -350,7 +371,7 @@ function Settings() {
           <label>API 地址<input name="baseUrl" type="url" required defaultValue={ai?.baseUrl ?? ""} placeholder="https://api.example.com" /></label>
           <label>API Key<input name="apiKey" type="password" required={!ai} autoComplete="off" placeholder={ai ? `已保存 · ${ai.apiKeyHint}（留空不修改）` : "输入 API Key"} /></label>
 		  {ai && <p className="admin-settings-models">已同步 {(ai.models ?? []).filter((model) => model.kind === "text").length} 个对话模型{ai.imageModel ? `、${(ai.models ?? []).filter((model) => model.kind === "image").length} 个生图模型` : ""} · 默认 {ai.textModel}</p>}
-		  <div className="admin-settings-ai-actions"><button className="admin-accounts-primary">加密保存</button>{ai && <><button type="button" onClick={() => void testAI()}>测试 API</button>{ai.imageModel && <button type="button" onClick={() => void testImage()}>测试生图</button>}</>}</div>
+		  <div className="admin-settings-ai-actions"><button className="admin-accounts-primary">加密保存</button>{ai && <><button type="button" onClick={() => void testAI()}>测试 API</button>{ai.imageModel && <button type="button" disabled={testingImage} aria-busy={testingImage} onClick={() => void testImage()}>{testingImage ? "正在生成…" : "测试生图"}</button>}</>}</div>
         </form>
         {testAsset && <a className="admin-settings-test-image" href={testAsset.url} target="_blank" rel="noreferrer"><img src={testAsset.url} alt="AI 生图测试结果" /><span>生图测试结果</span></a>}
       </section>

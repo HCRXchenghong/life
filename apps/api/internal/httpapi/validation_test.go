@@ -46,8 +46,14 @@ func TestStrictFunctionToolRequiresClosedObjectSchema(t *testing.T) {
 
 func TestParseImageDataAcceptsOnlyBoundedPNG(t *testing.T) {
 	png := append([]byte("\x89PNG\r\n\x1a\n"), []byte("test")...)
-	if decoded, err := parseImageData(base64.StdEncoding.EncodeToString(png)); err != nil || string(decoded) != string(png) {
-		t.Fatal("valid PNG rejected")
+	for _, encoded := range []string{
+		base64.StdEncoding.EncodeToString(png),
+		base64.RawStdEncoding.EncodeToString(png),
+		"data:image/png;base64," + base64.StdEncoding.EncodeToString(png),
+	} {
+		if decoded, err := parseImageData(encoded); err != nil || string(decoded) != string(png) {
+			t.Fatalf("valid PNG rejected: %v", err)
+		}
 	}
 	if _, err := parseImageData(base64.StdEncoding.EncodeToString([]byte("not a png"))); err == nil {
 		t.Fatal("non-PNG image accepted")

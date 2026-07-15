@@ -65,6 +65,10 @@ func Load() (Config, error) {
 	if !loopback && (len(setupToken) < 24 || len(setupToken) > 256) {
 		return Config{}, errors.New("ADMIN_SETUP_TOKEN must be 24-256 characters for non-loopback deployments")
 	}
+	upstreamTimeout := durationEnv("AI_UPSTREAM_TIMEOUT", 5*time.Minute)
+	if upstreamTimeout < 10*time.Second || upstreamTimeout > 5*time.Minute {
+		return Config{}, errors.New("AI_UPSTREAM_TIMEOUT must be between 10s and 5m")
+	}
 	return Config{
 		Address:           envOr("HTTP_ADDR", ":8080"),
 		PublicOrigin:      origin,
@@ -75,7 +79,7 @@ func Load() (Config, error) {
 		AssetDirectory:    envOr("ASSET_DIRECTORY", "/var/lib/daylink/assets"),
 		AutoMigrate:       boolEnv("AUTO_MIGRATE", true),
 		ShutdownTimeout:   durationEnv("SHUTDOWN_TIMEOUT", 15*time.Second),
-		UpstreamTimeout:   durationEnv("AI_UPSTREAM_TIMEOUT", 120*time.Second),
+		UpstreamTimeout:   upstreamTimeout,
 		TrustedProxyCIDRs: splitCSV(os.Getenv("TRUSTED_PROXY_CIDRS")),
 	}, nil
 }

@@ -40,7 +40,7 @@ func main() {
 		Handler:           httpapi.New(cfg, db, logger).Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      150 * time.Second,
+		WriteTimeout:      cfg.UpstreamTimeout + 30*time.Second,
 		IdleTimeout:       90 * time.Second,
 		MaxHeaderBytes:    32 << 10,
 	}

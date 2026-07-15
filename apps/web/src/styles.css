@@ -1101,6 +1101,11 @@ p {
   font-size: 13px;
 }
 
+.admin-settings-ai-actions > button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
 .admin-settings-test-image {
   width: 112px;
   display: grid;
