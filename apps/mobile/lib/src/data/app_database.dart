@@ -19,6 +19,8 @@ class Hosts extends Table {
   BoolColumn get favorite => boolean().withDefault(const Constant(false))();
   TextColumn get terminalMode => text().withDefault(const Constant('direct'))();
   TextColumn get agentState => text().withDefault(const Constant('unknown'))();
+  TextColumn get system =>
+      text().withLength(max: 80).withDefault(const Constant(''))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get deletedAt => dateTime().nullable()();
@@ -325,7 +327,7 @@ class AppDatabase extends _$AppDatabase {
   factory AppDatabase.inMemory() => AppDatabase(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -351,6 +353,9 @@ class AppDatabase extends _$AppDatabase {
         await migrator.addColumn(sharePollRefs, sharePollRefs.publicToken);
         await migrator.addColumn(sharePollRefs, sharePollRefs.timezoneId);
         await migrator.addColumn(sharePollRefs, sharePollRefs.version);
+      }
+      if (from < 4) {
+        await migrator.addColumn(hosts, hosts.system);
       }
     },
     beforeOpen: (details) async {

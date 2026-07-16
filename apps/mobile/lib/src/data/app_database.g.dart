@@ -141,6 +141,17 @@ class $HostsTable extends Hosts with TableInfo<$HostsTable, Host> {
     requiredDuringInsert: false,
     defaultValue: const Constant('unknown'),
   );
+  static const VerificationMeta _systemMeta = const VerificationMeta('system');
+  @override
+  late final GeneratedColumn<String> system = GeneratedColumn<String>(
+    'system',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(maxTextLength: 80),
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -189,6 +200,7 @@ class $HostsTable extends Hosts with TableInfo<$HostsTable, Host> {
     favorite,
     terminalMode,
     agentState,
+    system,
     createdAt,
     updatedAt,
     deletedAt,
@@ -282,6 +294,12 @@ class $HostsTable extends Hosts with TableInfo<$HostsTable, Host> {
         agentState.isAcceptableOrUnknown(data['agent_state']!, _agentStateMeta),
       );
     }
+    if (data.containsKey('system')) {
+      context.handle(
+        _systemMeta,
+        system.isAcceptableOrUnknown(data['system']!, _systemMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -353,6 +371,10 @@ class $HostsTable extends Hosts with TableInfo<$HostsTable, Host> {
         DriftSqlType.string,
         data['${effectivePrefix}agent_state'],
       )!,
+      system: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}system'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -386,6 +408,7 @@ class Host extends DataClass implements Insertable<Host> {
   final bool favorite;
   final String terminalMode;
   final String agentState;
+  final String system;
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? deletedAt;
@@ -401,6 +424,7 @@ class Host extends DataClass implements Insertable<Host> {
     required this.favorite,
     required this.terminalMode,
     required this.agentState,
+    required this.system,
     required this.createdAt,
     required this.updatedAt,
     this.deletedAt,
@@ -423,6 +447,7 @@ class Host extends DataClass implements Insertable<Host> {
     map['favorite'] = Variable<bool>(favorite);
     map['terminal_mode'] = Variable<String>(terminalMode);
     map['agent_state'] = Variable<String>(agentState);
+    map['system'] = Variable<String>(system);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     if (!nullToAbsent || deletedAt != null) {
@@ -448,6 +473,7 @@ class Host extends DataClass implements Insertable<Host> {
       favorite: Value(favorite),
       terminalMode: Value(terminalMode),
       agentState: Value(agentState),
+      system: Value(system),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
       deletedAt: deletedAt == null && nullToAbsent
@@ -473,6 +499,7 @@ class Host extends DataClass implements Insertable<Host> {
       favorite: serializer.fromJson<bool>(json['favorite']),
       terminalMode: serializer.fromJson<String>(json['terminalMode']),
       agentState: serializer.fromJson<String>(json['agentState']),
+      system: serializer.fromJson<String>(json['system']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
@@ -493,6 +520,7 @@ class Host extends DataClass implements Insertable<Host> {
       'favorite': serializer.toJson<bool>(favorite),
       'terminalMode': serializer.toJson<String>(terminalMode),
       'agentState': serializer.toJson<String>(agentState),
+      'system': serializer.toJson<String>(system),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
@@ -511,6 +539,7 @@ class Host extends DataClass implements Insertable<Host> {
     bool? favorite,
     String? terminalMode,
     String? agentState,
+    String? system,
     DateTime? createdAt,
     DateTime? updatedAt,
     Value<DateTime?> deletedAt = const Value.absent(),
@@ -528,6 +557,7 @@ class Host extends DataClass implements Insertable<Host> {
     favorite: favorite ?? this.favorite,
     terminalMode: terminalMode ?? this.terminalMode,
     agentState: agentState ?? this.agentState,
+    system: system ?? this.system,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
@@ -551,6 +581,7 @@ class Host extends DataClass implements Insertable<Host> {
       agentState: data.agentState.present
           ? data.agentState.value
           : this.agentState,
+      system: data.system.present ? data.system.value : this.system,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
@@ -571,6 +602,7 @@ class Host extends DataClass implements Insertable<Host> {
           ..write('favorite: $favorite, ')
           ..write('terminalMode: $terminalMode, ')
           ..write('agentState: $agentState, ')
+          ..write('system: $system, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt')
@@ -591,6 +623,7 @@ class Host extends DataClass implements Insertable<Host> {
     favorite,
     terminalMode,
     agentState,
+    system,
     createdAt,
     updatedAt,
     deletedAt,
@@ -610,6 +643,7 @@ class Host extends DataClass implements Insertable<Host> {
           other.favorite == this.favorite &&
           other.terminalMode == this.terminalMode &&
           other.agentState == this.agentState &&
+          other.system == this.system &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt);
@@ -627,6 +661,7 @@ class HostsCompanion extends UpdateCompanion<Host> {
   final Value<bool> favorite;
   final Value<String> terminalMode;
   final Value<String> agentState;
+  final Value<String> system;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<DateTime?> deletedAt;
@@ -643,6 +678,7 @@ class HostsCompanion extends UpdateCompanion<Host> {
     this.favorite = const Value.absent(),
     this.terminalMode = const Value.absent(),
     this.agentState = const Value.absent(),
+    this.system = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
@@ -660,6 +696,7 @@ class HostsCompanion extends UpdateCompanion<Host> {
     this.favorite = const Value.absent(),
     this.terminalMode = const Value.absent(),
     this.agentState = const Value.absent(),
+    this.system = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
@@ -680,6 +717,7 @@ class HostsCompanion extends UpdateCompanion<Host> {
     Expression<bool>? favorite,
     Expression<String>? terminalMode,
     Expression<String>? agentState,
+    Expression<String>? system,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<DateTime>? deletedAt,
@@ -697,6 +735,7 @@ class HostsCompanion extends UpdateCompanion<Host> {
       if (favorite != null) 'favorite': favorite,
       if (terminalMode != null) 'terminal_mode': terminalMode,
       if (agentState != null) 'agent_state': agentState,
+      if (system != null) 'system': system,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
@@ -716,6 +755,7 @@ class HostsCompanion extends UpdateCompanion<Host> {
     Value<bool>? favorite,
     Value<String>? terminalMode,
     Value<String>? agentState,
+    Value<String>? system,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<DateTime?>? deletedAt,
@@ -733,6 +773,7 @@ class HostsCompanion extends UpdateCompanion<Host> {
       favorite: favorite ?? this.favorite,
       terminalMode: terminalMode ?? this.terminalMode,
       agentState: agentState ?? this.agentState,
+      system: system ?? this.system,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,
@@ -776,6 +817,9 @@ class HostsCompanion extends UpdateCompanion<Host> {
     if (agentState.present) {
       map['agent_state'] = Variable<String>(agentState.value);
     }
+    if (system.present) {
+      map['system'] = Variable<String>(system.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -805,6 +849,7 @@ class HostsCompanion extends UpdateCompanion<Host> {
           ..write('favorite: $favorite, ')
           ..write('terminalMode: $terminalMode, ')
           ..write('agentState: $agentState, ')
+          ..write('system: $system, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
@@ -10140,6 +10185,7 @@ typedef $$HostsTableCreateCompanionBuilder =
       Value<bool> favorite,
       Value<String> terminalMode,
       Value<String> agentState,
+      Value<String> system,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<DateTime?> deletedAt,
@@ -10158,6 +10204,7 @@ typedef $$HostsTableUpdateCompanionBuilder =
       Value<bool> favorite,
       Value<String> terminalMode,
       Value<String> agentState,
+      Value<String> system,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<DateTime?> deletedAt,
@@ -10346,6 +10393,11 @@ class $$HostsTableFilterComposer extends Composer<_$AppDatabase, $HostsTable> {
 
   ColumnFilters<String> get agentState => $composableBuilder(
     column: $table.agentState,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get system => $composableBuilder(
+    column: $table.system,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10579,6 +10631,11 @@ class $$HostsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get system => $composableBuilder(
+    column: $table.system,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -10642,6 +10699,9 @@ class $$HostsTableAnnotationComposer
     column: $table.agentState,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get system =>
+      $composableBuilder(column: $table.system, builder: (column) => column);
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -10851,6 +10911,7 @@ class $$HostsTableTableManager
                 Value<bool> favorite = const Value.absent(),
                 Value<String> terminalMode = const Value.absent(),
                 Value<String> agentState = const Value.absent(),
+                Value<String> system = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
@@ -10867,6 +10928,7 @@ class $$HostsTableTableManager
                 favorite: favorite,
                 terminalMode: terminalMode,
                 agentState: agentState,
+                system: system,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,
@@ -10885,6 +10947,7 @@ class $$HostsTableTableManager
                 Value<bool> favorite = const Value.absent(),
                 Value<String> terminalMode = const Value.absent(),
                 Value<String> agentState = const Value.absent(),
+                Value<String> system = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<DateTime?> deletedAt = const Value.absent(),
@@ -10901,6 +10964,7 @@ class $$HostsTableTableManager
                 favorite: favorite,
                 terminalMode: terminalMode,
                 agentState: agentState,
+                system: system,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 deletedAt: deletedAt,

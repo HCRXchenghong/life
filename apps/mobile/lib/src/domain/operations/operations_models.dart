@@ -39,6 +39,7 @@ class HostProfileModel {
     this.notes = '',
     this.favorite = false,
     this.agentState = 'unknown',
+    this.system = '',
   });
 
   final String id;
@@ -52,6 +53,7 @@ class HostProfileModel {
   final bool favorite;
   final TerminalMode terminalMode;
   final String agentState;
+  final String system;
 }
 
 class HostGroupModel {

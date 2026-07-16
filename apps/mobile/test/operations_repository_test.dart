@@ -27,6 +27,7 @@ void main() {
         username: 'deploy',
         groupId: 'group-1',
         favorite: true,
+        system: 'Ubuntu',
         terminalMode: TerminalMode.persistent,
       ),
     );
@@ -48,7 +49,9 @@ void main() {
 
     expect(results, hasLength(1));
     expect(results.single.host.terminalMode, TerminalMode.persistent);
+    expect(results.single.host.system, 'Ubuntu');
     expect(results.single.tags.single.name, 'critical');
+    expect(await repository.searchHosts(query: 'ubuntu'), hasLength(1));
 
     await repository.softDeleteHost('host-1');
     expect(await repository.searchHosts(), isEmpty);

@@ -8,10 +8,12 @@ import 'src/application/assistant_settings.dart';
 import 'src/application/daylink_services.dart';
 import 'src/data/app_authentication.dart';
 import 'src/data/app_session_monitor.dart';
+import 'src/data/operations_repository.dart';
 import 'src/data/schedule_repository.dart';
 import 'src/domain/ai/ai_models.dart';
 import 'src/presentation/app_navigation.dart';
 import 'src/presentation/assistant_page.dart';
+import 'src/presentation/hosts_page.dart';
 import 'src/presentation/login_page.dart';
 import 'src/presentation/password_change_page.dart';
 import 'src/presentation/toolbox_page.dart';
@@ -48,6 +50,10 @@ abstract interface class ForcedSignOutAwareRuntime {
 
 abstract interface class ScheduleAwareRuntime {
   ScheduleEventSource get schedules;
+}
+
+abstract interface class HostAwareRuntime {
+  HostListSource get hosts;
 }
 
 class DaylinkApp extends StatefulWidget {
@@ -274,7 +280,8 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
   void _selectDestination(AppDestination destination) {
     if (destination == AppDestination.schedule ||
         destination == AppDestination.toolbox ||
-        destination == AppDestination.assistant) {
+        destination == AppDestination.assistant ||
+        destination == AppDestination.hosts) {
       if (_selectedDestination == destination) return;
       setState(() => _selectedDestination = destination);
       return;
@@ -301,6 +308,15 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
 
   Widget _authenticatedHome() {
     final runtime = _runtime;
+    if (_selectedDestination == AppDestination.hosts &&
+        runtime is HostAwareRuntime) {
+      return HostsPage(
+        source: (runtime as HostAwareRuntime).hosts,
+        onAddHost: () => _showPendingPage('添加主机'),
+        onOpenHost: (_) => _showPendingPage('主机详情'),
+        onDestinationSelected: _selectDestination,
+      );
+    }
     if (runtime is ScheduleAwareRuntime) {
       final scheduleRuntime = runtime as ScheduleAwareRuntime;
       if (_selectedDestination == AppDestination.toolbox) {
@@ -383,6 +399,7 @@ class DaylinkRuntime
         AppRuntime,
         ForcedSignOutAwareRuntime,
         ScheduleAwareRuntime,
+        HostAwareRuntime,
         AssistantSettingsSource {
   DaylinkRuntime._(this.services, this._assistantSettings);
 
@@ -395,6 +412,9 @@ class DaylinkRuntime
 
   @override
   ScheduleEventSource get schedules => services.schedules;
+
+  @override
+  HostListSource get hosts => services.operations;
 
   static Future<DaylinkRuntime> startForAccount(
     String accountId, {

@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:daylink_mobile/main.dart';
 import 'package:daylink_mobile/src/data/app_authentication.dart';
+import 'package:daylink_mobile/src/data/operations_repository.dart';
 import 'package:daylink_mobile/src/data/schedule_repository.dart';
+import 'package:daylink_mobile/src/domain/operations/operations_models.dart';
 import 'package:daylink_mobile/src/domain/schedule/schedule_models.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -205,6 +207,12 @@ void main() {
     expect(find.text('本地助手'), findsOneWidget);
     expect(find.text('询问 Daylink'), findsOneWidget);
 
+    await tester.tap(find.byKey(const Key('nav-hosts')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('hosts-title')), findsOneWidget);
+    expect(find.byKey(const Key('hosts-empty')), findsOneWidget);
+
     await tester.tap(find.byKey(const Key('nav-schedule')));
     await tester.pumpAndSettle();
     expect(find.text('今天'), findsOneWidget);
@@ -296,17 +304,32 @@ class _FakeRuntime implements AppRuntime {
   Future<void> reconcile() async {}
 }
 
-class _FakeScheduleRuntime implements AppRuntime, ScheduleAwareRuntime {
+class _FakeScheduleRuntime
+    implements AppRuntime, ScheduleAwareRuntime, HostAwareRuntime {
   final _source = _EmptyScheduleSource();
+  final _hosts = _EmptyHostSource();
 
   @override
   ScheduleEventSource get schedules => _source;
+
+  @override
+  HostListSource get hosts => _hosts;
 
   @override
   Future<void> close() async {}
 
   @override
   Future<void> reconcile() async {}
+}
+
+class _EmptyHostSource implements HostListSource {
+  @override
+  Future<List<HostSearchResult>> searchHosts({
+    String query = '',
+    String? groupId,
+    String? tagId,
+    bool favoritesOnly = false,
+  }) async => const [];
 }
 
 class _EmptyScheduleSource implements ScheduleEventSource {

@@ -5,7 +5,16 @@ import 'package:drift/drift.dart';
 import '../domain/operations/operations_models.dart';
 import 'app_database.dart';
 
-class OperationsRepository {
+abstract interface class HostListSource {
+  Future<List<HostSearchResult>> searchHosts({
+    String query = '',
+    String? groupId,
+    String? tagId,
+    bool favoritesOnly = false,
+  });
+}
+
+class OperationsRepository implements HostListSource {
   OperationsRepository(this._db);
 
   final AppDatabase _db;
@@ -44,6 +53,7 @@ class OperationsRepository {
             favorite: Value(host.favorite),
             terminalMode: Value(host.terminalMode.name),
             agentState: Value(host.agentState),
+            system: Value(host.system.trim()),
             updatedAt: Value(DateTime.now().toUtc()),
             deletedAt: const Value(null),
           ),
@@ -95,6 +105,7 @@ class OperationsRepository {
     });
   }
 
+  @override
   Future<List<HostSearchResult>> searchHosts({
     String query = '',
     String? groupId,
@@ -113,7 +124,8 @@ class OperationsRepository {
                   expression &=
                       row.name.lower().like(pattern, escapeChar: r'\') |
                       row.address.lower().like(pattern, escapeChar: r'\') |
-                      row.username.lower().like(pattern, escapeChar: r'\');
+                      row.username.lower().like(pattern, escapeChar: r'\') |
+                      row.system.lower().like(pattern, escapeChar: r'\');
                 }
                 return expression;
               })
@@ -416,6 +428,7 @@ class OperationsRepository {
     favorite: row.favorite,
     terminalMode: TerminalMode.values.byName(row.terminalMode),
     agentState: row.agentState,
+    system: row.system,
   );
 
   void _requirePort(int port, String name) {
