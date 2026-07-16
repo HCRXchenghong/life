@@ -8,8 +8,10 @@ import 'src/application/daylink_services.dart';
 import 'src/data/app_authentication.dart';
 import 'src/data/app_session_monitor.dart';
 import 'src/data/schedule_repository.dart';
+import 'src/presentation/app_navigation.dart';
 import 'src/presentation/login_page.dart';
 import 'src/presentation/password_change_page.dart';
+import 'src/presentation/toolbox_page.dart';
 import 'src/presentation/today_schedule_page.dart';
 
 const _configuredApiBaseUrl = String.fromEnvironment(
@@ -68,6 +70,7 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
   StreamSubscription<String>? _forcedSignOutSubscription;
   bool _bootstrapping = true;
   final _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+  AppDestination _selectedDestination = AppDestination.schedule;
 
   @override
   void initState() {
@@ -169,6 +172,7 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
     await _detachRuntime();
     final logout = _authentication.logout();
     _session = null;
+    _selectedDestination = AppDestination.schedule;
     if (mounted) setState(() {});
     await logout;
   }
@@ -185,6 +189,7 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
     await _forcedSignOutSubscription?.cancel();
     _runtime = runtime;
     _session = session;
+    _selectedDestination = AppDestination.schedule;
     if (runtime is ForcedSignOutAwareRuntime) {
       final signOutAware = runtime as ForcedSignOutAwareRuntime;
       _forcedSignOutSubscription = signOutAware.forcedSignOuts.listen((_) {
@@ -203,6 +208,7 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
     await _authentication.clear();
     await _detachRuntime();
     _session = null;
+    _selectedDestination = AppDestination.schedule;
     if (mounted) setState(() {});
   }
 
@@ -263,7 +269,12 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
   }
 
   void _selectDestination(AppDestination destination) {
-    if (destination == AppDestination.schedule) return;
+    if (destination == AppDestination.schedule ||
+        destination == AppDestination.toolbox) {
+      if (_selectedDestination == destination) return;
+      setState(() => _selectedDestination = destination);
+      return;
+    }
     final name = switch (destination) {
       AppDestination.schedule => '日程',
       AppDestination.toolbox => '工具箱',
@@ -274,10 +285,26 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
     _showPendingPage(name);
   }
 
+  void _selectTool(ToolboxTool tool) {
+    final name = switch (tool) {
+      ToolboxTool.friendSchedule => '好友选时间',
+      ToolboxTool.imageGeneration => 'AI 生图',
+      ToolboxTool.wordDocument => 'Word 文档',
+      ToolboxTool.spreadsheetPresentation => '表格与演示',
+    };
+    _showPendingPage(name);
+  }
+
   Widget _authenticatedHome() {
     final runtime = _runtime;
     if (runtime is ScheduleAwareRuntime) {
       final scheduleRuntime = runtime as ScheduleAwareRuntime;
+      if (_selectedDestination == AppDestination.toolbox) {
+        return ToolboxPage(
+          onToolSelected: _selectTool,
+          onDestinationSelected: _selectDestination,
+        );
+      }
       return TodaySchedulePage(
         source: scheduleRuntime.schedules,
         onCreateEvent: () => _showPendingPage('新建日程'),

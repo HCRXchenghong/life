@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:daylink_mobile/src/data/schedule_repository.dart';
 import 'package:daylink_mobile/src/domain/schedule/schedule_models.dart';
+import 'package:daylink_mobile/src/presentation/app_navigation.dart';
 import 'package:daylink_mobile/src/presentation/today_schedule_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

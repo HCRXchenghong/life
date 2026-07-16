@@ -6,8 +6,7 @@ import 'package:flutter/services.dart';
 import '../data/schedule_repository.dart';
 import '../domain/schedule/recurrence_engine.dart';
 import '../domain/schedule/schedule_models.dart';
-
-enum AppDestination { schedule, toolbox, assistant, hosts, me }
+import 'app_navigation.dart';
 
 class TodaySchedulePage extends StatefulWidget {
   const TodaySchedulePage({
@@ -147,7 +146,10 @@ class _TodaySchedulePageState extends State<TodaySchedulePage> {
                 ),
               ),
             ),
-            _BottomNavigation(onSelected: widget.onDestinationSelected),
+            DaylinkBottomNavigation(
+              currentDestination: AppDestination.schedule,
+              onSelected: widget.onDestinationSelected,
+            ),
           ],
         ),
       ),
@@ -458,109 +460,6 @@ class _EmptySchedule extends StatelessWidget {
       ),
     ),
   );
-}
-
-class _BottomNavigation extends StatelessWidget {
-  const _BottomNavigation({required this.onSelected});
-
-  final ValueChanged<AppDestination> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.paddingOf(context).bottom;
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFEDEFF2))),
-      ),
-      child: SizedBox(
-        height: 66 + bottomInset,
-        child: Padding(
-          padding: EdgeInsets.only(bottom: bottomInset),
-          child: Row(
-            children: [
-              _NavigationItem(
-                key: const Key('nav-schedule'),
-                icon: Icons.event_available_outlined,
-                label: '日程',
-                active: true,
-                onTap: () => onSelected(AppDestination.schedule),
-              ),
-              _NavigationItem(
-                key: const Key('nav-toolbox'),
-                icon: Icons.grid_view_rounded,
-                label: '工具箱',
-                onTap: () => onSelected(AppDestination.toolbox),
-              ),
-              _NavigationItem(
-                key: const Key('nav-assistant'),
-                icon: Icons.auto_awesome_outlined,
-                label: '助手',
-                onTap: () => onSelected(AppDestination.assistant),
-              ),
-              _NavigationItem(
-                key: const Key('nav-hosts'),
-                icon: Icons.desktop_windows_outlined,
-                label: '主机',
-                onTap: () => onSelected(AppDestination.hosts),
-              ),
-              _NavigationItem(
-                key: const Key('nav-me'),
-                icon: Icons.person_outline_rounded,
-                label: '我的',
-                onTap: () => onSelected(AppDestination.me),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _NavigationItem extends StatelessWidget {
-  const _NavigationItem({
-    super.key,
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.active = false,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = active ? const Color(0xFF3370FF) : const Color(0xFF646A73);
-    return Expanded(
-      child: Semantics(
-        selected: active,
-        button: true,
-        child: InkResponse(
-          onTap: onTap,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 23, color: color),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 11,
-                  height: 1.2,
-                  fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _TodayOccurrence {
