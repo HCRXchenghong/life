@@ -14,6 +14,7 @@ use tokio::net::TcpListener;
 use tokio::sync::{Mutex, watch};
 use tokio::task::JoinHandle;
 
+use crate::vault;
 use crate::{
     AgentChannel, AgentInstallResult, Authentication, CommandOutput, ConnectionConfig, HostKey,
     PtySession, SshSession, TerminalEvent, probe_host_key,
@@ -27,6 +28,80 @@ pub fn init_app() {
 #[must_use]
 pub fn core_api_version() -> String {
     env!("CARGO_PKG_VERSION").to_owned()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BridgeContentKeyStatus {
+    Missing,
+    PendingRecoveryConfirmation,
+    Ready,
+}
+
+#[derive(Debug, Clone)]
+pub struct BridgeContentKeyInitialization {
+    pub device_id: String,
+    pub key_version: u32,
+    pub recovery_key: Vec<u8>,
+    pub recovery_salt: Vec<u8>,
+    pub recovery_nonce: Vec<u8>,
+    pub recovery_ciphertext: Vec<u8>,
+}
+
+pub fn generate_device_vault_key() -> Result<Vec<u8>, String> {
+    vault::generate_device_vault_key()
+}
+
+#[allow(clippy::needless_pass_by_value)] // FRB owns and transfers these values across the FFI boundary.
+pub fn content_key_status(
+    vault_path: String,
+    account_id: String,
+    device_vault_key: Vec<u8>,
+) -> Result<BridgeContentKeyStatus, String> {
+    vault::content_key_status(&vault_path, &account_id, &device_vault_key).map(
+        |status| match status {
+            vault::ContentKeyStatus::Missing => BridgeContentKeyStatus::Missing,
+            vault::ContentKeyStatus::PendingRecoveryConfirmation => {
+                BridgeContentKeyStatus::PendingRecoveryConfirmation
+            }
+            vault::ContentKeyStatus::Ready => BridgeContentKeyStatus::Ready,
+        },
+    )
+}
+
+#[allow(clippy::needless_pass_by_value)] // FRB owns and transfers these values across the FFI boundary.
+pub fn initialize_content_key(
+    vault_path: String,
+    account_id: String,
+    device_vault_key: Vec<u8>,
+) -> Result<BridgeContentKeyInitialization, String> {
+    vault::initialize_content_key(&vault_path, &account_id, &device_vault_key).map(|result| {
+        BridgeContentKeyInitialization {
+            device_id: result.device_id,
+            key_version: result.key_version,
+            recovery_key: result.recovery_key,
+            recovery_salt: result.recovery_salt,
+            recovery_nonce: result.recovery_nonce,
+            recovery_ciphertext: result.recovery_ciphertext,
+        }
+    })
+}
+
+#[allow(clippy::needless_pass_by_value)] // FRB owns and transfers these values across the FFI boundary.
+pub fn acknowledge_recovery_key_saved(
+    vault_path: String,
+    account_id: String,
+    device_vault_key: Vec<u8>,
+) -> Result<(), String> {
+    vault::acknowledge_recovery_key_saved(&vault_path, &account_id, &device_vault_key)
+}
+
+#[allow(clippy::needless_pass_by_value)] // FRB owns and transfers these values across the FFI boundary.
+pub fn discard_pending_content_key(
+    vault_path: String,
+    account_id: String,
+    device_vault_key: Vec<u8>,
+) -> Result<(), String> {
+    vault::discard_pending_content_key(&vault_path, &account_id, &device_vault_key)
 }
 
 #[derive(Debug, Clone)]

@@ -1,0 +1,13 @@
+CREATE TABLE IF NOT EXISTS content_key_envelopes (
+  account_id CHAR(36) NOT NULL PRIMARY KEY,
+  key_version INT NOT NULL,
+  algorithm VARCHAR(32) NOT NULL,
+  kdf VARCHAR(32) NOT NULL,
+  salt VARBINARY(64) NOT NULL,
+  nonce VARBINARY(24) NOT NULL,
+  ciphertext VARBINARY(128) NOT NULL,
+  creator_device_id CHAR(36) NOT NULL,
+  created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  CONSTRAINT content_key_envelope_account_fk FOREIGN KEY (account_id) REFERENCES app_accounts(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

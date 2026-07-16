@@ -9,6 +9,7 @@
 pub mod api;
 #[allow(unsafe_code, clippy::all, clippy::pedantic)]
 mod frb_generated;
+mod vault;
 
 use std::fmt::Write as _;
 use std::sync::{Arc, Mutex};

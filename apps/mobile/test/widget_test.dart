@@ -10,6 +10,7 @@ import 'package:daylink_mobile/src/domain/operations/operations_models.dart';
 import 'package:daylink_mobile/src/domain/notifications/notification_settings.dart';
 import 'package:daylink_mobile/src/domain/schedule/schedule_models.dart';
 import 'package:daylink_mobile/src/domain/sync/data_sync_models.dart';
+import 'package:daylink_mobile/src/domain/sync/content_encryption_models.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -263,6 +264,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('data-sync-title')), findsOneWidget);
     expect(find.text('端到端加密'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('sync-encryption')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('e2ee-title')), findsOneWidget);
+    expect(find.text('开启并生成恢复密钥'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('e2ee-back')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('data-sync-back')));
     await tester.pumpAndSettle();
 
@@ -378,7 +385,8 @@ class _FakeScheduleRuntime
         HostAwareRuntime,
         AccountEntitlementSource,
         NotificationSettingsSource,
-        DataSyncSource {
+        DataSyncSource,
+        ContentEncryptionSource {
   final _source = _EmptyScheduleSource();
   final _hosts = _EmptyHostSource();
 
@@ -482,6 +490,29 @@ class _FakeScheduleRuntime
 
   @override
   Future<DataSyncState> syncNow() async => _dataSyncState;
+
+  ContentEncryptionState _contentEncryptionState = const ContentEncryptionState(
+    status: ContentEncryptionSetupStatus.notConfigured,
+  );
+
+  @override
+  Future<void> acknowledgeRecoveryKeySaved() async {
+    _contentEncryptionState = const ContentEncryptionState(
+      status: ContentEncryptionSetupStatus.enabled,
+    );
+  }
+
+  @override
+  Future<ContentEncryptionState> loadContentEncryptionState() async =>
+      _contentEncryptionState;
+
+  @override
+  Future<RecoveryKeyDraft> prepareContentEncryption() async {
+    _contentEncryptionState = const ContentEncryptionState(
+      status: ContentEncryptionSetupStatus.recoveryPending,
+    );
+    return RecoveryKeyDraft.fromBytes(List<int>.filled(32, 1));
+  }
 
   @override
   Future<void> close() async {}

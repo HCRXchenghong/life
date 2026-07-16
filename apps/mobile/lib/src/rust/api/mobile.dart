@@ -9,10 +9,53 @@ import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'mobile.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `bounded_timeout`, `validate_host_and_port`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`
 
 Future<String> coreApiVersion() =>
     RustLib.instance.api.crateApiMobileCoreApiVersion();
+
+Future<Uint8List> generateDeviceVaultKey() =>
+    RustLib.instance.api.crateApiMobileGenerateDeviceVaultKey();
+
+Future<BridgeContentKeyStatus> contentKeyStatus({
+  required String vaultPath,
+  required String accountId,
+  required List<int> deviceVaultKey,
+}) => RustLib.instance.api.crateApiMobileContentKeyStatus(
+  vaultPath: vaultPath,
+  accountId: accountId,
+  deviceVaultKey: deviceVaultKey,
+);
+
+Future<BridgeContentKeyInitialization> initializeContentKey({
+  required String vaultPath,
+  required String accountId,
+  required List<int> deviceVaultKey,
+}) => RustLib.instance.api.crateApiMobileInitializeContentKey(
+  vaultPath: vaultPath,
+  accountId: accountId,
+  deviceVaultKey: deviceVaultKey,
+);
+
+Future<void> acknowledgeRecoveryKeySaved({
+  required String vaultPath,
+  required String accountId,
+  required List<int> deviceVaultKey,
+}) => RustLib.instance.api.crateApiMobileAcknowledgeRecoveryKeySaved(
+  vaultPath: vaultPath,
+  accountId: accountId,
+  deviceVaultKey: deviceVaultKey,
+);
+
+Future<void> discardPendingContentKey({
+  required String vaultPath,
+  required String accountId,
+  required List<int> deviceVaultKey,
+}) => RustLib.instance.api.crateApiMobileDiscardPendingContentKey(
+  vaultPath: vaultPath,
+  accountId: accountId,
+  deviceVaultKey: deviceVaultKey,
+);
 
 Future<BridgeHostKey> probeHostKeyMobile({
   required String host,
@@ -184,6 +227,47 @@ class BridgeConnectionConfig {
           connectTimeoutMs == other.connectTimeoutMs &&
           inactivityTimeoutMs == other.inactivityTimeoutMs;
 }
+
+class BridgeContentKeyInitialization {
+  final String deviceId;
+  final int keyVersion;
+  final Uint8List recoveryKey;
+  final Uint8List recoverySalt;
+  final Uint8List recoveryNonce;
+  final Uint8List recoveryCiphertext;
+
+  const BridgeContentKeyInitialization({
+    required this.deviceId,
+    required this.keyVersion,
+    required this.recoveryKey,
+    required this.recoverySalt,
+    required this.recoveryNonce,
+    required this.recoveryCiphertext,
+  });
+
+  @override
+  int get hashCode =>
+      deviceId.hashCode ^
+      keyVersion.hashCode ^
+      recoveryKey.hashCode ^
+      recoverySalt.hashCode ^
+      recoveryNonce.hashCode ^
+      recoveryCiphertext.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BridgeContentKeyInitialization &&
+          runtimeType == other.runtimeType &&
+          deviceId == other.deviceId &&
+          keyVersion == other.keyVersion &&
+          recoveryKey == other.recoveryKey &&
+          recoverySalt == other.recoverySalt &&
+          recoveryNonce == other.recoveryNonce &&
+          recoveryCiphertext == other.recoveryCiphertext;
+}
+
+enum BridgeContentKeyStatus { missing, pendingRecoveryConfirmation, ready }
 
 class BridgeHostKey {
   final String algorithm;

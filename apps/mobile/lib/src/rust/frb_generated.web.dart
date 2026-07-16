@@ -137,10 +137,21 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   BridgeConnectionConfig dco_decode_bridge_connection_config(dynamic raw);
 
   @protected
+  BridgeContentKeyInitialization dco_decode_bridge_content_key_initialization(
+    dynamic raw,
+  );
+
+  @protected
+  BridgeContentKeyStatus dco_decode_bridge_content_key_status(dynamic raw);
+
+  @protected
   BridgeHostKey dco_decode_bridge_host_key(dynamic raw);
 
   @protected
   BridgeTerminalEvent dco_decode_bridge_terminal_event(dynamic raw);
+
+  @protected
+  int dco_decode_i_32(dynamic raw);
 
   @protected
   PlatformInt64 dco_decode_i_64(dynamic raw);
@@ -284,12 +295,25 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  BridgeContentKeyInitialization sse_decode_bridge_content_key_initialization(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  BridgeContentKeyStatus sse_decode_bridge_content_key_status(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   BridgeHostKey sse_decode_bridge_host_key(SseDeserializer deserializer);
 
   @protected
   BridgeTerminalEvent sse_decode_bridge_terminal_event(
     SseDeserializer deserializer,
   );
+
+  @protected
+  int sse_decode_i_32(SseDeserializer deserializer);
 
   @protected
   PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
@@ -323,9 +347,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   BigInt sse_decode_usize(SseDeserializer deserializer);
-
-  @protected
-  int sse_decode_i_32(SseDeserializer deserializer);
 
   @protected
   bool sse_decode_bool(SseDeserializer deserializer);
@@ -457,6 +478,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_bridge_content_key_initialization(
+    BridgeContentKeyInitialization self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_bridge_content_key_status(
+    BridgeContentKeyStatus self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_bridge_host_key(BridgeHostKey self, SseSerializer serializer);
 
   @protected
@@ -464,6 +497,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     BridgeTerminalEvent self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_i_32(int self, SseSerializer serializer);
 
   @protected
   void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
@@ -500,9 +536,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_usize(BigInt self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_i_32(int self, SseSerializer serializer);
 
   @protected
   void sse_encode_bool(bool self, SseSerializer serializer);

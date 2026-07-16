@@ -14,10 +14,12 @@ import 'src/data/schedule_repository.dart';
 import 'src/domain/ai/ai_models.dart';
 import 'src/domain/notifications/notification_settings.dart';
 import 'src/domain/sync/data_sync_models.dart';
+import 'src/domain/sync/content_encryption_models.dart';
 import 'src/presentation/app_navigation.dart';
 import 'src/presentation/account_security_page.dart';
 import 'src/presentation/assistant_page.dart';
 import 'src/presentation/data_sync_page.dart';
+import 'src/presentation/end_to_end_encryption_page.dart';
 import 'src/presentation/hosts_page.dart';
 import 'src/presentation/login_page.dart';
 import 'src/presentation/my_page.dart';
@@ -335,7 +337,24 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
       MaterialPageRoute<void>(
         builder: (_) => DataSyncPage(
           source: runtime as DataSyncSource,
-          onOpenEncryption: () => _showPendingPage('端到端加密'),
+          onOpenEncryption: () => unawaited(_openEndToEndEncryption()),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openEndToEndEncryption() async {
+    final runtime = _runtime;
+    if (runtime is! ContentEncryptionSource) {
+      _showPendingPage('端到端加密');
+      return;
+    }
+    await _navigatorKey.currentState!.push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => EndToEndEncryptionPage(
+          source: runtime as ContentEncryptionSource,
+          onRecoveryKeyReady: (_) => _showPendingPage('保存恢复密钥'),
+          onOpenUnlock: () => _showPendingPage('恢复密钥解锁'),
         ),
       ),
     );
@@ -500,7 +519,8 @@ class DaylinkRuntime
         AssistantSettingsSource,
         AccountEntitlementSource,
         NotificationSettingsSource,
-        DataSyncSource {
+        DataSyncSource,
+        ContentEncryptionSource {
   DaylinkRuntime._(this.services, this._assistantSettings);
 
   final DaylinkServices services;
@@ -605,6 +625,18 @@ class DaylinkRuntime
 
   @override
   Future<DataSyncState> clearLocalSyncCache() => services.clearLocalSyncCache();
+
+  @override
+  Future<ContentEncryptionState> loadContentEncryptionState() =>
+      services.loadContentEncryptionState();
+
+  @override
+  Future<RecoveryKeyDraft> prepareContentEncryption() =>
+      services.prepareContentEncryption();
+
+  @override
+  Future<void> acknowledgeRecoveryKeySaved() =>
+      services.acknowledgeRecoveryKeySaved();
 
   Future<void> _forceSignOut(String reason) async {
     if (_signedOut) return;

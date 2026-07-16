@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.12.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -880715962;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1536868135;
 
 // Section: executor
 
@@ -861,6 +861,84 @@ fn wire__crate__api__mobile__MobileTerminal_write_impl(
         },
     )
 }
+fn wire__crate__api__mobile__acknowledge_recovery_key_saved_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "acknowledge_recovery_key_saved",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_vault_path = <String>::sse_decode(&mut deserializer);
+            let api_account_id = <String>::sse_decode(&mut deserializer);
+            let api_device_vault_key = <Vec<u8>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::mobile::acknowledge_recovery_key_saved(
+                        api_vault_path,
+                        api_account_id,
+                        api_device_vault_key,
+                    )?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__mobile__content_key_status_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "content_key_status",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_vault_path = <String>::sse_decode(&mut deserializer);
+            let api_account_id = <String>::sse_decode(&mut deserializer);
+            let api_device_vault_key = <Vec<u8>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::mobile::content_key_status(
+                        api_vault_path,
+                        api_account_id,
+                        api_device_vault_key,
+                    )?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__mobile__core_api_version_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -887,6 +965,77 @@ fn wire__crate__api__mobile__core_api_version_impl(
             move |context| {
                 transform_result_sse::<_, ()>((move || {
                     let output_ok = Result::<_, ()>::Ok(crate::api::mobile::core_api_version())?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__mobile__discard_pending_content_key_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "discard_pending_content_key",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_vault_path = <String>::sse_decode(&mut deserializer);
+            let api_account_id = <String>::sse_decode(&mut deserializer);
+            let api_device_vault_key = <Vec<u8>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::mobile::discard_pending_content_key(
+                        api_vault_path,
+                        api_account_id,
+                        api_device_vault_key,
+                    )?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__mobile__generate_device_vault_key_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "generate_device_vault_key",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::mobile::generate_device_vault_key()?;
                     Ok(output_ok)
                 })())
             }
@@ -921,6 +1070,45 @@ fn wire__crate__api__mobile__init_app_impl(
                     let output_ok = Result::<_, ()>::Ok({
                         crate::api::mobile::init_app();
                     })?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__mobile__initialize_content_key_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "initialize_content_key",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_vault_path = <String>::sse_decode(&mut deserializer);
+            let api_account_id = <String>::sse_decode(&mut deserializer);
+            let api_device_vault_key = <Vec<u8>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::mobile::initialize_content_key(
+                        api_vault_path,
+                        api_account_id,
+                        api_device_vault_key,
+                    )?;
                     Ok(output_ok)
                 })())
             }
@@ -1150,6 +1338,39 @@ impl SseDecode for crate::api::mobile::BridgeConnectionConfig {
     }
 }
 
+impl SseDecode for crate::api::mobile::BridgeContentKeyInitialization {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_deviceId = <String>::sse_decode(deserializer);
+        let mut var_keyVersion = <u32>::sse_decode(deserializer);
+        let mut var_recoveryKey = <Vec<u8>>::sse_decode(deserializer);
+        let mut var_recoverySalt = <Vec<u8>>::sse_decode(deserializer);
+        let mut var_recoveryNonce = <Vec<u8>>::sse_decode(deserializer);
+        let mut var_recoveryCiphertext = <Vec<u8>>::sse_decode(deserializer);
+        return crate::api::mobile::BridgeContentKeyInitialization {
+            device_id: var_deviceId,
+            key_version: var_keyVersion,
+            recovery_key: var_recoveryKey,
+            recovery_salt: var_recoverySalt,
+            recovery_nonce: var_recoveryNonce,
+            recovery_ciphertext: var_recoveryCiphertext,
+        };
+    }
+}
+
+impl SseDecode for crate::api::mobile::BridgeContentKeyStatus {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut inner = <i32>::sse_decode(deserializer);
+        return match inner {
+            0 => crate::api::mobile::BridgeContentKeyStatus::Missing,
+            1 => crate::api::mobile::BridgeContentKeyStatus::PendingRecoveryConfirmation,
+            2 => crate::api::mobile::BridgeContentKeyStatus::Ready,
+            _ => unreachable!("Invalid variant for BridgeContentKeyStatus: {}", inner),
+        };
+    }
+}
+
 impl SseDecode for crate::api::mobile::BridgeHostKey {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1186,6 +1407,13 @@ impl SseDecode for crate::api::mobile::BridgeTerminalEvent {
                 unimplemented!("");
             }
         }
+    }
+}
+
+impl SseDecode for i32 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        deserializer.cursor.read_i32::<NativeEndian>().unwrap()
     }
 }
 
@@ -1267,13 +1495,6 @@ impl SseDecode for usize {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         deserializer.cursor.read_u64::<NativeEndian>().unwrap() as _
-    }
-}
-
-impl SseDecode for i32 {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
-        deserializer.cursor.read_i32::<NativeEndian>().unwrap()
     }
 }
 
@@ -1365,9 +1586,31 @@ fn pde_ffi_dispatcher_primary_impl(
         14 => {
             wire__crate__api__mobile__MobileTerminal_write_impl(port, ptr, rust_vec_len, data_len)
         }
-        15 => wire__crate__api__mobile__core_api_version_impl(port, ptr, rust_vec_len, data_len),
-        16 => wire__crate__api__mobile__init_app_impl(port, ptr, rust_vec_len, data_len),
-        17 => {
+        15 => wire__crate__api__mobile__acknowledge_recovery_key_saved_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        16 => wire__crate__api__mobile__content_key_status_impl(port, ptr, rust_vec_len, data_len),
+        17 => wire__crate__api__mobile__core_api_version_impl(port, ptr, rust_vec_len, data_len),
+        18 => wire__crate__api__mobile__discard_pending_content_key_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        19 => wire__crate__api__mobile__generate_device_vault_key_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        20 => wire__crate__api__mobile__init_app_impl(port, ptr, rust_vec_len, data_len),
+        21 => {
+            wire__crate__api__mobile__initialize_content_key_impl(port, ptr, rust_vec_len, data_len)
+        }
+        22 => {
             wire__crate__api__mobile__probe_host_key_mobile_impl(port, ptr, rust_vec_len, data_len)
         }
         _ => unreachable!(),
@@ -1547,6 +1790,53 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::mobile::BridgeConnectionConfi
     for crate::api::mobile::BridgeConnectionConfig
 {
     fn into_into_dart(self) -> crate::api::mobile::BridgeConnectionConfig {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::mobile::BridgeContentKeyInitialization {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.device_id.into_into_dart().into_dart(),
+            self.key_version.into_into_dart().into_dart(),
+            self.recovery_key.into_into_dart().into_dart(),
+            self.recovery_salt.into_into_dart().into_dart(),
+            self.recovery_nonce.into_into_dart().into_dart(),
+            self.recovery_ciphertext.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::mobile::BridgeContentKeyInitialization
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::mobile::BridgeContentKeyInitialization>
+    for crate::api::mobile::BridgeContentKeyInitialization
+{
+    fn into_into_dart(self) -> crate::api::mobile::BridgeContentKeyInitialization {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::mobile::BridgeContentKeyStatus {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        match self {
+            Self::Missing => 0.into_dart(),
+            Self::PendingRecoveryConfirmation => 1.into_dart(),
+            Self::Ready => 2.into_dart(),
+            _ => unreachable!(),
+        }
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::mobile::BridgeContentKeyStatus
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::mobile::BridgeContentKeyStatus>
+    for crate::api::mobile::BridgeContentKeyStatus
+{
+    fn into_into_dart(self) -> crate::api::mobile::BridgeContentKeyStatus {
         self
     }
 }
@@ -1732,6 +2022,35 @@ impl SseEncode for crate::api::mobile::BridgeConnectionConfig {
     }
 }
 
+impl SseEncode for crate::api::mobile::BridgeContentKeyInitialization {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.device_id, serializer);
+        <u32>::sse_encode(self.key_version, serializer);
+        <Vec<u8>>::sse_encode(self.recovery_key, serializer);
+        <Vec<u8>>::sse_encode(self.recovery_salt, serializer);
+        <Vec<u8>>::sse_encode(self.recovery_nonce, serializer);
+        <Vec<u8>>::sse_encode(self.recovery_ciphertext, serializer);
+    }
+}
+
+impl SseEncode for crate::api::mobile::BridgeContentKeyStatus {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(
+            match self {
+                crate::api::mobile::BridgeContentKeyStatus::Missing => 0,
+                crate::api::mobile::BridgeContentKeyStatus::PendingRecoveryConfirmation => 1,
+                crate::api::mobile::BridgeContentKeyStatus::Ready => 2,
+                _ => {
+                    unimplemented!("");
+                }
+            },
+            serializer,
+        );
+    }
+}
+
 impl SseEncode for crate::api::mobile::BridgeHostKey {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1763,6 +2082,13 @@ impl SseEncode for crate::api::mobile::BridgeTerminalEvent {
                 unimplemented!("");
             }
         }
+    }
+}
+
+impl SseEncode for i32 {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        serializer.cursor.write_i32::<NativeEndian>(self).unwrap();
     }
 }
 
@@ -1846,13 +2172,6 @@ impl SseEncode for usize {
     }
 }
 
-impl SseEncode for i32 {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
-        serializer.cursor.write_i32::<NativeEndian>(self).unwrap();
-    }
-}
-
 impl SseEncode for bool {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -1880,56 +2199,56 @@ mod io {
     flutter_rust_bridge::frb_generated_boilerplate_io!();
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_daylink_mobile_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileAgentChannel(
+    pub extern "C" fn frbgen_daylink_frb_codegen_root_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileAgentChannel(
         ptr: *const std::ffi::c_void,
     ) {
         MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MobileAgentChannel>>::increment_strong_count(ptr as _);
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_daylink_mobile_rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileAgentChannel(
+    pub extern "C" fn frbgen_daylink_frb_codegen_root_rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileAgentChannel(
         ptr: *const std::ffi::c_void,
     ) {
         MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MobileAgentChannel>>::decrement_strong_count(ptr as _);
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_daylink_mobile_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobilePortForward(
+    pub extern "C" fn frbgen_daylink_frb_codegen_root_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobilePortForward(
         ptr: *const std::ffi::c_void,
     ) {
         MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MobilePortForward>>::increment_strong_count(ptr as _);
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_daylink_mobile_rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobilePortForward(
+    pub extern "C" fn frbgen_daylink_frb_codegen_root_rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobilePortForward(
         ptr: *const std::ffi::c_void,
     ) {
         MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MobilePortForward>>::decrement_strong_count(ptr as _);
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_daylink_mobile_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileSshSession(
+    pub extern "C" fn frbgen_daylink_frb_codegen_root_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileSshSession(
         ptr: *const std::ffi::c_void,
     ) {
         MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MobileSshSession>>::increment_strong_count(ptr as _);
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_daylink_mobile_rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileSshSession(
+    pub extern "C" fn frbgen_daylink_frb_codegen_root_rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileSshSession(
         ptr: *const std::ffi::c_void,
     ) {
         MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MobileSshSession>>::decrement_strong_count(ptr as _);
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_daylink_mobile_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileTerminal(
+    pub extern "C" fn frbgen_daylink_frb_codegen_root_rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileTerminal(
         ptr: *const std::ffi::c_void,
     ) {
         MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MobileTerminal>>::increment_strong_count(ptr as _);
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn frbgen_daylink_mobile_rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileTerminal(
+    pub extern "C" fn frbgen_daylink_frb_codegen_root_rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMobileTerminal(
         ptr: *const std::ffi::c_void,
     ) {
         MoiArc::<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MobileTerminal>>::decrement_strong_count(ptr as _);

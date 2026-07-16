@@ -546,16 +546,21 @@ dependencies = [
 name = "daylink-mobile-core"
 version = "0.1.0"
 dependencies = [
+ "aes-gcm",
  "bytes",
  "daylink-protocol",
  "flutter_rust_bridge",
+ "getrandom 0.4.3",
+ "hkdf",
  "russh",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "sha2 0.11.0",
  "thiserror",
  "tokio",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]

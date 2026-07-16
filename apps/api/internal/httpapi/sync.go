@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/base64"
 	"errors"
@@ -23,6 +24,129 @@ type syncMutation struct {
 	Nonce            string    `json:"nonce"`
 	KeyVersion       int       `json:"keyVersion"`
 	ClientUpdatedAt  time.Time `json:"clientUpdatedAt"`
+}
+
+type contentKeyEnvelopeInput struct {
+	KeyVersion      int    `json:"keyVersion"`
+	Algorithm       string `json:"algorithm"`
+	KDF             string `json:"kdf"`
+	Salt            string `json:"salt"`
+	Nonce           string `json:"nonce"`
+	Ciphertext      string `json:"ciphertext"`
+	CreatorDeviceID string `json:"creatorDeviceId"`
+}
+
+type decodedContentKeyEnvelope struct {
+	KeyVersion      int
+	Algorithm       string
+	KDF             string
+	Salt            []byte
+	Nonce           []byte
+	Ciphertext      []byte
+	CreatorDeviceID string
+}
+
+func (s *Server) handleContentKeyEnvelope(w http.ResponseWriter, r *http.Request) {
+	identity, ok := s.requireApp(w, r)
+	if !ok {
+		return
+	}
+	if r.Method == http.MethodGet {
+		s.getContentKeyEnvelope(w, r, identity)
+		return
+	}
+	var input contentKeyEnvelopeInput
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	envelope, err := decodeContentKeyEnvelope(input)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_key_envelope", "恢复密钥信封无效")
+		return
+	}
+	result, err := s.db.ExecContext(r.Context(), `INSERT INTO content_key_envelopes
+		(account_id, key_version, algorithm, kdf, salt, nonce, ciphertext, creator_device_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, identity.AccountID, envelope.KeyVersion, envelope.Algorithm,
+		envelope.KDF, envelope.Salt, envelope.Nonce, envelope.Ciphertext, envelope.CreatorDeviceID)
+	if err == nil {
+		if rows, rowsErr := result.RowsAffected(); rowsErr != nil || rows != 1 {
+			writeError(w, http.StatusInternalServerError, "key_envelope_failed", "恢复密钥信封保存失败")
+			return
+		}
+		s.audit(r.Context(), "app:"+identity.AccountID, "app.e2ee.initialize", "app_account", identity.AccountID, "allowed", "high")
+		writeJSON(w, http.StatusCreated, map[string]any{"created": true, "keyVersion": envelope.KeyVersion})
+		return
+	}
+	existing, loadErr := s.loadContentKeyEnvelope(r, identity.AccountID)
+	if loadErr != nil {
+		writeError(w, http.StatusInternalServerError, "key_envelope_failed", "恢复密钥信封保存失败")
+		return
+	}
+	if sameContentKeyEnvelope(existing, envelope) {
+		writeJSON(w, http.StatusOK, map[string]any{"created": false, "keyVersion": envelope.KeyVersion})
+		return
+	}
+	s.audit(r.Context(), "app:"+identity.AccountID, "app.e2ee.initialize", "app_account", identity.AccountID, "denied", "high")
+	writeError(w, http.StatusConflict, "key_envelope_exists", "该账号已存在其他内容密钥")
+}
+
+func (s *Server) getContentKeyEnvelope(w http.ResponseWriter, r *http.Request, identity *appIdentity) {
+	envelope, err := s.loadContentKeyEnvelope(r, identity.AccountID)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeJSON(w, http.StatusOK, map[string]any{"exists": false})
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "暂时无法读取恢复密钥信封")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"exists": true, "keyVersion": envelope.KeyVersion, "algorithm": envelope.Algorithm,
+		"kdf": envelope.KDF, "salt": base64.StdEncoding.EncodeToString(envelope.Salt),
+		"nonce":           base64.StdEncoding.EncodeToString(envelope.Nonce),
+		"ciphertext":      base64.StdEncoding.EncodeToString(envelope.Ciphertext),
+		"creatorDeviceId": envelope.CreatorDeviceID,
+	})
+}
+
+func (s *Server) loadContentKeyEnvelope(r *http.Request, accountID string) (decodedContentKeyEnvelope, error) {
+	var envelope decodedContentKeyEnvelope
+	err := s.db.QueryRowContext(r.Context(), `SELECT key_version, algorithm, kdf, salt, nonce, ciphertext, creator_device_id
+		FROM content_key_envelopes WHERE account_id = ? LIMIT 1`, accountID).Scan(
+		&envelope.KeyVersion, &envelope.Algorithm, &envelope.KDF, &envelope.Salt, &envelope.Nonce,
+		&envelope.Ciphertext, &envelope.CreatorDeviceID)
+	return envelope, err
+}
+
+func decodeContentKeyEnvelope(input contentKeyEnvelopeInput) (decodedContentKeyEnvelope, error) {
+	if input.KeyVersion != 1 || input.Algorithm != "aes-256-gcm" || input.KDF != "hkdf-sha256" ||
+		!validUUIDLike(input.CreatorDeviceID) {
+		return decodedContentKeyEnvelope{}, errors.New("unsupported key envelope metadata")
+	}
+	salt, err := base64.StdEncoding.DecodeString(input.Salt)
+	if err != nil || len(salt) != 32 {
+		return decodedContentKeyEnvelope{}, errors.New("invalid recovery salt")
+	}
+	nonce, err := base64.StdEncoding.DecodeString(input.Nonce)
+	if err != nil || len(nonce) != 12 {
+		return decodedContentKeyEnvelope{}, errors.New("invalid recovery nonce")
+	}
+	ciphertext, err := base64.StdEncoding.DecodeString(input.Ciphertext)
+	if err != nil || len(ciphertext) != 48 {
+		return decodedContentKeyEnvelope{}, errors.New("invalid recovery ciphertext")
+	}
+	return decodedContentKeyEnvelope{
+		KeyVersion: input.KeyVersion, Algorithm: input.Algorithm, KDF: input.KDF,
+		Salt: salt, Nonce: nonce, Ciphertext: ciphertext, CreatorDeviceID: input.CreatorDeviceID,
+	}, nil
+}
+
+func sameContentKeyEnvelope(left, right decodedContentKeyEnvelope) bool {
+	return left.KeyVersion == right.KeyVersion && left.Algorithm == right.Algorithm &&
+		left.KDF == right.KDF && left.CreatorDeviceID == right.CreatorDeviceID &&
+		bytes.Equal(left.Salt, right.Salt) && bytes.Equal(left.Nonce, right.Nonce) &&
+		bytes.Equal(left.Ciphertext, right.Ciphertext)
 }
 
 func (s *Server) handleSyncObject(w http.ResponseWriter, r *http.Request) {

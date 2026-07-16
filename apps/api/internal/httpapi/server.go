@@ -165,6 +165,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/polls/{token}/votes", s.handlePollVotes)
 	s.mux.HandleFunc("POST /api/polls/{token}/finalize", s.handlePollFinalize)
 	s.mux.HandleFunc("GET /api/sync/changes", s.handleSyncChanges)
+	s.mux.HandleFunc("GET /api/sync/key-envelope", s.handleContentKeyEnvelope)
+	s.mux.HandleFunc("PUT /api/sync/key-envelope", s.handleContentKeyEnvelope)
 	s.mux.HandleFunc("PUT /api/sync/objects/{collection}/{id}", s.handleSyncObject)
 	s.mux.HandleFunc("DELETE /api/sync/objects/{collection}/{id}", s.handleSyncObject)
 	s.mux.HandleFunc("GET /api/sync/events", s.handleSyncEvents)

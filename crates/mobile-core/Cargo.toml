@@ -9,16 +9,21 @@ rust-version.workspace = true
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
+aes-gcm.workspace = true
 bytes.workspace = true
 daylink-protocol = { path = "../protocol" }
 flutter_rust_bridge = "=2.12.0"
+getrandom.workspace = true
+hkdf.workspace = true
 russh.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+sha2_11.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 uuid.workspace = true
+zeroize.workspace = true
 
 [lints.rust]
 # The generated Dart FFI shim necessarily contains audited unsafe blocks.

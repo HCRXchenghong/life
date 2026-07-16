@@ -8,6 +8,7 @@ import '../data/artifact_client.dart';
 import '../data/artifact_repository.dart';
 import '../data/data_sync_client.dart';
 import '../data/data_sync_repository.dart';
+import '../data/key_envelope_client.dart';
 import '../data/operations_repository.dart';
 import '../data/notification_preferences_repository.dart';
 import '../data/schedule_repository.dart';
@@ -19,9 +20,11 @@ import '../domain/ai/openai_responses_client.dart';
 import '../domain/ai/tool_protocol.dart';
 import '../domain/notifications/notification_settings.dart';
 import '../domain/sync/data_sync_models.dart';
+import '../domain/sync/content_encryption_models.dart';
 import '../platform/native_core_service.dart';
 import '../platform/notification_coordinator.dart';
 import 'artifact_tools.dart';
+import 'content_encryption_coordinator.dart';
 import 'data_sync_coordinator.dart';
 import 'remote_operation_tools.dart';
 import 'schedule_tools.dart';
@@ -36,6 +39,7 @@ class DaylinkServices {
     required this.notifications,
     required this.notificationPreferences,
     required this.dataSync,
+    required this.contentEncryption,
     required this.secrets,
     required this.schedules,
     required this.operations,
@@ -49,6 +53,7 @@ class DaylinkServices {
   final NotificationCoordinator notifications;
   final NotificationPreferencesRepository notificationPreferences;
   final DataSyncCoordinator dataSync;
+  final ContentEncryptionCoordinator contentEncryption;
   final SecretStore secrets;
   final ScheduleRepository schedules;
   final OperationsRepository operations;
@@ -73,11 +78,18 @@ class DaylinkServices {
       repository: schedules,
       preferences: notificationPreferences,
     );
+    final contentEncryption = await ContentEncryptionCoordinator.start(
+      accountId: accountId,
+      client: KeyEnvelopeClient(apiBaseUri: apiBaseUri),
+      accessToken: accessToken,
+      refreshAccessToken: refreshAccessToken,
+    );
     final dataSync = DataSyncCoordinator(
       repository: DataSyncRepository(database),
       client: DataSyncClient(apiBaseUri: apiBaseUri),
       accessToken: accessToken,
       refreshAccessToken: refreshAccessToken,
+      encryptionStatus: contentEncryption.loadDataEncryptionStatus,
     );
     final responses = OpenAiResponsesClient();
     final services = DaylinkServices._(
@@ -87,6 +99,7 @@ class DaylinkServices {
       notifications: notifications,
       notificationPreferences: notificationPreferences,
       dataSync: dataSync,
+      contentEncryption: contentEncryption,
       secrets: secrets,
       schedules: schedules,
       operations: OperationsRepository(database),
@@ -104,6 +117,7 @@ class DaylinkServices {
       return services;
     } on Object {
       dataSync.close();
+      contentEncryption.close();
       responses.close();
       await database.close();
       rethrow;
@@ -271,6 +285,15 @@ class DaylinkServices {
 
   Future<DataSyncState> clearLocalSyncCache() => dataSync.clearLocalSyncCache();
 
+  Future<ContentEncryptionState> loadContentEncryptionState() =>
+      contentEncryption.loadContentEncryptionState();
+
+  Future<RecoveryKeyDraft> prepareContentEncryption() =>
+      contentEncryption.prepareContentEncryption();
+
+  Future<void> acknowledgeRecoveryKeySaved() =>
+      contentEncryption.acknowledgeRecoveryKeySaved();
+
   AppSessionMonitor monitorSession({
     required Uri apiBaseUri,
     required AccessTokenProvider accessToken,
@@ -309,6 +332,7 @@ class DaylinkServices {
     }
     _sessionMonitors.clear();
     dataSync.close();
+    contentEncryption.close();
     responses.close();
     await database.close();
   }
