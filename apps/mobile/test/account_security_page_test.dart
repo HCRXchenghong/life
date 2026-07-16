@@ -73,6 +73,7 @@ class _FakeAuthentication implements AppAuthentication {
       id: '123e4567-e89b-12d3-a456-426614174001',
       name: 'Daylink iPhone',
       current: true,
+      trusted: true,
       lastSeenAt: DateTime.now().toUtc(),
       createdAt: DateTime.utc(2030, 7, 1),
     ),
@@ -81,6 +82,7 @@ class _FakeAuthentication implements AppAuthentication {
         id: '123e4567-e89b-12d3-a456-426614174002',
         name: 'Daylink Android',
         current: false,
+        trusted: false,
         lastSeenAt: DateTime.now().subtract(const Duration(days: 1)).toUtc(),
         createdAt: DateTime.utc(2030, 7, 2),
       ),
@@ -119,6 +121,9 @@ class _FakeAuthentication implements AppAuthentication {
 
   @override
   Future<bool> refresh() async => false;
+
+  @override
+  Future<void> revokeDeviceSession(String deviceId) async {}
 
   @override
   Future<void> revokeOtherDeviceSessions() async {

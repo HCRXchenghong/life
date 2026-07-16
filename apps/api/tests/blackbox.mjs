@@ -147,15 +147,39 @@ async function main() {
 
   const tokensA = await appLogin("member-a", accountAPassword);
   const tokensASecondary = await appLogin("member-a", accountAPassword, "blackbox-secondary");
+  const tokensATarget = await appLogin("member-a", accountAPassword, "blackbox-target");
   const tokensB = await appLogin("member-b", accountBPassword);
   result = await request("/api/app/auth/devices", { bearer: tokensA.accessToken });
   invariant(
     result.response.status === 200 &&
-      result.payload?.devices?.length === 2 &&
+      result.payload?.devices?.length === 3 &&
       result.payload.devices.filter((device) => device.current).length === 1 &&
+      result.payload.devices.every((device) => typeof device.trusted === "boolean") &&
       result.payload.devices.every((device) => device.name.startsWith("blackbox")),
     "account-scoped device list failed",
   );
+  const currentDeviceId = result.payload.devices.find((device) => device.current)?.id;
+  const targetDeviceId = result.payload.devices.find((device) => device.name === "blackbox-target")?.id;
+  invariant(currentDeviceId && targetDeviceId, "device IDs missing");
+  result = await request(`/api/app/auth/devices/${targetDeviceId}`, {
+    method: "DELETE",
+    bearer: tokensB.accessToken,
+  });
+  invariant(result.response.status === 404, "cross-account device revocation disclosed or revoked a device");
+  result = await request(`/api/app/auth/devices/${currentDeviceId}`, {
+    method: "DELETE",
+    bearer: tokensA.accessToken,
+  });
+  invariant(result.response.status === 400, "current device could revoke itself through targeted revocation");
+  result = await request(`/api/app/auth/devices/${targetDeviceId}`, {
+    method: "DELETE",
+    bearer: tokensA.accessToken,
+  });
+  invariant(result.response.status === 200 && result.payload?.revoked === true, "targeted device revocation failed");
+  result = await request("/api/app/auth/session", { bearer: tokensATarget.accessToken });
+  invariant(result.response.status === 401, "targeted device remained authenticated");
+  result = await request("/api/app/auth/session", { bearer: tokensASecondary.accessToken });
+  invariant(result.response.status === 200, "targeted revocation affected another device");
   result = await request("/api/app/auth/devices", {
     method: "DELETE",
     bearer: tokensA.accessToken,
@@ -230,6 +254,11 @@ async function main() {
   result = await request("/api/app/auth/refresh", { method: "POST", body: { refreshToken: tokensA.refreshToken } });
   invariant(result.response.status === 200 && result.payload?.tokens?.accessToken, "refresh rotation failed");
   const rotatedA = result.payload.tokens;
+  result = await request("/api/app/auth/devices", { bearer: rotatedA.accessToken });
+  invariant(
+    result.response.status === 200 && result.payload?.devices?.find((device) => device.current)?.id === currentDeviceId,
+    "refresh rotation changed the stable device ID",
+  );
   result = await request("/api/app/auth/refresh", { method: "POST", body: { refreshToken: tokensA.refreshToken } });
   invariant(result.response.status === 401, "refresh token replay accepted");
   result = await request("/api/app/auth/session", { bearer: tokensA.accessToken });

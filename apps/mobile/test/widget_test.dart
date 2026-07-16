@@ -373,6 +373,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('approval-success-title')), findsNothing);
     expect(find.text('端到端加密已开启'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('e2ee-current-device')));
+    await tester.tap(find.byKey(const Key('e2ee-current-device')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('trusted-devices-title')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('trusted-devices-back')));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('trusted device opens and approves a real pending route', (
@@ -511,10 +517,14 @@ class _FakeAuthentication implements AppAuthentication {
       id: '123e4567-e89b-12d3-a456-426614174001',
       name: 'Daylink iPhone',
       current: true,
+      trusted: true,
       lastSeenAt: DateTime.now().toUtc(),
       createdAt: DateTime.utc(2030, 1, 1),
     ),
   ];
+
+  @override
+  Future<void> revokeDeviceSession(String deviceId) async {}
 
   @override
   Future<void> revokeOtherDeviceSessions() async {}

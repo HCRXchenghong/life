@@ -21,6 +21,7 @@ abstract interface class AppAuthentication {
     required String newPassword,
   });
   Future<List<AppDeviceSession>> loadDeviceSessions();
+  Future<void> revokeDeviceSession(String deviceId);
   Future<void> revokeOtherDeviceSessions();
   Future<void> logout();
   Future<String?> accessToken();
@@ -138,6 +139,7 @@ class AppDeviceSession {
     required this.id,
     required this.name,
     required this.current,
+    required this.trusted,
     required this.lastSeenAt,
     required this.createdAt,
   });
@@ -145,6 +147,7 @@ class AppDeviceSession {
   final String id;
   final String name;
   final bool current;
+  final bool trusted;
   final DateTime lastSeenAt;
   final DateTime createdAt;
 
@@ -155,6 +158,7 @@ class AppDeviceSession {
       id: id,
       name: _requiredString(value, 'name', 80),
       current: _requiredBool(value, 'current'),
+      trusted: _requiredBool(value, 'trusted'),
       lastSeenAt: _requiredDate(value, 'lastSeenAt'),
       createdAt: _requiredDate(value, 'createdAt'),
     );
@@ -254,6 +258,11 @@ class AppAuthenticator implements AppAuthentication {
   @override
   Future<List<AppDeviceSession>> loadDeviceSessions() =>
       _withAuthenticated(_client.loadDeviceSessions);
+
+  @override
+  Future<void> revokeDeviceSession(String deviceId) => _withAuthenticated(
+    (current) => _client.revokeDeviceSession(current, deviceId),
+  );
 
   @override
   Future<void> revokeOtherDeviceSessions() =>
@@ -480,6 +489,25 @@ class AppAuthClient {
       if (revoked is! int || revoked < 0) {
         throw const FormatException();
       }
+    } on FormatException {
+      throw const AppAuthenticationException('Daylink 服务返回异常');
+    }
+  }
+
+  Future<void> revokeDeviceSession(
+    AppSessionCredentials current,
+    String deviceId,
+  ) async {
+    if (!_uuidPattern.hasMatch(deviceId)) {
+      throw const AppAuthenticationException('设备标识无效');
+    }
+    try {
+      final result = await _request(
+        'DELETE',
+        'app/auth/devices/$deviceId',
+        accessToken: current.accessToken,
+      );
+      if (result['revoked'] != true) throw const FormatException();
     } on FormatException {
       throw const AppAuthenticationException('Daylink 服务返回异常');
     }

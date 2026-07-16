@@ -21,6 +21,7 @@ class EndToEndEncryptionPage extends StatefulWidget {
     this.onOpenDeviceRecovery,
     this.approvalSource,
     this.onOpenDeviceApproval,
+    this.onOpenTrustedDevices,
   });
 
   final ContentEncryptionSource source;
@@ -29,6 +30,7 @@ class EndToEndEncryptionPage extends StatefulWidget {
   final EncryptionUnlockCallback? onOpenDeviceRecovery;
   final TrustedDeviceApprovalSource? approvalSource;
   final DeviceApprovalOpenCallback? onOpenDeviceApproval;
+  final VoidCallback? onOpenTrustedDevices;
 
   @override
   State<EndToEndEncryptionPage> createState() => _EndToEndEncryptionPageState();
@@ -178,6 +180,7 @@ class _EndToEndEncryptionPageState extends State<EndToEndEncryptionPage> {
                 busy: _busy,
                 pendingApproval: _pendingApproval != null,
                 onOpenApproval: _primaryAction,
+                onOpenTrustedDevices: widget.onOpenTrustedDevices,
               )
             : _EncryptionSetupBody(
                 loading: _loading,
@@ -195,11 +198,13 @@ class _EnabledEncryptionBody extends StatelessWidget {
     required this.busy,
     required this.pendingApproval,
     required this.onOpenApproval,
+    this.onOpenTrustedDevices,
   });
 
   final bool busy;
   final bool pendingApproval;
   final VoidCallback onOpenApproval;
+  final VoidCallback? onOpenTrustedDevices;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -266,59 +271,70 @@ class _EnabledEncryptionBody extends StatelessWidget {
               const SizedBox(height: 30),
               const _SectionLabel('受信设备'),
               const SizedBox(height: 11),
-              Container(
-                key: const Key('e2ee-current-device'),
-                height: 76,
-                padding: const EdgeInsets.symmetric(horizontal: 18),
-                decoration: BoxDecoration(
-                  color: Colors.white,
+              Material(
+                color: Colors.white,
+                shape: RoundedRectangleBorder(
+                  side: const BorderSide(color: _cardBorder),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: _cardBorder),
                 ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.phone_iphone_rounded,
-                      color: _blue,
-                      size: 31,
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  key: const Key('e2ee-current-device'),
+                  onTap: onOpenTrustedDevices,
+                  child: SizedBox(
+                    height: 76,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      child: Row(
                         children: [
-                          const Text(
-                            '这台设备',
-                            style: TextStyle(
-                              color: _text,
-                              fontSize: 16.5,
-                              fontWeight: FontWeight.w500,
+                          const Icon(
+                            Icons.phone_iphone_rounded,
+                            color: _blue,
+                            size: 31,
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  '这台设备',
+                                  style: TextStyle(
+                                    color: _text,
+                                    fontSize: 16.5,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _currentDeviceLabel(),
+                                  style: const TextStyle(
+                                    color: _muted,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _currentDeviceLabel(),
-                            style: const TextStyle(color: _muted, fontSize: 13),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: _blue),
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: const Text(
+                              '受信',
+                              style: TextStyle(color: _blue, fontSize: 14),
+                            ),
                           ),
                         ],
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: _blue),
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: const Text(
-                        '受信',
-                        style: TextStyle(color: _blue, fontSize: 14),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
               if (pendingApproval) ...[

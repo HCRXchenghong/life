@@ -96,12 +96,14 @@ void main() {
     final source = _FakeContentEncryptionSource(
       status: ContentEncryptionSetupStatus.enabled,
     );
+    var trustedDevicesOpened = false;
     await tester.pumpWidget(
       MaterialApp(
         home: EndToEndEncryptionPage(
           source: source,
           onRecoveryKeyReady: (_) async {},
           onOpenUnlock: () async {},
+          onOpenTrustedDevices: () => trustedDevicesOpened = true,
         ),
       ),
     );
@@ -117,6 +119,10 @@ void main() {
     expect(find.text('受信'), findsOneWidget);
     expect(find.text('加密保护在此设备上正常工作'), findsOneWidget);
     expect(find.byKey(const Key('e2ee-enable')), findsNothing);
+
+    await tester.ensureVisible(find.byKey(const Key('e2ee-current-device')));
+    await tester.tap(find.byKey(const Key('e2ee-current-device')));
+    expect(trustedDevicesOpened, isTrue);
   });
 
   testWidgets('opens a pending trusted-device request from enabled state', (

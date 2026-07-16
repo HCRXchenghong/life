@@ -149,6 +149,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("DELETE /api/app/auth/session", s.handleAppSession)
 	s.mux.HandleFunc("GET /api/app/auth/devices", s.handleAppDevices)
 	s.mux.HandleFunc("DELETE /api/app/auth/devices", s.handleAppDevices)
+	s.mux.HandleFunc("DELETE /api/app/auth/devices/{id}", s.handleAppDevice)
 	s.mux.HandleFunc("POST /api/app/auth/password", s.handleAppPassword)
 	s.mux.HandleFunc("GET /api/app/ai-settings", s.handleAppAISettings)
 	s.mux.HandleFunc("PUT /api/app/ai-preferences", s.handleAppAIPreferences)
@@ -328,11 +329,7 @@ func (s *Server) newAppSession(ctx context.Context, accountID, deviceName string
 }
 
 func (s *Server) newAppSessionWith(ctx context.Context, execer contextExecer, accountID, deviceName string, e2eeTrusted bool) (appTokenPair, error) {
-	access, err := security.RandomToken("dlka_")
-	if err != nil {
-		return appTokenPair{}, err
-	}
-	refresh, err := security.RandomToken("dlkr_")
+	pair, err := newAppTokenPair()
 	if err != nil {
 		return appTokenPair{}, err
 	}
@@ -341,13 +338,26 @@ func (s *Server) newAppSessionWith(ctx context.Context, execer contextExecer, ac
 		return appTokenPair{}, err
 	}
 	now := time.Now().UTC()
-	pair := appTokenPair{access, now.Add(appAccessTTL), refresh, now.Add(appRefreshTTL)}
 	_, err = execer.ExecContext(ctx, `INSERT INTO app_sessions
 		(id, account_id, access_token_hash, refresh_token_hash, device_name, e2ee_trusted,
 		 access_expires_at, refresh_expires_at, last_seen_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, accountID, security.SHA256(access),
-		security.SHA256(refresh), deviceName, e2eeTrusted, pair.AccessExpiresAt, pair.RefreshExpiresAt, now)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, accountID, security.SHA256(pair.AccessToken),
+		security.SHA256(pair.RefreshToken), deviceName, e2eeTrusted, pair.AccessExpiresAt, pair.RefreshExpiresAt, now)
 	return pair, err
+}
+
+func newAppTokenPair() (appTokenPair, error) {
+	access, err := security.RandomToken("dlka_")
+	if err != nil {
+		return appTokenPair{}, err
+	}
+	refresh, err := security.RandomToken("dlkr_")
+	if err != nil {
+		return appTokenPair{}, err
+	}
+	now := time.Now().UTC()
+	pair := appTokenPair{access, now.Add(appAccessTTL), refresh, now.Add(appRefreshTTL)}
+	return pair, nil
 }
 
 func (s *Server) consumeRateLimit(ctx context.Context, r *http.Request, action, identity string, maximum int) (time.Duration, error) {

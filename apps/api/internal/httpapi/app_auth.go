@@ -26,6 +26,7 @@ type appDeviceSession struct {
 	ID         string    `json:"id"`
 	Name       string    `json:"name"`
 	Current    bool      `json:"current"`
+	Trusted    bool      `json:"trusted"`
 	LastSeenAt time.Time `json:"lastSeenAt"`
 	CreatedAt  time.Time `json:"createdAt"`
 }
@@ -115,21 +116,24 @@ func (s *Server) handleAppRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-	var sessionID, accountID, deviceName string
-	var e2eeTrusted bool
-	err = tx.QueryRowContext(r.Context(), `SELECT s.id, s.account_id, s.device_name, s.e2ee_trusted FROM app_sessions s
+	var sessionID, accountID string
+	err = tx.QueryRowContext(r.Context(), `SELECT s.id, s.account_id FROM app_sessions s
 		JOIN app_accounts a ON a.id = s.account_id WHERE s.refresh_token_hash = ? AND s.revoked_at IS NULL
 		AND s.refresh_expires_at > UTC_TIMESTAMP(6) AND a.status = 'active' FOR UPDATE`, security.SHA256(input.RefreshToken)).
-		Scan(&sessionID, &accountID, &deviceName, &e2eeTrusted)
+		Scan(&sessionID, &accountID)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "invalid_refresh_token", "登录已失效，请重新登录")
 		return
 	}
-	if _, err = tx.ExecContext(r.Context(), "UPDATE app_sessions SET revoked_at = UTC_TIMESTAMP(6) WHERE id = ? AND revoked_at IS NULL", sessionID); err != nil {
+	pair, err := newAppTokenPair()
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "refresh_failed", "刷新登录失败")
 		return
 	}
-	pair, err := s.newAppSessionWith(r.Context(), tx, accountID, deviceName, e2eeTrusted)
+	_, err = tx.ExecContext(r.Context(), `UPDATE app_sessions SET access_token_hash = ?, refresh_token_hash = ?,
+		access_expires_at = ?, refresh_expires_at = ?, last_seen_at = UTC_TIMESTAMP(6)
+		WHERE id = ? AND revoked_at IS NULL`, security.SHA256(pair.AccessToken), security.SHA256(pair.RefreshToken),
+		pair.AccessExpiresAt, pair.RefreshExpiresAt, sessionID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "refresh_failed", "刷新登录失败")
 		return
@@ -172,7 +176,7 @@ func (s *Server) handleAppDevices(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listAppDevices(w http.ResponseWriter, r *http.Request, identity *appIdentity) {
-	rows, err := s.db.QueryContext(r.Context(), `SELECT id, device_name, last_seen_at, created_at
+	rows, err := s.db.QueryContext(r.Context(), `SELECT id, device_name, e2ee_trusted, last_seen_at, created_at
       FROM app_sessions WHERE account_id = ? AND revoked_at IS NULL
         AND refresh_expires_at > UTC_TIMESTAMP(6)
       ORDER BY (id = ?) DESC, last_seen_at DESC LIMIT 100`, identity.AccountID, identity.SessionID)
@@ -184,7 +188,7 @@ func (s *Server) listAppDevices(w http.ResponseWriter, r *http.Request, identity
 	devices := make([]appDeviceSession, 0)
 	for rows.Next() {
 		var device appDeviceSession
-		if err := rows.Scan(&device.ID, &device.Name, &device.LastSeenAt, &device.CreatedAt); err != nil {
+		if err := rows.Scan(&device.ID, &device.Name, &device.Trusted, &device.LastSeenAt, &device.CreatedAt); err != nil {
 			writeError(w, http.StatusServiceUnavailable, "database_unavailable", "暂时无法读取登录设备")
 			return
 		}
@@ -196,6 +200,74 @@ func (s *Server) listAppDevices(w http.ResponseWriter, r *http.Request, identity
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"devices": devices})
+}
+
+func (s *Server) handleAppDevice(w http.ResponseWriter, r *http.Request) {
+	identity, ok := s.requireApp(w, r)
+	if !ok {
+		return
+	}
+	id := r.PathValue("id")
+	if !validUUIDLike(id) {
+		writeError(w, http.StatusBadRequest, "invalid_request", "设备标识无效")
+		return
+	}
+	id = strings.ToLower(id)
+	if id == identity.SessionID {
+		writeError(w, http.StatusBadRequest, "current_device", "不能在这里撤销当前设备")
+		return
+	}
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "数据库暂时不可用")
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	var lockedID string
+	err = tx.QueryRowContext(r.Context(), `SELECT id FROM app_sessions
+		WHERE id = ? AND account_id = ? AND id <> ? AND revoked_at IS NULL FOR UPDATE`,
+		id, identity.AccountID, identity.SessionID).Scan(&lockedID)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "device_not_found", "设备不存在或已退出")
+		return
+	}
+	if err != nil || lockedID != id {
+		writeError(w, http.StatusInternalServerError, "session_revoke_failed", "撤销设备失败")
+		return
+	}
+	_, err = tx.ExecContext(r.Context(), `UPDATE ai_gateway_tokens SET revoked_at = UTC_TIMESTAMP(6)
+		WHERE account_id = ? AND app_session_id = ? AND revoked_at IS NULL`, identity.AccountID, id)
+	if err == nil {
+		_, err = tx.ExecContext(r.Context(), `UPDATE content_key_device_approvals
+			SET status = 'rejected', decided_at = UTC_TIMESTAMP(6)
+			WHERE account_id = ? AND ((requester_session_id = ? AND status = 'pending')
+				OR (approver_session_id = ? AND status = 'approved'))`, identity.AccountID, id, id)
+	}
+	var result sql.Result
+	if err == nil {
+		result, err = tx.ExecContext(r.Context(), `UPDATE app_sessions SET revoked_at = UTC_TIMESTAMP(6), e2ee_trusted = FALSE
+			WHERE id = ? AND account_id = ? AND id <> ? AND revoked_at IS NULL`, id, identity.AccountID, identity.SessionID)
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "session_revoke_failed", "撤销设备失败")
+		return
+	}
+	revoked, rowsErr := result.RowsAffected()
+	if rowsErr != nil {
+		writeError(w, http.StatusInternalServerError, "session_revoke_failed", "撤销设备失败")
+		return
+	}
+	if revoked != 1 {
+		writeError(w, http.StatusInternalServerError, "session_revoke_failed", "撤销设备失败")
+		return
+	}
+	if err = tx.Commit(); err != nil {
+		writeError(w, http.StatusInternalServerError, "session_revoke_failed", "撤销设备失败")
+		return
+	}
+	s.syncHub.revokeSession(identity.AccountID, id, "session_revoked")
+	s.audit(r.Context(), "app:"+identity.AccountID, "app.session.revoke", "app_session", id, "allowed", "high")
+	writeJSON(w, http.StatusOK, map[string]any{"revoked": true})
 }
 
 func (s *Server) revokeOtherAppDevices(w http.ResponseWriter, r *http.Request, identity *appIdentity) {

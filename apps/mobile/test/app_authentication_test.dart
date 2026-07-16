@@ -186,6 +186,7 @@ void main() {
                     'id': '123e4567-e89b-12d3-a456-426614174001',
                     'name': 'Daylink iPhone',
                     'current': true,
+                    'trusted': true,
                     'lastSeenAt': '2030-07-16T01:41:00Z',
                     'createdAt': '2030-07-01T01:41:00Z',
                   },
@@ -193,6 +194,7 @@ void main() {
                     'id': '123e4567-e89b-12d3-a456-426614174002',
                     'name': 'Daylink Android',
                     'current': false,
+                    'trusted': true,
                     'lastSeenAt': '2030-07-15T01:41:00Z',
                     'createdAt': '2030-07-02T01:41:00Z',
                   },
@@ -201,21 +203,34 @@ void main() {
               200,
             );
           }
+          if (request.url.path.endsWith(
+            '/123e4567-e89b-12d3-a456-426614174002',
+          )) {
+            return http.Response(jsonEncode({'revoked': true}), 200);
+          }
           return http.Response(jsonEncode({'revoked': 1}), 200);
         }),
       );
 
       final devices = await client.loadDeviceSessions(current);
+      await client.revokeDeviceSession(current, devices.last.id);
       await client.revokeOtherDeviceSessions(current);
 
       expect(devices, hasLength(2));
       expect(devices.first.name, 'Daylink iPhone');
       expect(devices.first.current, isTrue);
-      expect(requests.map((request) => request.method), ['GET', 'DELETE']);
-      expect(
-        requests.map((request) => request.url.path),
-        everyElement('/api/app/auth/devices'),
-      );
+      expect(devices, everyElement(isA<AppDeviceSession>()));
+      expect(devices.every((device) => device.trusted), isTrue);
+      expect(requests.map((request) => request.method), [
+        'GET',
+        'DELETE',
+        'DELETE',
+      ]);
+      expect(requests.map((request) => request.url.path), [
+        '/api/app/auth/devices',
+        '/api/app/auth/devices/123e4567-e89b-12d3-a456-426614174002',
+        '/api/app/auth/devices',
+      ]);
       expect(
         requests.map((request) => request.headers['authorization']),
         everyElement('Bearer ${current.accessToken}'),
@@ -238,6 +253,7 @@ void main() {
                   'id': '123e4567-e89b-12d3-a456-426614174002',
                   'name': 'Daylink Android',
                   'current': false,
+                  'trusted': false,
                   'lastSeenAt': '2030-07-15T01:41:00Z',
                   'createdAt': '2030-07-02T01:41:00Z',
                 },

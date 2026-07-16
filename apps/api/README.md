@@ -5,7 +5,7 @@ Go + MySQL 后端，提供：
 - 应用自有管理员首次初始化、密码 + Microsoft Authenticator TOTP、会话撤销、改密和 TOTP 重绑；
 - App 账号创建/启停/重置、密码登录、短访问令牌、一次性刷新令牌轮换；
 - 第三方 Responses/Images API 配置、加密 Key、连通测试、文本和生图网关；
-- Plus/Pro/Max 套餐、周/月账号额度、周卡/月卡/季度卡/年卡到期，以及失败释放的原子用量预占；
+- Plus/Pro/Max 套餐、月度账号额度、周卡/月卡/季度卡/年卡到期，以及失败释放的原子用量预占；
 - 面向用户 SSH 主机 Codex 的 OpenAI-compatible `/v1` 网关与短期哈希凭证，上游 API Key 不离开 Go 服务；
 - 公开好友选时间、编辑凭据、管理凭据和乐观锁定稿；
 - 按 App 账号隔离的密文对象、幂等写入、增量游标和 SSE 变更通知；

@@ -54,6 +54,10 @@ func (h *syncHub) revokeOtherSessions(accountID, currentSessionID, reason string
 	h.sendExcept(accountID, currentSessionID, syncEvent{Name: "session_revoked", Reason: safeRevocationReason(reason)})
 }
 
+func (h *syncHub) revokeSession(accountID, sessionID, reason string) {
+	h.sendOnly(accountID, sessionID, syncEvent{Name: "session_revoked", Reason: safeRevocationReason(reason)})
+}
+
 func (h *syncHub) send(accountID string, event syncEvent) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -67,6 +71,16 @@ func (h *syncHub) sendExcept(accountID, excludedSessionID string, event syncEven
 	defer h.mu.Unlock()
 	for _, client := range h.clients[accountID] {
 		if client.sessionID != excludedSessionID {
+			enqueueSyncEvent(client.channel, event)
+		}
+	}
+}
+
+func (h *syncHub) sendOnly(accountID, sessionID string, event syncEvent) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, client := range h.clients[accountID] {
+		if client.sessionID == sessionID {
 			enqueueSyncEvent(client.channel, event)
 		}
 	}

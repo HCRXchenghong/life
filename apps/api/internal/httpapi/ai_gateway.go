@@ -321,7 +321,9 @@ func (s *Server) requireAIGateway(w http.ResponseWriter, r *http.Request) (*aiGa
 	err := s.db.QueryRowContext(r.Context(), `SELECT t.account_id, t.id FROM ai_gateway_tokens t
       JOIN app_accounts a ON a.id = t.account_id
       JOIN app_ai_subscriptions sub ON sub.account_id = t.account_id
+      JOIN app_sessions s ON s.id = t.app_session_id AND s.account_id = t.account_id
       WHERE t.token_hash = ? AND t.revoked_at IS NULL AND t.expires_at > UTC_TIMESTAMP(6)
+        AND s.revoked_at IS NULL AND s.refresh_expires_at > UTC_TIMESTAMP(6)
         AND a.status = 'active' AND sub.expires_at > UTC_TIMESTAMP(6) LIMIT 1`,
 		security.SHA256(strings.TrimPrefix(authorization, "Bearer "))).Scan(&identity.AccountID, &identity.TokenID)
 	if err != nil {

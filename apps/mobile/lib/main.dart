@@ -31,6 +31,7 @@ import 'src/presentation/recovery_key_page.dart';
 import 'src/presentation/recovery_unlock_page.dart';
 import 'src/presentation/toolbox_page.dart';
 import 'src/presentation/trusted_device_approval_page.dart';
+import 'src/presentation/trusted_devices_page.dart';
 import 'src/presentation/today_schedule_page.dart';
 
 const _configuredApiBaseUrl = String.fromEnvironment(
@@ -365,10 +366,20 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
               ? runtime as TrustedDeviceApprovalSource
               : null,
           onOpenDeviceApproval: _openTrustedDeviceApproval,
+          onOpenTrustedDevices: () => unawaited(_openTrustedDevices()),
         ),
       ),
     );
   }
+
+  Future<void> _openTrustedDevices() => _navigatorKey.currentState!.push<void>(
+    MaterialPageRoute<void>(
+      builder: (_) => TrustedDevicesPage(
+        authentication: _authentication,
+        onSessionRejected: _closeDetailsAndLogout,
+      ),
+    ),
+  );
 
   Future<void> _openRecoveryKey(RecoveryKeyDraft draft) async {
     final runtime = _runtime;

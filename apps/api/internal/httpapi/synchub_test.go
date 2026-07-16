@@ -57,7 +57,7 @@ func TestSyncHubRevokesOnlyTheSelectedSession(t *testing.T) {
 	current, unsubscribeCurrent := hub.subscribe("account-a", "session-b")
 	defer unsubscribeCurrent()
 
-	hub.revokeOtherSessions("account-a", "session-b", "session_revoked")
+	hub.revokeSession("account-a", "session-a", "session_revoked")
 	select {
 	case event := <-selected:
 		if event.Name != "session_revoked" || event.Reason != "session_revoked" {
