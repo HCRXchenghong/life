@@ -335,7 +335,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('recovery-unlock-title')), findsNothing);
-    expect(find.text('已开启'), findsOneWidget);
+    expect(find.text('端到端加密已开启'), findsOneWidget);
   });
 
   testWidgets('trusted-device recovery ends on the approved success page', (
@@ -372,7 +372,7 @@ void main() {
     await tester.tap(find.byKey(const Key('approval-success-done')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('approval-success-title')), findsNothing);
-    expect(find.text('已开启'), findsOneWidget);
+    expect(find.text('端到端加密已开启'), findsOneWidget);
   });
 
   testWidgets('trusted device opens and approves a real pending route', (
@@ -414,6 +414,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('查看新设备请求'), findsOneWidget);
 
+    await tester.ensureVisible(find.byKey(const Key('e2ee-enable')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('e2ee-enable')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('device-approval-title')), findsOneWidget);
@@ -428,7 +430,7 @@ void main() {
 
     expect(runtime.approveCalls, 1);
     expect(find.byKey(const Key('device-approval-title')), findsNothing);
-    expect(find.text('已开启'), findsOneWidget);
+    expect(find.text('端到端加密已开启'), findsOneWidget);
   });
 }
 

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -172,113 +173,338 @@ class _EndToEndEncryptionPageState extends State<EndToEndEncryptionPage> {
             child: Divider(height: 1, thickness: 1, color: _divider),
           ),
         ),
-        body: ListView(
-          key: const Key('e2ee-scroll'),
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(26, 58, 26, 48),
-          children: [
-            const Icon(Icons.lock_outline_rounded, size: 47, color: _blue),
-            const SizedBox(height: 18),
-            const Text(
-              '开启端到端加密',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: _text,
-                fontSize: 22,
-                fontWeight: FontWeight.w500,
-                letterSpacing: -0.4,
+        body: status == ContentEncryptionSetupStatus.enabled
+            ? _EnabledEncryptionBody(
+                busy: _busy,
+                pendingApproval: _pendingApproval != null,
+                onOpenApproval: _primaryAction,
+              )
+            : _EncryptionSetupBody(
+                loading: _loading,
+                busy: _busy,
+                status: status,
+                onPrimaryAction: _primaryAction,
               ),
-            ),
-            const SizedBox(height: 13),
-            const Text(
-              '日程、对话与主机内容会在离开设备前加密。',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: _muted, fontSize: 14, height: 1.45),
-            ),
-            const SizedBox(height: 50),
-            const Text(
-              '安全密钥',
-              style: TextStyle(color: _muted, fontSize: 15, height: 1.3),
-            ),
-            const SizedBox(height: 11),
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _cardBorder),
+      ),
+    );
+  }
+}
+
+class _EnabledEncryptionBody extends StatelessWidget {
+  const _EnabledEncryptionBody({
+    required this.busy,
+    required this.pendingApproval,
+    required this.onOpenApproval,
+  });
+
+  final bool busy;
+  final bool pendingApproval;
+  final VoidCallback onOpenApproval;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => SingleChildScrollView(
+      key: const Key('e2ee-scroll'),
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(24, 48, 24, 31),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: constraints.maxHeight - 79),
+        child: IntrinsicHeight(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const _ShieldLockIcon(),
+              const SizedBox(height: 27),
+              const Text(
+                '端到端加密已开启',
+                key: Key('e2ee-enabled-heading'),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: _text,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.4,
+                ),
               ),
-              child: Column(
+              const SizedBox(height: 11),
+              const Text(
+                '日程、对话与主机内容会在\n离开设备前加密。',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: _muted, fontSize: 14, height: 1.5),
+              ),
+              const SizedBox(height: 43),
+              const _SectionLabel('安全密钥'),
+              const SizedBox(height: 11),
+              Container(
+                key: const Key('e2ee-enabled-key-card'),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _cardBorder),
+                ),
+                child: const Column(
+                  children: [
+                    _KeyRow(
+                      title: '内容主密钥',
+                      subtitle: '仅保存在受信设备中',
+                      value: '已保护',
+                      showChevron: true,
+                    ),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 17),
+                      child: Divider(height: 1, thickness: 1, color: _divider),
+                    ),
+                    _KeyRow(
+                      title: '恢复密钥',
+                      subtitle: '用于在新设备恢复内容',
+                      value: '已保存',
+                      showChevron: true,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 30),
+              const _SectionLabel('受信设备'),
+              const SizedBox(height: 11),
+              Container(
+                key: const Key('e2ee-current-device'),
+                height: 76,
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _cardBorder),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.phone_iphone_rounded,
+                      color: _blue,
+                      size: 31,
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '这台设备',
+                            style: TextStyle(
+                              color: _text,
+                              fontSize: 16.5,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _currentDeviceLabel(),
+                            style: const TextStyle(color: _muted, fontSize: 13),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: _blue),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: const Text(
+                        '受信',
+                        style: TextStyle(color: _blue, fontSize: 14),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (pendingApproval) ...[
+                const SizedBox(height: 15),
+                SizedBox(
+                  height: 45,
+                  child: OutlinedButton(
+                    key: const Key('e2ee-enable'),
+                    onPressed: busy ? null : onOpenApproval,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _blue,
+                      side: const BorderSide(color: _blue),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    child: busy
+                        ? const SizedBox.square(
+                            dimension: 19,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: _blue,
+                            ),
+                          )
+                        : const Text('查看新设备请求'),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 37),
+              const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  _KeyRow(
-                    title: '内容主密钥',
-                    subtitle: '仅保存在受信设备中',
-                    value: _contentKeyLabel(status),
-                  ),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 14),
-                    child: Divider(height: 1, thickness: 1, color: _divider),
-                  ),
-                  _KeyRow(
-                    title: '恢复密钥',
-                    subtitle: '用于在新设备恢复内容',
-                    value: _recoveryKeyLabel(status),
+                  Icon(Icons.shield_outlined, color: _muted, size: 19),
+                  SizedBox(width: 7),
+                  Text(
+                    '加密保护在此设备上正常工作',
+                    style: TextStyle(color: _muted, fontSize: 12.5),
                   ),
                 ],
               ),
+              const Spacer(),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _EncryptionSetupBody extends StatelessWidget {
+  const _EncryptionSetupBody({
+    required this.loading,
+    required this.busy,
+    required this.status,
+    required this.onPrimaryAction,
+  });
+
+  final bool loading;
+  final bool busy;
+  final ContentEncryptionSetupStatus status;
+  final VoidCallback onPrimaryAction;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    key: const Key('e2ee-scroll'),
+    physics: const BouncingScrollPhysics(),
+    padding: const EdgeInsets.fromLTRB(26, 58, 26, 48),
+    children: [
+      const Icon(Icons.lock_outline_rounded, size: 47, color: _blue),
+      const SizedBox(height: 18),
+      const Text(
+        '开启端到端加密',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: _text,
+          fontSize: 22,
+          fontWeight: FontWeight.w500,
+          letterSpacing: -0.4,
+        ),
+      ),
+      const SizedBox(height: 13),
+      const Text(
+        '日程、对话与主机内容会在离开设备前加密。',
+        textAlign: TextAlign.center,
+        style: TextStyle(color: _muted, fontSize: 14, height: 1.45),
+      ),
+      const SizedBox(height: 50),
+      const _SectionLabel('安全密钥'),
+      const SizedBox(height: 11),
+      Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _cardBorder),
+        ),
+        child: Column(
+          children: [
+            _KeyRow(
+              title: '内容主密钥',
+              subtitle: '仅保存在受信设备中',
+              value: _contentKeyLabel(status),
             ),
-            const SizedBox(height: 27),
-            SizedBox(
-              height: 52,
-              child: FilledButton(
-                key: const Key('e2ee-enable'),
-                onPressed:
-                    _loading ||
-                        _busy ||
-                        (status == ContentEncryptionSetupStatus.enabled &&
-                            _pendingApproval == null)
-                    ? null
-                    : _primaryAction,
-                style: FilledButton.styleFrom(
-                  backgroundColor: _blue,
-                  disabledBackgroundColor:
-                      status == ContentEncryptionSetupStatus.enabled
-                      ? _blue.withValues(alpha: 0.55)
-                      : const Color(0xFFD6DCEB),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(11),
-                  ),
-                  textStyle: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                child: _busy
-                    ? const SizedBox.square(
-                        dimension: 21,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Text(
-                        status == ContentEncryptionSetupStatus.enabled &&
-                                _pendingApproval != null
-                            ? '查看新设备请求'
-                            : _buttonLabel(status),
-                      ),
-              ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 14),
+              child: Divider(height: 1, thickness: 1, color: _divider),
             ),
-            const SizedBox(height: 18),
-            const Text(
-              '请妥善保存恢复密钥。\n遗失全部受信设备和恢复密钥后，加密内容将无法恢复。',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: _muted, fontSize: 12.5, height: 1.55),
+            _KeyRow(
+              title: '恢复密钥',
+              subtitle: '用于在新设备恢复内容',
+              value: _recoveryKeyLabel(status),
             ),
           ],
         ),
       ),
-    );
-  }
+      const SizedBox(height: 27),
+      SizedBox(
+        height: 52,
+        child: FilledButton(
+          key: const Key('e2ee-enable'),
+          onPressed: loading || busy ? null : onPrimaryAction,
+          style: FilledButton.styleFrom(
+            backgroundColor: _blue,
+            disabledBackgroundColor: const Color(0xFFD6DCEB),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(11),
+            ),
+            textStyle: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          child: busy
+              ? const SizedBox.square(
+                  dimension: 21,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.2,
+                    color: Colors.white,
+                  ),
+                )
+              : Text(_buttonLabel(status)),
+        ),
+      ),
+      const SizedBox(height: 18),
+      const Text(
+        '请妥善保存恢复密钥。\n遗失全部受信设备和恢复密钥后，加密内容将无法恢复。',
+        textAlign: TextAlign.center,
+        style: TextStyle(color: _muted, fontSize: 12.5, height: 1.55),
+      ),
+    ],
+  );
+}
+
+class _ShieldLockIcon extends StatelessWidget {
+  const _ShieldLockIcon();
+
+  @override
+  Widget build(BuildContext context) => const SizedBox(
+    height: 72,
+    child: Stack(
+      alignment: Alignment.center,
+      children: [
+        Icon(Icons.shield_outlined, color: _blue, size: 72),
+        Padding(
+          padding: EdgeInsets.only(top: 3),
+          child: Icon(Icons.lock_outline_rounded, color: _blue, size: 31),
+        ),
+      ],
+    ),
+  );
+}
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Text(
+    label,
+    style: const TextStyle(
+      color: Color(0xFF646A73),
+      fontSize: 15,
+      fontWeight: FontWeight.w500,
+      height: 1.3,
+    ),
+  );
 }
 
 class _KeyRow extends StatelessWidget {
@@ -286,11 +512,13 @@ class _KeyRow extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.value,
+    this.showChevron = false,
   });
 
   final String title;
   final String subtitle;
   final String value;
+  final bool showChevron;
 
   @override
   Widget build(BuildContext context) => SizedBox(
@@ -326,11 +554,21 @@ class _KeyRow extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Text(value, style: const TextStyle(color: _muted, fontSize: 14)),
+          if (showChevron) ...[
+            const SizedBox(width: 8),
+            const Icon(Icons.chevron_right_rounded, color: _muted, size: 23),
+          ],
         ],
       ),
     ),
   );
 }
+
+String _currentDeviceLabel() => switch (defaultTargetPlatform) {
+  TargetPlatform.iOS => 'Daylink iPhone',
+  TargetPlatform.android => 'Daylink Android',
+  _ => 'Daylink 设备',
+};
 
 String _contentKeyLabel(ContentEncryptionSetupStatus status) =>
     switch (status) {

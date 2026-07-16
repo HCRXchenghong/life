@@ -88,9 +88,36 @@ void main() {
       await tester.pumpAndSettle();
       expect(unlockCalls, 1);
       expect(source.prepareCalls, 0);
-      expect(find.text('已开启'), findsOneWidget);
+      expect(find.text('端到端加密已开启'), findsOneWidget);
     },
   );
+
+  testWidgets('renders the approved enabled encryption layout', (tester) async {
+    final source = _FakeContentEncryptionSource(
+      status: ContentEncryptionSetupStatus.enabled,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EndToEndEncryptionPage(
+          source: source,
+          onRecoveryKeyReady: (_) async {},
+          onOpenUnlock: () async {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('e2ee-enabled-heading')), findsOneWidget);
+    expect(find.text('端到端加密已开启'), findsOneWidget);
+    expect(find.text('已保护'), findsOneWidget);
+    expect(find.text('已保存'), findsOneWidget);
+    expect(find.text('受信设备'), findsOneWidget);
+    expect(find.text('这台设备'), findsOneWidget);
+    expect(find.text('Daylink Android'), findsOneWidget);
+    expect(find.text('受信'), findsOneWidget);
+    expect(find.text('加密保护在此设备上正常工作'), findsOneWidget);
+    expect(find.byKey(const Key('e2ee-enable')), findsNothing);
+  });
 
   testWidgets('opens a pending trusted-device request from enabled state', (
     tester,
@@ -114,6 +141,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('查看新设备请求'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('e2ee-enable')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('e2ee-enable')));
     await tester.pumpAndSettle();
     expect(opened?.verificationCode, '482 731');
