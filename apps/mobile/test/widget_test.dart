@@ -198,6 +198,13 @@ void main() {
     expect(find.text('Word 文档'), findsOneWidget);
     expect(find.text('表格与演示'), findsOneWidget);
 
+    await tester.tap(find.byKey(const Key('nav-assistant')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('assistant-greeting')), findsOneWidget);
+    expect(find.text('本地助手'), findsOneWidget);
+    expect(find.text('询问 Daylink'), findsOneWidget);
+
     await tester.tap(find.byKey(const Key('nav-schedule')));
     await tester.pumpAndSettle();
     expect(find.text('今天'), findsOneWidget);

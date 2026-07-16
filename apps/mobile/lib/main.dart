@@ -4,11 +4,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'src/application/assistant_settings.dart';
 import 'src/application/daylink_services.dart';
 import 'src/data/app_authentication.dart';
 import 'src/data/app_session_monitor.dart';
 import 'src/data/schedule_repository.dart';
+import 'src/domain/ai/ai_models.dart';
 import 'src/presentation/app_navigation.dart';
+import 'src/presentation/assistant_page.dart';
 import 'src/presentation/login_page.dart';
 import 'src/presentation/password_change_page.dart';
 import 'src/presentation/toolbox_page.dart';
@@ -270,7 +273,8 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
 
   void _selectDestination(AppDestination destination) {
     if (destination == AppDestination.schedule ||
-        destination == AppDestination.toolbox) {
+        destination == AppDestination.toolbox ||
+        destination == AppDestination.assistant) {
       if (_selectedDestination == destination) return;
       setState(() => _selectedDestination = destination);
       return;
@@ -305,6 +309,21 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
           onDestinationSelected: _selectDestination,
         );
       }
+      if (_selectedDestination == AppDestination.assistant) {
+        return AssistantPage(
+          settings: runtime is AssistantSettingsSource
+              ? runtime as AssistantSettingsSource
+              : null,
+          onDestinationSelected: _selectDestination,
+          onOpenHistory: () => _showPendingPage('对话历史'),
+          onNewConversation: () => _showPendingPage('新对话'),
+          onOpenMore: () => _showPendingPage('助手更多设置'),
+          onAddAttachment: () => _showPendingPage('添加附件'),
+          onVoiceInput: () => _showPendingPage('语音输入'),
+          onSubmit: (_) async => _showPendingPage('安全审批与对话结果'),
+          onMessage: _showMessage,
+        );
+      }
       return TodaySchedulePage(
         source: scheduleRuntime.schedules,
         onCreateEvent: () => _showPendingPage('新建日程'),
@@ -316,6 +335,14 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
       key: Key('authenticated-page-pending-review'),
       color: Color(0xFFF7F8FA),
     );
+  }
+
+  void _showMessage(String message) {
+    _scaffoldMessengerKey.currentState
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(behavior: SnackBarBehavior.floating, content: Text(message)),
+      );
   }
 
   @override
@@ -352,10 +379,15 @@ String _deviceName() => switch (defaultTargetPlatform) {
 };
 
 class DaylinkRuntime
-    implements AppRuntime, ForcedSignOutAwareRuntime, ScheduleAwareRuntime {
-  DaylinkRuntime._(this.services);
+    implements
+        AppRuntime,
+        ForcedSignOutAwareRuntime,
+        ScheduleAwareRuntime,
+        AssistantSettingsSource {
+  DaylinkRuntime._(this.services, this._assistantSettings);
 
   final DaylinkServices services;
+  final AssistantSettingsSource _assistantSettings;
   final StreamController<String> _forcedSignOutController =
       StreamController<String>.broadcast();
   bool _signedOut = false;
@@ -372,7 +404,13 @@ class DaylinkRuntime
     required SessionActionCallback clearCredentials,
   }) async {
     final services = await DaylinkServices.start(accountId: accountId);
-    final runtime = DaylinkRuntime._(services);
+    final runtime = DaylinkRuntime._(
+      services,
+      DaylinkAssistantSettings(
+        apiBaseUri: apiBaseUri,
+        accessToken: accessToken,
+      ),
+    );
     services.monitorSession(
       apiBaseUri: apiBaseUri,
       accessToken: accessToken,
@@ -388,6 +426,19 @@ class DaylinkRuntime
 
   @override
   bool get isSignedOut => _signedOut;
+
+  @override
+  Future<AssistantPreferences> loadAssistantPreferences() =>
+      _assistantSettings.loadAssistantPreferences();
+
+  @override
+  Future<void> updateAssistantPreferences({
+    required String model,
+    required AiReasoningEffort reasoningEffort,
+  }) => _assistantSettings.updateAssistantPreferences(
+    model: model,
+    reasoningEffort: reasoningEffort,
+  );
 
   Future<void> _forceSignOut(String reason) async {
     if (_signedOut) return;
