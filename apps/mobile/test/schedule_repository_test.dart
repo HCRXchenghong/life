@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:daylink_mobile/src/data/app_database.dart';
 import 'package:daylink_mobile/src/data/schedule_repository.dart';
 import 'package:daylink_mobile/src/domain/schedule/schedule_models.dart';
@@ -52,5 +54,29 @@ void main() {
     await repository.setStatus(event.id, ScheduleStatus.completed);
 
     expect(await repository.activeEvents(), isEmpty);
+  });
+
+  test('active event stream updates when status changes', () async {
+    final event = ScheduleEventModel(
+      id: 'event-live',
+      title: '实时日程',
+      startsAtUtc: DateTime.utc(2026, 7, 20, 10),
+      duration: const Duration(hours: 1),
+      timezoneId: 'Asia/Shanghai',
+    );
+    final emissions = StreamIterator(repository.watchActiveEvents());
+
+    expect(await emissions.moveNext(), isTrue);
+    expect(emissions.current, isEmpty);
+
+    await repository.saveEvent(event, const []);
+    expect(await emissions.moveNext(), isTrue);
+    expect(emissions.current.single.id, event.id);
+
+    await repository.setStatus(event.id, ScheduleStatus.completed);
+    expect(await emissions.moveNext(), isTrue);
+    expect(emissions.current, isEmpty);
+
+    await emissions.cancel();
   });
 }

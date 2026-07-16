@@ -3,7 +3,12 @@ import 'package:drift/drift.dart';
 import '../domain/schedule/schedule_models.dart';
 import 'app_database.dart';
 
-class ScheduleRepository {
+abstract interface class ScheduleEventSource {
+  Stream<List<ScheduleEventModel>> watchActiveEvents();
+  Future<List<ReminderModel>> remindersForEvents(Iterable<String> eventIds);
+}
+
+class ScheduleRepository implements ScheduleEventSource {
   ScheduleRepository(this._db);
 
   final AppDatabase _db;
@@ -61,6 +66,14 @@ class ScheduleRepository {
     return rows.map(_eventFromRow).toList(growable: false);
   }
 
+  @override
+  Stream<List<ScheduleEventModel>> watchActiveEvents() =>
+      (_db.select(_db.scheduleEvents)
+            ..where((table) => table.status.equals(ScheduleStatus.active.name)))
+          .watch()
+          .map((rows) => rows.map(_eventFromRow).toList(growable: false));
+
+  @override
   Future<List<ReminderModel>> remindersForEvents(
     Iterable<String> eventIds,
   ) async {

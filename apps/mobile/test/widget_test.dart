@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:daylink_mobile/main.dart';
 import 'package:daylink_mobile/src/data/app_authentication.dart';
+import 'package:daylink_mobile/src/data/schedule_repository.dart';
+import 'package:daylink_mobile/src/domain/schedule/schedule_models.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -161,6 +163,32 @@ void main() {
     expect(authentication.cleared, isTrue);
     expect(find.text('登录 Daylink'), findsOneWidget);
   });
+
+  testWidgets('restored authenticated account enters the schedule shell', (
+    tester,
+  ) async {
+    final authentication = _FakeAuthentication(
+      restored: _FakeAuthentication.session(
+        username: 'active-user',
+        passwordChangeRequired: false,
+      ),
+    );
+    await tester.pumpWidget(
+      DaylinkApp(
+        authentication: authentication,
+        runtimeFactory: (_, _) async => _FakeScheduleRuntime(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('今天'), findsOneWidget);
+    expect(find.text('今日日程'), findsOneWidget);
+    expect(find.text('日程'), findsOneWidget);
+    expect(find.text('工具箱'), findsOneWidget);
+    expect(find.text('助手'), findsOneWidget);
+    expect(find.text('主机'), findsOneWidget);
+    expect(find.text('我的'), findsOneWidget);
+  });
 }
 
 class _FakeAuthentication implements AppAuthentication {
@@ -246,6 +274,30 @@ class _FakeRuntime implements AppRuntime {
 
   @override
   Future<void> reconcile() async {}
+}
+
+class _FakeScheduleRuntime implements AppRuntime, ScheduleAwareRuntime {
+  final _source = _EmptyScheduleSource();
+
+  @override
+  ScheduleEventSource get schedules => _source;
+
+  @override
+  Future<void> close() async {}
+
+  @override
+  Future<void> reconcile() async {}
+}
+
+class _EmptyScheduleSource implements ScheduleEventSource {
+  @override
+  Future<List<ReminderModel>> remindersForEvents(
+    Iterable<String> eventIds,
+  ) async => const [];
+
+  @override
+  Stream<List<ScheduleEventModel>> watchActiveEvents() =>
+      Stream.value(const []);
 }
 
 class _FakeForcedRuntime implements AppRuntime, ForcedSignOutAwareRuntime {

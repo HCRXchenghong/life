@@ -7,8 +7,10 @@ import 'package:flutter/services.dart';
 import 'src/application/daylink_services.dart';
 import 'src/data/app_authentication.dart';
 import 'src/data/app_session_monitor.dart';
+import 'src/data/schedule_repository.dart';
 import 'src/presentation/login_page.dart';
 import 'src/presentation/password_change_page.dart';
+import 'src/presentation/today_schedule_page.dart';
 
 const _configuredApiBaseUrl = String.fromEnvironment(
   'DAYLINK_API_BASE_URL',
@@ -39,6 +41,10 @@ abstract interface class ForcedSignOutAwareRuntime {
   bool get isSignedOut;
 }
 
+abstract interface class ScheduleAwareRuntime {
+  ScheduleEventSource get schedules;
+}
+
 class DaylinkApp extends StatefulWidget {
   const DaylinkApp({
     super.key,
@@ -61,6 +67,7 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
   AppSessionCredentials? _session;
   StreamSubscription<String>? _forcedSignOutSubscription;
   bool _bootstrapping = true;
+  final _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
 
   @override
   void initState() {
@@ -244,8 +251,49 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
     super.dispose();
   }
 
+  void _showPendingPage(String name) {
+    _scaffoldMessengerKey.currentState
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text('$name页面将在审核通过后开放'),
+        ),
+      );
+  }
+
+  void _selectDestination(AppDestination destination) {
+    if (destination == AppDestination.schedule) return;
+    final name = switch (destination) {
+      AppDestination.schedule => '日程',
+      AppDestination.toolbox => '工具箱',
+      AppDestination.assistant => '助手',
+      AppDestination.hosts => '主机',
+      AppDestination.me => '我的',
+    };
+    _showPendingPage(name);
+  }
+
+  Widget _authenticatedHome() {
+    final runtime = _runtime;
+    if (runtime is ScheduleAwareRuntime) {
+      final scheduleRuntime = runtime as ScheduleAwareRuntime;
+      return TodaySchedulePage(
+        source: scheduleRuntime.schedules,
+        onCreateEvent: () => _showPendingPage('新建日程'),
+        onOpenAssistant: () => _showPendingPage('助手'),
+        onDestinationSelected: _selectDestination,
+      );
+    }
+    return const ColoredBox(
+      key: Key('authenticated-page-pending-review'),
+      color: Color(0xFFF7F8FA),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => MaterialApp(
+    scaffoldMessengerKey: _scaffoldMessengerKey,
     debugShowCheckedModeBanner: false,
     title: 'Daylink',
     theme: ThemeData(
@@ -255,6 +303,7 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
         brightness: Brightness.light,
       ),
       scaffoldBackgroundColor: const Color(0xFFF7F8FA),
+      splashFactory: InkSparkle.splashFactory,
     ),
     home: _bootstrapping
         ? const ColoredBox(color: Color(0xFFF7F8FA))
@@ -265,10 +314,7 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
             onChangePassword: _changePassword,
             onLogout: _logout,
           )
-        : const ColoredBox(
-            key: Key('authenticated-page-pending-review'),
-            color: Color(0xFFF7F8FA),
-          ),
+        : _authenticatedHome(),
   );
 }
 
@@ -278,7 +324,8 @@ String _deviceName() => switch (defaultTargetPlatform) {
   _ => 'Daylink device',
 };
 
-class DaylinkRuntime implements AppRuntime, ForcedSignOutAwareRuntime {
+class DaylinkRuntime
+    implements AppRuntime, ForcedSignOutAwareRuntime, ScheduleAwareRuntime {
   DaylinkRuntime._(this.services);
 
   final DaylinkServices services;
@@ -286,6 +333,9 @@ class DaylinkRuntime implements AppRuntime, ForcedSignOutAwareRuntime {
       StreamController<String>.broadcast();
   bool _signedOut = false;
   bool _closed = false;
+
+  @override
+  ScheduleEventSource get schedules => services.schedules;
 
   static Future<DaylinkRuntime> startForAccount(
     String accountId, {
