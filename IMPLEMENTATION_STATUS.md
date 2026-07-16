@@ -8,7 +8,7 @@
 | --- | --- |
 | Flutter 服务层 | Drift v3、按 App 账号隔离的 `app.db`、按账号命名空间隔离的安全保险库、统一 `DaylinkServices` 容器；Android/iOS 共用领域层 |
 | Flutter 密文同步接收层 | 按账号增量拉取、严格密文与 nonce 校验、单调游标、幂等本地缓存、SSE 与前台恢复触发；密钥未解锁时不解密或覆盖本机内容 |
-| 端到端密钥初始化与恢复 | Rust 用系统 CSPRNG 生成 256 位 CMK 与高熵恢复密钥；CMK 只进入设备密钥 AEAD 保护、原子写入且权限为 `0700/0600` 的账号级 `vault.db`，后端只保存 HKDF-SHA256 + AES-256-GCM 恢复密钥信封；并发初始化采用首写胜出且冲突时丢弃本地待确认密钥；Flutter 已实现恢复密钥展示、复制限时清理、后台遮挡和二次确认；新设备可发起、恢复、轮询和取消 10 分钟一次性受信设备请求，前后台切换会暂停/续查；验证码绑定账号、请求与 X25519 公钥，CMK 只以 X25519 + HKDF-SHA256 + AES-256-GCM 定向封装给请求设备；一次性请求证明原文只在新设备加密 `vault.db`，MySQL 仅存 SHA-256，访问令牌轮换后仍可安全续查；批准结果必须先经 Rust 验证落地再消费服务端信任，错误、篡改、过期或跨账号材料不会写入内容密钥 |
+| 端到端密钥初始化与恢复 | Rust 用系统 CSPRNG 生成 256 位 CMK 与高熵恢复密钥；CMK 只进入设备密钥 AEAD 保护、原子写入且权限为 `0700/0600` 的账号级 `vault.db`，后端只保存 HKDF-SHA256 + AES-256-GCM 恢复密钥信封；并发初始化采用首写胜出且冲突时丢弃本地待确认密钥；Flutter 已实现恢复密钥展示、复制限时清理、后台遮挡和二次确认；新设备可发起、恢复、轮询和取消 10 分钟一次性受信设备请求，前后台切换会暂停/续查；验证码绑定账号、请求与 X25519 公钥，CMK 只以 X25519 + HKDF-SHA256 + AES-256-GCM 定向封装给请求设备；一次性请求证明原文只在新设备加密 `vault.db`，MySQL 仅存 SHA-256，访问令牌轮换后仍可安全续查；批准结果必须先经 Rust 验证落地再消费服务端信任，成功页只在这两个动作都完成后出现；错误、篡改、过期或跨账号材料不会写入内容密钥 |
 | SSH | 密码/私钥认证、严格 known-host/TOFU、命令、PTY、resize、断开、loopback TCP 转发 |
 | Linux Agent | CBOR 分帧协议、能力协商、Unix Socket/stdio、目录白名单、文件分块传输与 SHA-256 提交 |
 | Agent 安装 | Flutter FFI 上传、64 MiB 上限、本地/远端 SHA-256、远端自检、版本目录和原子 symlink 切换；自检失败不替换旧版本 |
@@ -29,7 +29,7 @@
 
 - Go：`gofmt`、`go test ./...`、`go vet ./...` 通过。
 - React：ESLint、TypeScript、Vite 生产构建与独立部署测试通过，npm audit 为 0。
-- Flutter：`flutter analyze` 0 条诊断，122 项测试通过，Android debug APK 与 iOS Simulator debug 构建通过。
+- Flutter：`flutter analyze` 0 条诊断，124 项测试通过，Android debug APK 与 iOS Simulator debug 构建通过。
 - Rust：`cargo fmt --all --check`、workspace Clippy `-D warnings`、15 项测试全部通过。
 - 容器：Go 与 React 镜像构建成功；MySQL、API 均健康，Caddy 在局域网 HTTPS 端口运行；API/Web 只读与非特权标志已复验。
 - 黑盒：真实 Caddy → Go → MySQL 链路验证错误初始化口令拒绝、管理员初始化、Microsoft TOTP、同源保护、App 双账号、刷新令牌重放拒绝、跨账号密文隔离、管理员无法读取同步内容、投票和公开投票页；实时会话黑盒证明后台停用会在 2 秒门槛内推送 `account_disabled` 并同步撤销数据库会话。

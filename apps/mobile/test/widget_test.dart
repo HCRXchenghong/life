@@ -338,6 +338,43 @@ void main() {
     expect(find.text('已开启'), findsOneWidget);
   });
 
+  testWidgets('trusted-device recovery ends on the approved success page', (
+    tester,
+  ) async {
+    final authentication = _FakeAuthentication(
+      restored: _FakeAuthentication.session(
+        username: 'new-device-user',
+        passwordChangeRequired: false,
+      ),
+    );
+    final runtime = _FakeRecoveryScheduleRuntime();
+    await tester.pumpWidget(
+      DaylinkApp(
+        authentication: authentication,
+        runtimeFactory: (_, _) async => runtime,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('nav-me')));
+    await tester.pumpAndSettle();
+    final sync = find.byKey(const Key('my-sync'));
+    await tester.ensureVisible(sync);
+    await tester.tap(sync);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('sync-encryption')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('e2ee-enable')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('approval-success-title')), findsOneWidget);
+    expect(find.text('加密内容已恢复'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('approval-success-done')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('approval-success-title')), findsNothing);
+    expect(find.text('已开启'), findsOneWidget);
+  });
+
   testWidgets('trusted device opens and approves a real pending route', (
     tester,
   ) async {
@@ -666,6 +703,40 @@ class _FakeScheduleRuntime
 
   @override
   Future<void> reconcile() async {}
+}
+
+class _FakeRecoveryScheduleRuntime extends _FakeScheduleRuntime
+    implements DeviceApprovalRecoverySource {
+  _FakeRecoveryScheduleRuntime()
+    : super(encryptionStatus: ContentEncryptionSetupStatus.locked);
+
+  @override
+  Future<DeviceApprovalWaitingSession> startDeviceApproval() async {
+    final now = DateTime.now().toUtc();
+    return DeviceApprovalWaitingSession(
+      id: '9b276a3e-b141-4d91-8dbf-0f217b62b071',
+      requestToken: Uint8List.fromList(List<int>.filled(32, 6)),
+      verificationCode: '482 731',
+      deviceName: 'Daylink iPhone',
+      createdAt: now,
+      expiresAt: now.add(const Duration(minutes: 10)),
+    );
+  }
+
+  @override
+  Future<DeviceApprovalWaitingStatus> checkDeviceApproval(
+    DeviceApprovalWaitingSession session,
+  ) async {
+    _contentEncryptionState = const ContentEncryptionState(
+      status: ContentEncryptionSetupStatus.enabled,
+    );
+    return DeviceApprovalWaitingStatus.completed;
+  }
+
+  @override
+  Future<void> cancelDeviceApproval(
+    DeviceApprovalWaitingSession session,
+  ) async {}
 }
 
 class _EmptyHostSource implements HostListSource {

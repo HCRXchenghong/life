@@ -20,6 +20,7 @@ import 'src/presentation/account_security_page.dart';
 import 'src/presentation/assistant_page.dart';
 import 'src/presentation/data_sync_page.dart';
 import 'src/presentation/device_approval_waiting_page.dart';
+import 'src/presentation/device_approval_success_page.dart';
 import 'src/presentation/end_to_end_encryption_page.dart';
 import 'src/presentation/hosts_page.dart';
 import 'src/presentation/login_page.dart';
@@ -412,6 +413,12 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
         );
     if (result == DeviceApprovalWaitingResult.useRecoveryKey) {
       await _openRecoveryUnlock();
+    } else if (result == DeviceApprovalWaitingResult.completed) {
+      await _navigatorKey.currentState!.push<bool>(
+        MaterialPageRoute<bool>(
+          builder: (_) => const DeviceApprovalSuccessPage(),
+        ),
+      );
     }
   }
 
