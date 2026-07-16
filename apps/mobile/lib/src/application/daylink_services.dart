@@ -308,6 +308,16 @@ class DaylinkServices {
   Future<void> rejectDevice(TrustedDeviceApprovalRequest request) =>
       contentEncryption.rejectDevice(request);
 
+  Future<DeviceApprovalWaitingSession> startDeviceApproval() =>
+      contentEncryption.startDeviceApproval();
+
+  Future<DeviceApprovalWaitingStatus> checkDeviceApproval(
+    DeviceApprovalWaitingSession session,
+  ) => contentEncryption.checkDeviceApproval(session);
+
+  Future<void> cancelDeviceApproval(DeviceApprovalWaitingSession session) =>
+      contentEncryption.cancelDeviceApproval(session);
+
   AppSessionMonitor monitorSession({
     required Uri apiBaseUri,
     required AccessTokenProvider accessToken,

@@ -66,7 +66,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => -1265920917;
+  int get rustContentHash => 357177388;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -220,6 +220,13 @@ abstract class RustLibApi extends BaseApi {
   Future<void> crateApiMobileInitApp();
 
   Future<BridgeContentKeyInitialization> crateApiMobileInitializeContentKey({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+  });
+
+  Future<BridgeDeviceApprovalRequestKey?>
+  crateApiMobileLoadDeviceApprovalRequest({
     required String vaultPath,
     required String accountId,
     required List<int> deviceVaultKey,
@@ -1325,6 +1332,45 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<BridgeDeviceApprovalRequestKey?>
+  crateApiMobileLoadDeviceApprovalRequest({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(vaultPath, serializer);
+          sse_encode_String(accountId, serializer);
+          sse_encode_list_prim_u_8_loose(deviceVaultKey, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 27,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData:
+              sse_decode_opt_box_autoadd_bridge_device_approval_request_key,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiMobileLoadDeviceApprovalRequestConstMeta,
+        argValues: [vaultPath, accountId, deviceVaultKey],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMobileLoadDeviceApprovalRequestConstMeta =>
+      const TaskConstMeta(
+        debugName: "load_device_approval_request",
+        argNames: ["vaultPath", "accountId", "deviceVaultKey"],
+      );
+
+  @override
   Future<BridgeHostKey> crateApiMobileProbeHostKeyMobile({
     required String host,
     required int port,
@@ -1340,7 +1386,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 27,
+            funcId: 28,
             port: port_,
           );
         },
@@ -1387,7 +1433,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 28,
+            funcId: 29,
             port: port_,
           );
         },
@@ -1595,6 +1641,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  BridgeDeviceApprovalRequestKey
+  dco_decode_box_autoadd_bridge_device_approval_request_key(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_bridge_device_approval_request_key(raw);
+  }
+
+  @protected
   int dco_decode_box_autoadd_u_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
@@ -1707,11 +1760,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 2)
-      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
     return BridgeDeviceApprovalRequestKey(
-      publicKey: dco_decode_list_prim_u_8_strict(arr[0]),
-      verificationCode: dco_decode_String(arr[1]),
+      requestId: dco_decode_String(arr[0]),
+      publicKey: dco_decode_list_prim_u_8_strict(arr[1]),
+      requestToken: dco_decode_list_prim_u_8_strict(arr[2]),
+      verificationCode: dco_decode_String(arr[3]),
+      expiresAtUnixMs: dco_decode_u_64(arr[4]),
     );
   }
 
@@ -1776,6 +1832,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   String? dco_decode_opt_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_String(raw);
+  }
+
+  @protected
+  BridgeDeviceApprovalRequestKey?
+  dco_decode_opt_box_autoadd_bridge_device_approval_request_key(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null
+        ? null
+        : dco_decode_box_autoadd_bridge_device_approval_request_key(raw);
   }
 
   @protected
@@ -1994,6 +2059,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  BridgeDeviceApprovalRequestKey
+  sse_decode_box_autoadd_bridge_device_approval_request_key(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_bridge_device_approval_request_key(deserializer));
+  }
+
+  @protected
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_u_32(deserializer));
@@ -2127,11 +2201,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     SseDeserializer deserializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_requestId = sse_decode_String(deserializer);
     var var_publicKey = sse_decode_list_prim_u_8_strict(deserializer);
+    var var_requestToken = sse_decode_list_prim_u_8_strict(deserializer);
     var var_verificationCode = sse_decode_String(deserializer);
+    var var_expiresAtUnixMs = sse_decode_u_64(deserializer);
     return BridgeDeviceApprovalRequestKey(
+      requestId: var_requestId,
       publicKey: var_publicKey,
+      requestToken: var_requestToken,
       verificationCode: var_verificationCode,
+      expiresAtUnixMs: var_expiresAtUnixMs,
     );
   }
 
@@ -2202,6 +2282,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
 
     if (sse_decode_bool(deserializer)) {
       return (sse_decode_String(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
+  BridgeDeviceApprovalRequestKey?
+  sse_decode_opt_box_autoadd_bridge_device_approval_request_key(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_bridge_device_approval_request_key(
+        deserializer,
+      ));
     } else {
       return null;
     }
@@ -2440,6 +2536,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_bridge_device_approval_request_key(
+    BridgeDeviceApprovalRequestKey self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bridge_device_approval_request_key(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_u_32(self, serializer);
@@ -2543,8 +2648,11 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     SseSerializer serializer,
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.requestId, serializer);
     sse_encode_list_prim_u_8_strict(self.publicKey, serializer);
+    sse_encode_list_prim_u_8_strict(self.requestToken, serializer);
     sse_encode_String(self.verificationCode, serializer);
+    sse_encode_u_64(self.expiresAtUnixMs, serializer);
   }
 
   @protected
@@ -2619,6 +2727,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self != null, serializer);
     if (self != null) {
       sse_encode_String(self, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_opt_box_autoadd_bridge_device_approval_request_key(
+    BridgeDeviceApprovalRequestKey? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_bridge_device_approval_request_key(
+        self,
+        serializer,
+      );
     }
   }
 

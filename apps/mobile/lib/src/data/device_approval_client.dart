@@ -43,6 +43,40 @@ class RemoteDeviceApprovalDecision {
   };
 }
 
+enum RemoteDeviceApprovalStatus {
+  pending,
+  approved,
+  rejected,
+  consumed,
+  expired,
+}
+
+class RemoteDeviceApprovalState {
+  const RemoteDeviceApprovalState({
+    required this.id,
+    required this.status,
+    required this.deviceName,
+    required this.publicKey,
+    required this.createdAt,
+    required this.expiresAt,
+    this.approverPublicKey,
+    this.nonce,
+    this.ciphertext,
+    this.keyVersion,
+  });
+
+  final String id;
+  final RemoteDeviceApprovalStatus status;
+  final String deviceName;
+  final Uint8List publicKey;
+  final DateTime createdAt;
+  final DateTime expiresAt;
+  final Uint8List? approverPublicKey;
+  final Uint8List? nonce;
+  final Uint8List? ciphertext;
+  final int? keyVersion;
+}
+
 class DeviceApprovalClientException implements Exception {
   const DeviceApprovalClientException(
     this.message, {
@@ -59,6 +93,19 @@ class DeviceApprovalClientException implements Exception {
 }
 
 abstract interface class DeviceApprovalTransport {
+  Future<DateTime> create({
+    required String accessToken,
+    required String requestId,
+    required List<int> requestToken,
+    required List<int> publicKey,
+  });
+
+  Future<RemoteDeviceApprovalState> loadStatus({
+    required String accessToken,
+    required String requestId,
+    required List<int> requestToken,
+  });
+
   Future<List<RemoteDeviceApprovalRequest>> listPending({
     required String accessToken,
   });
@@ -71,6 +118,18 @@ abstract interface class DeviceApprovalTransport {
 
   Future<void> reject({required String accessToken, required String requestId});
 
+  Future<void> consume({
+    required String accessToken,
+    required String requestId,
+    required List<int> requestToken,
+  });
+
+  Future<void> cancel({
+    required String accessToken,
+    required String requestId,
+    required List<int> requestToken,
+  });
+
   void close();
 }
 
@@ -81,6 +140,108 @@ class DeviceApprovalClient implements DeviceApprovalTransport {
 
   final Uri _baseUri;
   final http.Client _client;
+
+  @override
+  Future<DateTime> create({
+    required String accessToken,
+    required String requestId,
+    required List<int> requestToken,
+    required List<int> publicKey,
+  }) async {
+    _validateRequestId(requestId);
+    final proof = _requestProof(requestToken);
+    if (publicKey.length != 32 || publicKey.every((byte) => byte == 0)) {
+      throw const DeviceApprovalClientException('设备批准请求无效');
+    }
+    final payload = await _request(
+      'POST',
+      'sync/device-approvals',
+      accessToken: accessToken,
+      body: {
+        'id': requestId,
+        'publicKey': base64Encode(publicKey),
+        'requestToken': proof,
+      },
+    );
+    try {
+      if (_requiredString(payload, 'id', 36) != requestId ||
+          payload['status'] != 'pending') {
+        throw const FormatException();
+      }
+      final expiresAt = _requiredDate(payload, 'expiresAt');
+      final now = DateTime.now().toUtc();
+      if (!expiresAt.isAfter(now.subtract(const Duration(minutes: 1))) ||
+          expiresAt.isAfter(now.add(const Duration(minutes: 12)))) {
+        throw const FormatException();
+      }
+      return expiresAt;
+    } on FormatException {
+      throw const DeviceApprovalClientException('设备批准服务返回了无效响应');
+    }
+  }
+
+  @override
+  Future<RemoteDeviceApprovalState> loadStatus({
+    required String accessToken,
+    required String requestId,
+    required List<int> requestToken,
+  }) async {
+    _validateRequestId(requestId);
+    final payload = await _request(
+      'GET',
+      'sync/device-approvals/$requestId',
+      accessToken: accessToken,
+      requestProof: _requestProof(requestToken),
+    );
+    try {
+      if (_requiredString(payload, 'id', 36) != requestId) {
+        throw const FormatException();
+      }
+      final status = switch (_requiredString(payload, 'status', 16)) {
+        'pending' => RemoteDeviceApprovalStatus.pending,
+        'approved' => RemoteDeviceApprovalStatus.approved,
+        'rejected' => RemoteDeviceApprovalStatus.rejected,
+        'consumed' => RemoteDeviceApprovalStatus.consumed,
+        'expired' => RemoteDeviceApprovalStatus.expired,
+        _ => throw const FormatException(),
+      };
+      Uint8List? approverPublicKey;
+      Uint8List? nonce;
+      Uint8List? ciphertext;
+      int? keyVersion;
+      if (status == RemoteDeviceApprovalStatus.approved ||
+          status == RemoteDeviceApprovalStatus.consumed) {
+        approverPublicKey = _decodeFixed(payload['approverPublicKey'], 32);
+        nonce = _decodeFixed(payload['nonce'], 12);
+        ciphertext = _decodeFixed(payload['ciphertext'], 48);
+        final rawVersion = payload['keyVersion'];
+        if (rawVersion is! int || rawVersion < 1 || rawVersion > 1000000) {
+          throw const FormatException();
+        }
+        keyVersion = rawVersion;
+      }
+      final createdAt = _requiredDate(payload, 'createdAt');
+      final expiresAt = _requiredDate(payload, 'expiresAt');
+      if (!expiresAt.isAfter(createdAt) ||
+          expiresAt.difference(createdAt) > const Duration(minutes: 11)) {
+        throw const FormatException();
+      }
+      return RemoteDeviceApprovalState(
+        id: requestId,
+        status: status,
+        deviceName: _requiredString(payload, 'deviceName', 80),
+        publicKey: _decodeFixed(payload['publicKey'], 32),
+        createdAt: createdAt,
+        expiresAt: expiresAt,
+        approverPublicKey: approverPublicKey,
+        nonce: nonce,
+        ciphertext: ciphertext,
+        keyVersion: keyVersion,
+      );
+    } on FormatException {
+      throw const DeviceApprovalClientException('设备批准服务返回了无效响应');
+    }
+  }
 
   @override
   Future<List<RemoteDeviceApprovalRequest>> listPending({
@@ -152,15 +313,50 @@ class DeviceApprovalClient implements DeviceApprovalTransport {
     );
   }
 
+  @override
+  Future<void> consume({
+    required String accessToken,
+    required String requestId,
+    required List<int> requestToken,
+  }) async {
+    _validateRequestId(requestId);
+    await _request(
+      'POST',
+      'sync/device-approvals/$requestId/consume',
+      accessToken: accessToken,
+      requestProof: _requestProof(requestToken),
+      body: const <String, Object?>{},
+    );
+  }
+
+  @override
+  Future<void> cancel({
+    required String accessToken,
+    required String requestId,
+    required List<int> requestToken,
+  }) async {
+    _validateRequestId(requestId);
+    await _request(
+      'DELETE',
+      'sync/device-approvals/$requestId',
+      accessToken: accessToken,
+      requestProof: _requestProof(requestToken),
+    );
+  }
+
   Future<Map<String, Object?>> _request(
     String method,
     String path, {
     required String accessToken,
     Map<String, Object?>? body,
+    String? requestProof,
   }) async {
     final request = http.Request(method, _baseUri.resolve(path))
       ..headers['accept'] = 'application/json'
       ..headers['authorization'] = _bearer(accessToken);
+    if (requestProof != null) {
+      request.headers['x-daylink-device-request'] = requestProof;
+    }
     if (body != null) {
       request.headers['content-type'] = 'application/json; charset=utf-8';
       request.body = jsonEncode(body);
@@ -181,6 +377,12 @@ class DeviceApprovalClient implements DeviceApprovalTransport {
     if (response.statusCode == 404 || response.statusCode == 409) {
       throw const DeviceApprovalClientException('设备批准请求已失效', unavailable: true);
     }
+    if (response.statusCode == 403) {
+      throw const DeviceApprovalClientException(
+        '设备批准请求凭证无效',
+        unavailable: true,
+      );
+    }
     final contentType = response.headers['content-type']?.toLowerCase() ?? '';
     if (response.statusCode < 200 ||
         response.statusCode >= 300 ||
@@ -198,6 +400,15 @@ class DeviceApprovalClient implements DeviceApprovalTransport {
 
   @override
   void close() => _client.close();
+}
+
+String _requestProof(List<int> token) {
+  if (token.length != 32 ||
+      token.any((byte) => byte < 0 || byte > 255) ||
+      token.every((byte) => byte == 0)) {
+    throw const DeviceApprovalClientException('设备批准请求无效');
+  }
+  return base64UrlEncode(token).replaceAll('=', '');
 }
 
 Future<List<int>> _readBounded(Stream<List<int>> stream) async {

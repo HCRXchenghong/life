@@ -60,6 +60,25 @@ func TestDecodeFixedBase64RejectsNonCanonicalLengths(t *testing.T) {
 	}
 }
 
+func TestDecodeRequestTokenRequiresCanonicalNonZeroProof(t *testing.T) {
+	valid := base64.RawURLEncoding.EncodeToString(repeatedBytes(32, 7))
+	decoded, err := decodeRequestToken(valid)
+	if err != nil || len(decoded) != 32 {
+		t.Fatalf("expected valid request proof: %v", err)
+	}
+	for _, value := range []string{
+		"",
+		base64.RawURLEncoding.EncodeToString(make([]byte, 32)),
+		base64.RawURLEncoding.EncodeToString(repeatedBytes(31, 7)),
+		base64.URLEncoding.EncodeToString(repeatedBytes(32, 7)),
+		valid + "\n",
+	} {
+		if _, err := decodeRequestToken(value); err == nil {
+			t.Fatalf("expected malformed request proof to be rejected: %q", value)
+		}
+	}
+}
+
 func repeatedBytes(length int, value byte) []byte {
 	output := make([]byte, length)
 	for index := range output {

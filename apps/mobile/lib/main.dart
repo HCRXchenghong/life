@@ -19,6 +19,7 @@ import 'src/presentation/app_navigation.dart';
 import 'src/presentation/account_security_page.dart';
 import 'src/presentation/assistant_page.dart';
 import 'src/presentation/data_sync_page.dart';
+import 'src/presentation/device_approval_waiting_page.dart';
 import 'src/presentation/end_to_end_encryption_page.dart';
 import 'src/presentation/hosts_page.dart';
 import 'src/presentation/login_page.dart';
@@ -358,6 +359,7 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
           source: runtime as ContentEncryptionSource,
           onRecoveryKeyReady: _openRecoveryKey,
           onOpenUnlock: _openRecoveryUnlock,
+          onOpenDeviceRecovery: _openDeviceApprovalRecovery,
           approvalSource: runtime is TrustedDeviceApprovalSource
               ? runtime as TrustedDeviceApprovalSource
               : null,
@@ -389,6 +391,28 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
             RecoveryUnlockPage(source: runtime as ContentEncryptionSource),
       ),
     );
+  }
+
+  Future<void> _openDeviceApprovalRecovery() async {
+    final runtime = _runtime;
+    if (runtime is! DeviceApprovalRecoverySource) {
+      await _openRecoveryUnlock();
+      return;
+    }
+    final recoverySource = runtime as DeviceApprovalRecoverySource;
+    final session = await recoverySource.startDeviceApproval();
+    final result = await _navigatorKey.currentState!
+        .push<DeviceApprovalWaitingResult>(
+          MaterialPageRoute<DeviceApprovalWaitingResult>(
+            builder: (_) => DeviceApprovalWaitingPage(
+              source: recoverySource,
+              session: session,
+            ),
+          ),
+        );
+    if (result == DeviceApprovalWaitingResult.useRecoveryKey) {
+      await _openRecoveryUnlock();
+    }
   }
 
   Future<void> _openTrustedDeviceApproval(
@@ -567,7 +591,8 @@ class DaylinkRuntime
         NotificationSettingsSource,
         DataSyncSource,
         ContentEncryptionSource,
-        TrustedDeviceApprovalSource {
+        TrustedDeviceApprovalSource,
+        DeviceApprovalRecoverySource {
   DaylinkRuntime._(this.services, this._assistantSettings);
 
   final DaylinkServices services;
@@ -700,6 +725,19 @@ class DaylinkRuntime
   @override
   Future<void> rejectDevice(TrustedDeviceApprovalRequest request) =>
       services.rejectDevice(request);
+
+  @override
+  Future<DeviceApprovalWaitingSession> startDeviceApproval() =>
+      services.startDeviceApproval();
+
+  @override
+  Future<DeviceApprovalWaitingStatus> checkDeviceApproval(
+    DeviceApprovalWaitingSession session,
+  ) => services.checkDeviceApproval(session);
+
+  @override
+  Future<void> cancelDeviceApproval(DeviceApprovalWaitingSession session) =>
+      services.cancelDeviceApproval(session);
 
   Future<void> _forceSignOut(String reason) async {
     if (_signedOut) return;

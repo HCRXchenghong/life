@@ -171,6 +171,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/sync/device-approvals", s.handleDeviceApprovals)
 	s.mux.HandleFunc("POST /api/sync/device-approvals", s.handleDeviceApprovals)
 	s.mux.HandleFunc("GET /api/sync/device-approvals/{id}", s.handleDeviceApprovalStatus)
+	s.mux.HandleFunc("DELETE /api/sync/device-approvals/{id}", s.handleDeviceApprovalCancel)
 	s.mux.HandleFunc("POST /api/sync/device-approvals/{id}/approve", s.handleDeviceApprovalApprove)
 	s.mux.HandleFunc("POST /api/sync/device-approvals/{id}/reject", s.handleDeviceApprovalReject)
 	s.mux.HandleFunc("POST /api/sync/device-approvals/{id}/consume", s.handleDeviceApprovalConsume)

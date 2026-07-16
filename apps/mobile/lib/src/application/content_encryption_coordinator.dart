@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 
 import '../data/app_session_monitor.dart';
 import '../data/device_vault_key_store.dart';
@@ -14,7 +15,10 @@ import '../domain/sync/data_sync_models.dart';
 import '../platform/content_key_vault.dart';
 
 class ContentEncryptionCoordinator
-    implements ContentEncryptionSource, TrustedDeviceApprovalSource {
+    implements
+        ContentEncryptionSource,
+        TrustedDeviceApprovalSource,
+        DeviceApprovalRecoverySource {
   factory ContentEncryptionCoordinator({
     required String accountId,
     required String vaultPath,
@@ -89,6 +93,8 @@ class ContentEncryptionCoordinator
   Future<RecoveryKeyDraft>? _activePreparation;
   Future<void>? _activeRestoration;
   Future<void>? _activeDeviceApproval;
+  Future<DeviceApprovalWaitingSession>? _activeDeviceRecoveryStart;
+  Future<DeviceApprovalWaitingStatus>? _activeDeviceRecoveryCheck;
   bool _closed = false;
 
   @override
@@ -299,6 +305,250 @@ class ContentEncryptionCoordinator
     } finally {
       recoveryKey.fillRange(0, recoveryKey.length, 0);
     }
+  }
+
+  @override
+  Future<DeviceApprovalWaitingSession> startDeviceApproval() {
+    _ensureOpen();
+    final active = _activeDeviceRecoveryStart;
+    if (active != null) return active;
+    final operation = _startDeviceApproval().whenComplete(
+      () => _activeDeviceRecoveryStart = null,
+    );
+    _activeDeviceRecoveryStart = operation;
+    return operation;
+  }
+
+  Future<DeviceApprovalWaitingSession> _startDeviceApproval() async {
+    final deviceKey = await _deviceKey();
+    final local = await _vault.status(
+      vaultPath: _vaultPath,
+      accountId: _accountId,
+      deviceVaultKey: deviceKey,
+    );
+    if (local == LocalContentKeyStatus.ready) {
+      throw const ContentEncryptionException('此设备已恢复加密内容');
+    }
+    if (local == LocalContentKeyStatus.pendingRecoveryConfirmation) {
+      throw const ContentEncryptionException('请先完成当前恢复密钥的保存确认');
+    }
+    final envelope = await _authenticated(
+      (token) => _client.load(accessToken: token),
+    );
+    if (envelope == null) {
+      throw const ContentEncryptionException('该账号没有可恢复的加密内容');
+    }
+    final now = DateTime.now().toUtc();
+    LocalDeviceApprovalRequestKey? request;
+    try {
+      request = await _vault.loadDeviceApprovalRequest(
+        vaultPath: _vaultPath,
+        accountId: _accountId,
+        deviceVaultKey: deviceKey,
+      );
+      request ??= await _vault.createDeviceApprovalRequest(
+        vaultPath: _vaultPath,
+        accountId: _accountId,
+        deviceVaultKey: deviceKey,
+        requestId: const Uuid().v4(),
+        expiresAtUnixMs: now
+            .add(const Duration(minutes: 10))
+            .millisecondsSinceEpoch,
+      );
+    } on Object {
+      throw const ContentEncryptionException('无法安全创建新设备请求，请重试');
+    }
+    final activeRequest = request;
+    if (activeRequest.requestToken.length != 32 ||
+        activeRequest.publicKey.length != 32 ||
+        !RegExp(r'^\d{3} \d{3}$').hasMatch(activeRequest.verificationCode)) {
+      throw const ContentEncryptionException('新设备请求的本地安全状态无效');
+    }
+    late DateTime expiresAt;
+    try {
+      expiresAt = await _authenticatedApproval(
+        (token) => _approvalClient.create(
+          accessToken: token,
+          requestId: activeRequest.requestId,
+          requestToken: activeRequest.requestToken,
+          publicKey: activeRequest.publicKey,
+        ),
+      );
+    } on DeviceApprovalClientException catch (error) {
+      throw ContentEncryptionException(error.message);
+    }
+    final localExpiresAt = DateTime.fromMillisecondsSinceEpoch(
+      activeRequest.expiresAtUnixMs,
+      isUtc: true,
+    );
+    final effectiveExpiresAt = expiresAt.isBefore(localExpiresAt)
+        ? expiresAt
+        : localExpiresAt;
+    return DeviceApprovalWaitingSession(
+      id: activeRequest.requestId,
+      requestToken: activeRequest.requestToken,
+      verificationCode: activeRequest.verificationCode,
+      deviceName: _currentDeviceName(),
+      createdAt: effectiveExpiresAt.subtract(const Duration(minutes: 10)),
+      expiresAt: effectiveExpiresAt,
+    );
+  }
+
+  @override
+  Future<DeviceApprovalWaitingStatus> checkDeviceApproval(
+    DeviceApprovalWaitingSession session,
+  ) {
+    _ensureOpen();
+    final active = _activeDeviceRecoveryCheck;
+    if (active != null) return active;
+    final operation = _checkDeviceApproval(
+      session,
+    ).whenComplete(() => _activeDeviceRecoveryCheck = null);
+    _activeDeviceRecoveryCheck = operation;
+    return operation;
+  }
+
+  Future<DeviceApprovalWaitingStatus> _checkDeviceApproval(
+    DeviceApprovalWaitingSession session,
+  ) async {
+    if (session.expired) {
+      await _discardLocalDeviceRequest(session.id);
+      session.requestToken.fillRange(0, session.requestToken.length, 0);
+      return DeviceApprovalWaitingStatus.expired;
+    }
+    final deviceKey = await _deviceKey();
+    final local = await _vault.status(
+      vaultPath: _vaultPath,
+      accountId: _accountId,
+      deviceVaultKey: deviceKey,
+    );
+    if (local == LocalContentKeyStatus.ready) {
+      await _consumeDeviceApproval(session);
+      session.requestToken.fillRange(0, session.requestToken.length, 0);
+      return DeviceApprovalWaitingStatus.completed;
+    }
+    final localRequest = await _vault.loadDeviceApprovalRequest(
+      vaultPath: _vaultPath,
+      accountId: _accountId,
+      deviceVaultKey: deviceKey,
+    );
+    if (localRequest == null || localRequest.requestId != session.id) {
+      throw const ContentEncryptionException('新设备请求的本地安全状态已失效');
+    }
+    late RemoteDeviceApprovalState remote;
+    try {
+      remote = await _authenticatedApproval(
+        (token) => _approvalClient.loadStatus(
+          accessToken: token,
+          requestId: session.id,
+          requestToken: session.requestToken,
+        ),
+      );
+    } on DeviceApprovalClientException catch (error) {
+      if (error.unavailable && session.expired) {
+        return DeviceApprovalWaitingStatus.expired;
+      }
+      throw ContentEncryptionException(error.message);
+    }
+    if (remote.status == RemoteDeviceApprovalStatus.pending) {
+      if (!_constantTimeBytesEqual(remote.publicKey, localRequest.publicKey)) {
+        throw const ContentEncryptionException('新设备请求的公钥绑定验证失败');
+      }
+      return DeviceApprovalWaitingStatus.pending;
+    }
+    if (!_constantTimeBytesEqual(remote.publicKey, localRequest.publicKey)) {
+      throw const ContentEncryptionException('新设备请求的公钥绑定验证失败');
+    }
+    if (remote.status == RemoteDeviceApprovalStatus.rejected ||
+        remote.status == RemoteDeviceApprovalStatus.expired) {
+      await _discardLocalDeviceRequest(session.id);
+      session.requestToken.fillRange(0, session.requestToken.length, 0);
+      return remote.status == RemoteDeviceApprovalStatus.rejected
+          ? DeviceApprovalWaitingStatus.rejected
+          : DeviceApprovalWaitingStatus.expired;
+    }
+    final envelope = await _authenticated(
+      (token) => _client.load(accessToken: token),
+    );
+    if (envelope == null ||
+        remote.approverPublicKey == null ||
+        remote.nonce == null ||
+        remote.ciphertext == null ||
+        remote.keyVersion == null ||
+        remote.keyVersion != envelope.keyVersion) {
+      throw const ContentEncryptionException('受信设备返回的加密内容无效');
+    }
+    late bool completed;
+    try {
+      completed = await _vault.completeDeviceApproval(
+        vaultPath: _vaultPath,
+        accountId: _accountId,
+        deviceVaultKey: deviceKey,
+        requestId: session.id,
+        approverPublicKey: remote.approverPublicKey!,
+        nonce: remote.nonce!,
+        ciphertext: remote.ciphertext!,
+        keyVersion: remote.keyVersion!,
+        recoverySalt: envelope.salt,
+        recoveryNonce: envelope.nonce,
+        recoveryCiphertext: envelope.ciphertext,
+      );
+    } on Object {
+      throw const ContentEncryptionException('受信设备的加密响应验证失败');
+    }
+    if (!completed) {
+      throw const ContentEncryptionException('两台设备的安全响应不一致，已停止恢复');
+    }
+    await _consumeDeviceApproval(session);
+    session.requestToken.fillRange(0, session.requestToken.length, 0);
+    return DeviceApprovalWaitingStatus.completed;
+  }
+
+  Future<void> _consumeDeviceApproval(
+    DeviceApprovalWaitingSession session,
+  ) async {
+    try {
+      await _authenticatedApproval(
+        (token) => _approvalClient.consume(
+          accessToken: token,
+          requestId: session.id,
+          requestToken: session.requestToken,
+        ),
+      );
+    } on DeviceApprovalClientException catch (error) {
+      throw ContentEncryptionException(error.message);
+    }
+  }
+
+  @override
+  Future<void> cancelDeviceApproval(
+    DeviceApprovalWaitingSession session,
+  ) async {
+    _ensureOpen();
+    try {
+      await _authenticatedApproval(
+        (token) => _approvalClient.cancel(
+          accessToken: token,
+          requestId: session.id,
+          requestToken: session.requestToken,
+        ),
+      );
+    } on DeviceApprovalClientException catch (error) {
+      if (!error.unavailable) throw ContentEncryptionException(error.message);
+    } finally {
+      await _discardLocalDeviceRequest(session.id);
+      session.requestToken.fillRange(0, session.requestToken.length, 0);
+    }
+  }
+
+  Future<void> _discardLocalDeviceRequest(String requestId) async {
+    final deviceKey = await _deviceKey();
+    await _vault.discardDeviceApprovalRequest(
+      vaultPath: _vaultPath,
+      accountId: _accountId,
+      deviceVaultKey: deviceKey,
+      requestId: requestId,
+    );
   }
 
   @override
@@ -526,6 +776,23 @@ String _canonicalAccountId(String value) {
     throw ArgumentError('Invalid account ID');
   }
   return normalized;
+}
+
+bool _constantTimeBytesEqual(List<int> left, List<int> right) {
+  var difference = left.length ^ right.length;
+  final length = left.length > right.length ? left.length : right.length;
+  for (var index = 0; index < length; index++) {
+    difference |=
+        (index < left.length ? left[index] : 0) ^
+        (index < right.length ? right[index] : 0);
+  }
+  return difference == 0;
+}
+
+String _currentDeviceName() {
+  if (Platform.isIOS) return 'Daylink iPhone';
+  if (Platform.isAndroid) return 'Daylink Android';
+  return 'Daylink 设备';
 }
 
 String _validatedVaultPath(String value) {

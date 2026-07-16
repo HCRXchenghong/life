@@ -612,6 +612,11 @@ func auditActionLabel(action string) string {
 		"app.logout":                  "App 账号退出",
 		"app.session.refresh":         "刷新 App 会话",
 		"app.password.change":         "修改 App 密码",
+		"app.e2ee.device.request":     "发起新设备批准",
+		"app.e2ee.device.approve":     "批准新设备",
+		"app.e2ee.device.reject":      "拒绝新设备",
+		"app.e2ee.device.cancel":      "取消新设备批准",
+		"app.e2ee.device.consume":     "完成新设备恢复",
 		"app_account.create":          "创建 App 账号",
 		"app_account.enable":          "启用 App 账号",
 		"app_account.disable":         "停用 App 账号",
@@ -644,6 +649,7 @@ func auditTargetLabel(targetType string) string {
 		"app_session": "App 会话", "ai_provider": "AI 服务", "generated_asset": "生成图片",
 		"share_poll": "时间投票", "audit_event": "安全审计日志", "app_invitation": "App 邀请",
 		"ai_gateway_token": "远程 Agent 凭证", "ai_plan": "AI 套餐额度",
+		"device_approval": "新设备批准",
 	}
 	if label, ok := labels[targetType]; ok {
 		return label

@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
 	"errors"
@@ -15,8 +17,9 @@ const (
 )
 
 type deviceApprovalRequestInput struct {
-	ID        string `json:"id"`
-	PublicKey string `json:"publicKey"`
+	ID           string `json:"id"`
+	PublicKey    string `json:"publicKey"`
+	RequestToken string `json:"requestToken"`
 }
 
 type deviceApprovalDecisionInput struct {
@@ -48,10 +51,13 @@ func (s *Server) handleDeviceApprovals(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	publicKey, err := decodeFixedBase64(input.PublicKey, 32)
-	if !validUUIDLike(input.ID) || err != nil || allZero(publicKey) {
+	requestToken, tokenErr := decodeRequestToken(input.RequestToken)
+	if !validUUIDLike(input.ID) || err != nil || tokenErr != nil || allZero(publicKey) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "设备批准请求无效")
 		return
 	}
+	requestTokenHash := sha256.Sum256(requestToken)
+	clear(requestToken)
 	if _, err = s.loadContentKeyEnvelope(r, identity.AccountID); errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusConflict, "content_key_missing", "该账号尚未开启端到端加密")
 		return
@@ -77,6 +83,29 @@ func (s *Server) handleDeviceApprovals(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "暂时无法创建设备批准请求")
 		return
 	}
+	var existingAccount, existingStatus string
+	var existingPublicKey, existingTokenHash []byte
+	var existingExpiresAt time.Time
+	err = tx.QueryRowContext(r.Context(), `SELECT account_id, requester_public_key,
+		COALESCE(request_token_hash, ''), status, expires_at FROM content_key_device_approvals
+		WHERE id = ? FOR UPDATE`, input.ID).Scan(&existingAccount, &existingPublicKey,
+		&existingTokenHash, &existingStatus, &existingExpiresAt)
+	if err == nil {
+		if existingAccount == identity.AccountID && existingStatus == "pending" &&
+			existingExpiresAt.After(time.Now().UTC()) && bytes.Equal(existingPublicKey, publicKey) &&
+			subtle.ConstantTimeCompare(existingTokenHash, requestTokenHash[:]) == 1 {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"id": input.ID, "status": "pending", "expiresAt": existingExpiresAt, "idempotent": true,
+			})
+			return
+		}
+		writeError(w, http.StatusConflict, "device_request_exists", "设备批准请求已存在或无法创建")
+		return
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "暂时无法创建设备批准请求")
+		return
+	}
 	var pending int
 	if err = tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM content_key_device_approvals
 		WHERE account_id = ? AND status = 'pending' AND expires_at > UTC_TIMESTAMP(6)`, identity.AccountID).Scan(&pending); err != nil {
@@ -89,9 +118,9 @@ func (s *Server) handleDeviceApprovals(w http.ResponseWriter, r *http.Request) {
 	}
 	expiresAt := time.Now().UTC().Add(deviceApprovalTTL)
 	_, err = tx.ExecContext(r.Context(), `INSERT INTO content_key_device_approvals
-		(id, account_id, requester_session_id, requester_device_name, requester_public_key, expires_at)
-		VALUES (?, ?, ?, ?, ?, ?)`, input.ID, identity.AccountID, identity.SessionID,
-		identity.DeviceName, publicKey, expiresAt)
+		(id, account_id, requester_session_id, requester_device_name, requester_public_key, request_token_hash, expires_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`, input.ID, identity.AccountID, identity.SessionID,
+		identity.DeviceName, publicKey, requestTokenHash[:], expiresAt)
 	if err != nil || tx.Commit() != nil {
 		writeError(w, http.StatusConflict, "device_request_exists", "设备批准请求已存在或无法创建")
 		return
@@ -150,14 +179,19 @@ func (s *Server) handleDeviceApprovalStatus(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	var status, deviceName string
-	var publicKey, approverPublicKey, nonce, ciphertext []byte
+	requestTokenHash, proofOK := requireDeviceRequestProof(w, r)
+	if !proofOK {
+		return
+	}
+	var publicKey, storedTokenHash, approverPublicKey, nonce, ciphertext []byte
 	var keyVersion sql.NullInt64
 	var createdAt, expiresAt time.Time
 	err := s.db.QueryRowContext(r.Context(), `SELECT status, requester_device_name, requester_public_key,
+		COALESCE(request_token_hash, ''),
 		COALESCE(approver_public_key, ''), COALESCE(approval_nonce, ''), COALESCE(approval_ciphertext, ''),
 		key_version, created_at, expires_at FROM content_key_device_approvals
 		WHERE id = ? AND account_id = ? LIMIT 1`, id, identity.AccountID).Scan(
-		&status, &deviceName, &publicKey, &approverPublicKey, &nonce, &ciphertext,
+		&status, &deviceName, &publicKey, &storedTokenHash, &approverPublicKey, &nonce, &ciphertext,
 		&keyVersion, &createdAt, &expiresAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "device_request_not_found", "设备批准请求不存在")
@@ -165,6 +199,10 @@ func (s *Server) handleDeviceApprovalStatus(w http.ResponseWriter, r *http.Reque
 	}
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "暂时无法读取设备批准状态")
+		return
+	}
+	if subtle.ConstantTimeCompare(storedTokenHash, requestTokenHash[:]) != 1 {
+		writeError(w, http.StatusForbidden, "device_request_proof_invalid", "设备批准请求凭证无效")
 		return
 	}
 	if status == "pending" && !expiresAt.After(time.Now().UTC()) {
@@ -294,6 +332,61 @@ func (s *Server) handleDeviceApprovalReject(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, map[string]any{"rejected": true})
 }
 
+func (s *Server) handleDeviceApprovalCancel(w http.ResponseWriter, r *http.Request) {
+	identity, ok := s.requireApp(w, r)
+	if !ok {
+		return
+	}
+	id := r.PathValue("id")
+	requestTokenHash, proofOK := requireDeviceRequestProof(w, r)
+	if !validUUIDLike(id) || !proofOK {
+		if proofOK {
+			writeError(w, http.StatusBadRequest, "invalid_request", "设备批准请求无效")
+		}
+		return
+	}
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "数据库暂时不可用")
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	var status string
+	var storedTokenHash []byte
+	err = tx.QueryRowContext(r.Context(), `SELECT status, COALESCE(request_token_hash, '')
+		FROM content_key_device_approvals WHERE id = ? AND account_id = ? FOR UPDATE`,
+		id, identity.AccountID).Scan(&status, &storedTokenHash)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "device_request_not_found", "设备批准请求不存在")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "暂时无法读取设备批准请求")
+		return
+	}
+	if subtle.ConstantTimeCompare(storedTokenHash, requestTokenHash[:]) != 1 {
+		writeError(w, http.StatusForbidden, "device_request_proof_invalid", "设备批准请求凭证无效")
+		return
+	}
+	if status == "rejected" || status == "expired" {
+		writeJSON(w, http.StatusOK, map[string]any{"cancelled": true, "idempotent": true})
+		return
+	}
+	if status != "pending" {
+		writeError(w, http.StatusConflict, "device_request_unavailable", "设备批准请求已无法取消")
+		return
+	}
+	_, err = tx.ExecContext(r.Context(), `UPDATE content_key_device_approvals SET status = 'rejected',
+		decided_at = UTC_TIMESTAMP(6) WHERE id = ? AND account_id = ? AND status = 'pending'`,
+		id, identity.AccountID)
+	if err != nil || tx.Commit() != nil {
+		writeError(w, http.StatusInternalServerError, "device_cancel_failed", "取消设备批准请求失败")
+		return
+	}
+	s.audit(r.Context(), "app:"+identity.AccountID, "app.e2ee.device.cancel", "device_approval", id, "allowed", "high")
+	writeJSON(w, http.StatusOK, map[string]any{"cancelled": true, "idempotent": false})
+}
+
 func (s *Server) handleDeviceApprovalConsume(w http.ResponseWriter, r *http.Request) {
 	identity, ok := s.requireApp(w, r)
 	if !ok {
@@ -304,16 +397,21 @@ func (s *Server) handleDeviceApprovalConsume(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, "invalid_request", "设备批准请求无效")
 		return
 	}
+	requestTokenHash, proofOK := requireDeviceRequestProof(w, r)
+	if !proofOK {
+		return
+	}
 	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "数据库暂时不可用")
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-	var status, requesterSessionID string
-	err = tx.QueryRowContext(r.Context(), `SELECT status, requester_session_id
+	var status string
+	var storedTokenHash []byte
+	err = tx.QueryRowContext(r.Context(), `SELECT status, COALESCE(request_token_hash, '')
 		FROM content_key_device_approvals WHERE id = ? AND account_id = ? FOR UPDATE`,
-		id, identity.AccountID).Scan(&status, &requesterSessionID)
+		id, identity.AccountID).Scan(&status, &storedTokenHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "device_request_not_found", "设备批准请求不存在")
 		return
@@ -322,11 +420,17 @@ func (s *Server) handleDeviceApprovalConsume(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "暂时无法读取设备批准请求")
 		return
 	}
-	if requesterSessionID != identity.SessionID {
-		writeError(w, http.StatusForbidden, "requester_device_required", "只有发起请求的设备可以完成批准")
+	if subtle.ConstantTimeCompare(storedTokenHash, requestTokenHash[:]) != 1 {
+		writeError(w, http.StatusForbidden, "device_request_proof_invalid", "设备批准请求凭证无效")
 		return
 	}
 	if status == "consumed" {
+		_, err = tx.ExecContext(r.Context(), `UPDATE app_sessions SET e2ee_trusted = TRUE
+			WHERE id = ? AND account_id = ? AND revoked_at IS NULL`, identity.SessionID, identity.AccountID)
+		if err != nil || tx.Commit() != nil {
+			writeError(w, http.StatusInternalServerError, "device_consume_failed", "设备批准完成状态保存失败")
+			return
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"consumed": true, "idempotent": true})
 		return
 	}
@@ -357,6 +461,27 @@ func decodeDeviceApprovalDecision(input deviceApprovalDecisionInput) (decodedDev
 		return decodedDeviceApprovalDecision{}, errors.New("invalid device approval decision")
 	}
 	return decodedDeviceApprovalDecision{publicKey, nonce, ciphertext, input.KeyVersion}, nil
+}
+
+func requireDeviceRequestProof(w http.ResponseWriter, r *http.Request) ([32]byte, bool) {
+	var empty [32]byte
+	token, err := decodeRequestToken(r.Header.Get("X-Daylink-Device-Request"))
+	if err != nil {
+		writeError(w, http.StatusForbidden, "device_request_proof_required", "缺少有效的设备批准请求凭证")
+		return empty, false
+	}
+	hash := sha256.Sum256(token)
+	clear(token)
+	return hash, true
+}
+
+func decodeRequestToken(value string) ([]byte, error) {
+	decoded, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil || len(value) != 43 || len(decoded) != 32 || allZero(decoded) ||
+		value != base64.RawURLEncoding.EncodeToString(decoded) {
+		return nil, errors.New("invalid request token")
+	}
+	return decoded, nil
 }
 
 func decodeFixedBase64(value string, length int) ([]byte, error) {

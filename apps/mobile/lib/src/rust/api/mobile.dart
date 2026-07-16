@@ -91,6 +91,16 @@ Future<BridgeDeviceApprovalRequestKey> createDeviceApprovalRequest({
   expiresAtUnixMs: expiresAtUnixMs,
 );
 
+Future<BridgeDeviceApprovalRequestKey?> loadDeviceApprovalRequest({
+  required String vaultPath,
+  required String accountId,
+  required List<int> deviceVaultKey,
+}) => RustLib.instance.api.crateApiMobileLoadDeviceApprovalRequest(
+  vaultPath: vaultPath,
+  accountId: accountId,
+  deviceVaultKey: deviceVaultKey,
+);
+
 Future<void> discardDeviceApprovalRequest({
   required String vaultPath,
   required String accountId,
@@ -401,24 +411,38 @@ class BridgeDeviceApprovalPackage {
 }
 
 class BridgeDeviceApprovalRequestKey {
+  final String requestId;
   final Uint8List publicKey;
+  final Uint8List requestToken;
   final String verificationCode;
+  final BigInt expiresAtUnixMs;
 
   const BridgeDeviceApprovalRequestKey({
+    required this.requestId,
     required this.publicKey,
+    required this.requestToken,
     required this.verificationCode,
+    required this.expiresAtUnixMs,
   });
 
   @override
-  int get hashCode => publicKey.hashCode ^ verificationCode.hashCode;
+  int get hashCode =>
+      requestId.hashCode ^
+      publicKey.hashCode ^
+      requestToken.hashCode ^
+      verificationCode.hashCode ^
+      expiresAtUnixMs.hashCode;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is BridgeDeviceApprovalRequestKey &&
           runtimeType == other.runtimeType &&
+          requestId == other.requestId &&
           publicKey == other.publicKey &&
-          verificationCode == other.verificationCode;
+          requestToken == other.requestToken &&
+          verificationCode == other.verificationCode &&
+          expiresAtUnixMs == other.expiresAtUnixMs;
 }
 
 class BridgeHostKey {

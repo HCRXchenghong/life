@@ -17,6 +17,7 @@ class EndToEndEncryptionPage extends StatefulWidget {
     required this.source,
     required this.onRecoveryKeyReady,
     required this.onOpenUnlock,
+    this.onOpenDeviceRecovery,
     this.approvalSource,
     this.onOpenDeviceApproval,
   });
@@ -24,6 +25,7 @@ class EndToEndEncryptionPage extends StatefulWidget {
   final ContentEncryptionSource source;
   final RecoveryKeyReadyCallback onRecoveryKeyReady;
   final EncryptionUnlockCallback onOpenUnlock;
+  final EncryptionUnlockCallback? onOpenDeviceRecovery;
   final TrustedDeviceApprovalSource? approvalSource;
   final DeviceApprovalOpenCallback? onOpenDeviceApproval;
 
@@ -89,7 +91,7 @@ class _EndToEndEncryptionPageState extends State<EndToEndEncryptionPage> {
         return;
       }
       if (status == ContentEncryptionSetupStatus.locked) {
-        await widget.onOpenUnlock();
+        await (widget.onOpenDeviceRecovery ?? widget.onOpenUnlock)();
         if (!mounted) return;
         await _load();
         return;
@@ -350,7 +352,7 @@ String _buttonLabel(ContentEncryptionSetupStatus status) => switch (status) {
   ContentEncryptionSetupStatus.notConfigured => '开启并生成恢复密钥',
   ContentEncryptionSetupStatus.recoveryPending => '继续保存恢复密钥',
   ContentEncryptionSetupStatus.enabled => '已开启',
-  ContentEncryptionSetupStatus.locked => '使用恢复密钥解锁',
+  ContentEncryptionSetupStatus.locked => '通过受信设备恢复',
 };
 
 const _background = Color(0xFFF7F8FA);

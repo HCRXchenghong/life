@@ -50,16 +50,22 @@ pub struct ContentKeyInitialization {
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct DeviceApprovalRequestKey {
+    pub request_id: String,
     pub public_key: Vec<u8>,
+    pub request_token: Vec<u8>,
     pub verification_code: String,
+    pub expires_at_unix_ms: u64,
 }
 
 impl fmt::Debug for DeviceApprovalRequestKey {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("DeviceApprovalRequestKey")
+            .field("request_id", &self.request_id)
             .field("public_key_bytes", &self.public_key.len())
-            .field("verification_code", &self.verification_code)
+            .field("request_token", &"<redacted>")
+            .field("verification_code", &"<redacted>")
+            .field("expires_at_unix_ms", &self.expires_at_unix_ms)
             .finish()
     }
 }
@@ -115,12 +121,15 @@ struct PendingDeviceApprovalRecord {
     request_id: String,
     private_key: Vec<u8>,
     public_key: Vec<u8>,
+    #[serde(default)]
+    request_token: Vec<u8>,
     expires_at_unix_ms: u64,
 }
 
 impl Drop for PendingDeviceApprovalRecord {
     fn drop(&mut self) {
         self.private_key.zeroize();
+        self.request_token.zeroize();
     }
 }
 
@@ -381,21 +390,24 @@ pub fn create_device_approval_request(
         if vault.content_key.is_some() {
             return Err("content key is already available on this device".to_owned());
         }
-        vault
-            .pending_device_approvals
-            .retain(|pending| pending.expires_at_unix_ms > now);
+        vault.pending_device_approvals.retain(|pending| {
+            pending.expires_at_unix_ms > now && pending.request_token.len() == KEY_BYTES
+        });
         if let Some(existing) = vault
             .pending_device_approvals
             .iter()
             .find(|pending| pending.request_id == request_id)
         {
             return Ok(DeviceApprovalRequestKey {
+                request_id: existing.request_id.clone(),
                 public_key: existing.public_key.clone(),
+                request_token: existing.request_token.clone(),
                 verification_code: verification_code(
                     &account_id,
                     &request_id,
                     &existing.public_key,
                 )?,
+                expires_at_unix_ms: existing.expires_at_unix_ms,
             });
         }
         if vault.pending_device_approvals.len() >= DEVICE_APPROVAL_MAX_PENDING {
@@ -412,20 +424,71 @@ pub fn create_device_approval_request(
             .mul_clamped(private_array)
             .to_bytes()
             .to_vec();
+        let mut request_token = Zeroizing::new(vec![0_u8; KEY_BYTES]);
+        getrandom::fill(&mut request_token[..])
+            .map_err(|_| "secure random generation failed".to_owned())?;
         let code = verification_code(&account_id, &request_id, &public_key)?;
         vault
             .pending_device_approvals
             .push(PendingDeviceApprovalRecord {
-                request_id,
+                request_id: request_id.clone(),
                 private_key,
                 public_key: public_key.clone(),
+                request_token: request_token.to_vec(),
                 expires_at_unix_ms,
             });
         write_vault(&path, &account_id, device_vault_key, &vault)?;
         Ok(DeviceApprovalRequestKey {
+            request_id: request_id.clone(),
             public_key,
+            request_token: request_token.to_vec(),
             verification_code: code,
+            expires_at_unix_ms,
         })
+    })
+}
+
+pub fn load_device_approval_request(
+    vault_path: &str,
+    account_id: &str,
+    device_vault_key: &[u8],
+) -> Result<Option<DeviceApprovalRequestKey>, String> {
+    with_vault_lock(|| {
+        let account_id = canonical_account_id(account_id)?;
+        let path = validated_vault_path(vault_path)?;
+        validate_device_key(device_vault_key)?;
+        let now = unix_time_ms()?;
+        let Some(mut vault) = read_vault(&path, &account_id, device_vault_key)? else {
+            return Ok(None);
+        };
+        if vault.content_key.is_some() {
+            return Ok(None);
+        }
+        let previous = vault.pending_device_approvals.len();
+        vault.pending_device_approvals.retain(|pending| {
+            pending.expires_at_unix_ms > now && pending.request_token.len() == KEY_BYTES
+        });
+        if vault.pending_device_approvals.len() != previous {
+            write_vault(&path, &account_id, device_vault_key, &vault)?;
+        }
+        let Some(pending) = vault
+            .pending_device_approvals
+            .iter()
+            .max_by_key(|pending| pending.expires_at_unix_ms)
+        else {
+            return Ok(None);
+        };
+        Ok(Some(DeviceApprovalRequestKey {
+            request_id: pending.request_id.clone(),
+            public_key: pending.public_key.clone(),
+            request_token: pending.request_token.clone(),
+            verification_code: verification_code(
+                &account_id,
+                &pending.request_id,
+                &pending.public_key,
+            )?,
+            expires_at_unix_ms: pending.expires_at_unix_ms,
+        }))
     })
 }
 
@@ -982,8 +1045,10 @@ fn validate_pending_device_approvals(
             Uuid::parse_str(&approval.request_id).is_err()
                 || approval.private_key.len() != KEY_BYTES
                 || approval.public_key.len() != DEVICE_APPROVAL_PUBLIC_KEY_BYTES
+                || !matches!(approval.request_token.len(), 0 | KEY_BYTES)
                 || all_zero(&approval.private_key)
                 || all_zero(&approval.public_key)
+                || (approval.request_token.len() == KEY_BYTES && all_zero(&approval.request_token))
                 || approval.expires_at_unix_ms == 0
         })
     {
@@ -1307,6 +1372,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn trusted_device_approval_transfers_the_same_cmk_without_server_plaintext() {
         let source_path = test_path("approval-source");
         let destination_path = test_path("approval-destination");
@@ -1334,6 +1400,23 @@ mod tests {
             unix_time_ms().expect("clock") + 600_000,
         )
         .expect("create request");
+        assert_eq!(request.request_token.len(), KEY_BYTES);
+        let resumed = load_device_approval_request(
+            destination_path.to_str().expect("destination path"),
+            account,
+            &destination_device_key,
+        )
+        .expect("load request")
+        .expect("pending request");
+        assert_eq!(resumed.request_id, request_id);
+        assert!(constant_time_bytes_equal(
+            &resumed.request_token,
+            &request.request_token
+        ));
+        let request_debug = format!("{request:?}");
+        assert!(request_debug.contains("<redacted>"));
+        assert!(!request_debug.contains(&request.verification_code));
+        assert!(!request_debug.contains(&format!("{:?}", request.request_token)));
         let package = approve_device_request(
             source_path.to_str().expect("source path"),
             account,
@@ -1380,8 +1463,22 @@ mod tests {
                 .windows(request.public_key.len())
                 .any(|window| window == request.public_key)
         );
+        assert!(
+            !encrypted_vault
+                .windows(request.request_token.len())
+                .any(|window| window == request.request_token)
+        );
         let debug = format!("{package:?}");
         assert!(!debug.contains("ciphertext: ["));
+        assert!(
+            load_device_approval_request(
+                destination_path.to_str().expect("destination path"),
+                account,
+                &destination_device_key,
+            )
+            .expect("load completed request")
+            .is_none()
+        );
 
         let _ = fs::remove_dir_all(source_path.parent().expect("source parent"));
         let _ = fs::remove_dir_all(destination_path.parent().expect("destination parent"));

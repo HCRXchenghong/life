@@ -7,6 +7,8 @@ import 'package:http/testing.dart';
 
 void main() {
   const token = 'dlka_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  final requestProof = List<int>.filled(32, 6);
+  const requestId = '9b276a3e-b141-4d91-8dbf-0f217b62b071';
 
   test('strictly parses account-scoped pending device requests', () async {
     final now = DateTime.utc(2026, 7, 16, 12);
@@ -81,6 +83,97 @@ void main() {
     );
     client.close();
   });
+
+  test(
+    'creates, polls, consumes, and cancels with the private proof',
+    () async {
+      final now = DateTime.now().toUtc();
+      final methods = <String>[];
+      final client = DeviceApprovalClient(
+        apiBaseUri: Uri.parse('https://daylink.example/api/'),
+        httpClient: MockClient((request) async {
+          methods.add(request.method);
+          if (request.method == 'POST' &&
+              request.url.path == '/api/sync/device-approvals') {
+            final body = jsonDecode(request.body) as Map<String, Object?>;
+            expect(
+              body['requestToken'],
+              base64UrlEncode(requestProof).replaceAll('=', ''),
+            );
+            return http.Response(
+              jsonEncode({
+                'id': requestId,
+                'status': 'pending',
+                'expiresAt': now
+                    .add(const Duration(minutes: 10))
+                    .toIso8601String(),
+              }),
+              201,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+          expect(
+            request.headers['x-daylink-device-request'],
+            base64UrlEncode(requestProof).replaceAll('=', ''),
+          );
+          if (request.method == 'GET') {
+            return http.Response(
+              jsonEncode({
+                'id': requestId,
+                'status': 'approved',
+                'deviceName': 'Daylink iPhone',
+                'publicKey': base64Encode(List<int>.filled(32, 5)),
+                'createdAt': now.toIso8601String(),
+                'expiresAt': now
+                    .add(const Duration(minutes: 10))
+                    .toIso8601String(),
+                'approverPublicKey': base64Encode(List<int>.filled(32, 7)),
+                'nonce': base64Encode(List<int>.filled(12, 8)),
+                'ciphertext': base64Encode(List<int>.filled(48, 9)),
+                'keyVersion': 1,
+              }),
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          }
+          return http.Response(
+            '{}',
+            200,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      );
+
+      expect(
+        await client.create(
+          accessToken: token,
+          requestId: requestId,
+          requestToken: requestProof,
+          publicKey: List<int>.filled(32, 5),
+        ),
+        now.add(const Duration(minutes: 10)),
+      );
+      final state = await client.loadStatus(
+        accessToken: token,
+        requestId: requestId,
+        requestToken: requestProof,
+      );
+      expect(state.status, RemoteDeviceApprovalStatus.approved);
+      expect(state.ciphertext, everyElement(9));
+      await client.consume(
+        accessToken: token,
+        requestId: requestId,
+        requestToken: requestProof,
+      );
+      await client.cancel(
+        accessToken: token,
+        requestId: requestId,
+        requestToken: requestProof,
+      );
+      expect(methods, ['POST', 'GET', 'POST', 'DELETE']);
+      client.close();
+    },
+  );
 
   test('rejects malformed or all-zero public keys', () async {
     for (final publicKey in [

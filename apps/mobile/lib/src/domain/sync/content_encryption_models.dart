@@ -95,6 +95,43 @@ abstract interface class TrustedDeviceApprovalSource {
   Future<void> rejectDevice(TrustedDeviceApprovalRequest request);
 }
 
+class DeviceApprovalWaitingSession {
+  DeviceApprovalWaitingSession({
+    required this.id,
+    required List<int> requestToken,
+    required this.verificationCode,
+    required this.deviceName,
+    required this.createdAt,
+    required this.expiresAt,
+  }) : requestToken = Uint8List.fromList(requestToken);
+
+  final String id;
+  final Uint8List requestToken;
+  final String verificationCode;
+  final String deviceName;
+  final DateTime createdAt;
+  final DateTime expiresAt;
+
+  bool get expired => !expiresAt.isAfter(DateTime.now().toUtc());
+
+  @override
+  String toString() =>
+      'DeviceApprovalWaitingSession(id: $id, requestToken: <redacted>, '
+      'verificationCode: <redacted>, deviceName: $deviceName)';
+}
+
+enum DeviceApprovalWaitingStatus { pending, completed, rejected, expired }
+
+abstract interface class DeviceApprovalRecoverySource {
+  Future<DeviceApprovalWaitingSession> startDeviceApproval();
+
+  Future<DeviceApprovalWaitingStatus> checkDeviceApproval(
+    DeviceApprovalWaitingSession session,
+  );
+
+  Future<void> cancelDeviceApproval(DeviceApprovalWaitingSession session);
+}
+
 abstract final class RecoveryKeyCodec {
   static Uint8List decode(String value) {
     if (value.length > 128) throw const FormatException();

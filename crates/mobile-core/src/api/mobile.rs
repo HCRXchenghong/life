@@ -49,10 +49,26 @@ pub struct BridgeContentKeyInitialization {
     pub recovery_ciphertext: Vec<u8>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct BridgeDeviceApprovalRequestKey {
+    pub request_id: String,
     pub public_key: Vec<u8>,
+    pub request_token: Vec<u8>,
     pub verification_code: String,
+    pub expires_at_unix_ms: u64,
+}
+
+impl fmt::Debug for BridgeDeviceApprovalRequestKey {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("BridgeDeviceApprovalRequestKey")
+            .field("request_id", &self.request_id)
+            .field("public_key_bytes", &self.public_key.len())
+            .field("request_token", &"<redacted>")
+            .field("verification_code", &"<redacted>")
+            .field("expires_at_unix_ms", &self.expires_at_unix_ms)
+            .finish()
+    }
 }
 
 #[derive(Clone)]
@@ -189,9 +205,32 @@ pub fn create_device_approval_request(
         expires_at_unix_ms,
     )
     .map(|request| BridgeDeviceApprovalRequestKey {
+        request_id: request.request_id,
         public_key: request.public_key,
+        request_token: request.request_token,
         verification_code: request.verification_code,
+        expires_at_unix_ms: request.expires_at_unix_ms,
     });
+    device_vault_key.zeroize();
+    result
+}
+
+#[allow(clippy::needless_pass_by_value)]
+pub fn load_device_approval_request(
+    vault_path: String,
+    account_id: String,
+    mut device_vault_key: Vec<u8>,
+) -> Result<Option<BridgeDeviceApprovalRequestKey>, String> {
+    let result = vault::load_device_approval_request(&vault_path, &account_id, &device_vault_key)
+        .map(|request| {
+            request.map(|request| BridgeDeviceApprovalRequestKey {
+                request_id: request.request_id,
+                public_key: request.public_key,
+                request_token: request.request_token,
+                verification_code: request.verification_code,
+                expires_at_unix_ms: request.expires_at_unix_ms,
+            })
+        });
     device_vault_key.zeroize();
     result
 }

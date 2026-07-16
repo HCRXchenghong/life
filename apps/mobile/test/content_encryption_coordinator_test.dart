@@ -273,6 +273,44 @@ void main() {
       coordinator.close();
     },
   );
+
+  test('new device restores locally before consuming server trust', () async {
+    final vault = _FakeVault();
+    final envelopeTransport = _FakeEnvelopeTransport()..envelope = _envelope();
+    final approvals = _FakeApprovalTransport();
+    final coordinator = _coordinator(
+      vault: vault,
+      transport: envelopeTransport,
+      approvals: approvals,
+    );
+
+    final session = await coordinator.startDeviceApproval();
+    expect(session.verificationCode, '482 731');
+    expect(session.requestToken, everyElement(6));
+    expect(session.toString(), contains('requestToken: <redacted>'));
+    final request = vault.pendingRequest!;
+    approvals.remoteState = RemoteDeviceApprovalState(
+      id: request.requestId,
+      status: RemoteDeviceApprovalStatus.approved,
+      deviceName: 'Daylink iPhone',
+      publicKey: Uint8List.fromList(request.publicKey),
+      createdAt: DateTime.now().toUtc(),
+      expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
+      approverPublicKey: Uint8List.fromList(List<int>.filled(32, 7)),
+      nonce: Uint8List.fromList(List<int>.filled(12, 8)),
+      ciphertext: Uint8List.fromList(List<int>.filled(48, 9)),
+      keyVersion: 1,
+    );
+
+    expect(
+      await coordinator.checkDeviceApproval(session),
+      DeviceApprovalWaitingStatus.completed,
+    );
+    expect(vault.localStatus, LocalContentKeyStatus.ready);
+    expect(approvals.consumeCalls, 1);
+    expect(session.requestToken, everyElement(0));
+    coordinator.close();
+  });
 }
 
 ContentEncryptionCoordinator _coordinator({
@@ -311,6 +349,7 @@ class _FakeVault implements ContentKeyVault {
   var approvalCode = '482 731';
   var packageCode = '482 731';
   var approveCalls = 0;
+  LocalDeviceApprovalRequestKey? pendingRequest;
 
   @override
   Future<void> acknowledgeRecoveryKeySaved({
@@ -400,6 +439,57 @@ class _FakeVault implements ContentKeyVault {
     required String requestId,
     required List<int> requesterPublicKey,
   }) async => approvalCode;
+
+  @override
+  Future<LocalDeviceApprovalRequestKey> createDeviceApprovalRequest({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String requestId,
+    required int expiresAtUnixMs,
+  }) async => pendingRequest ??= LocalDeviceApprovalRequestKey(
+    requestId: requestId,
+    publicKey: List<int>.filled(32, 5),
+    requestToken: List<int>.filled(32, 6),
+    verificationCode: approvalCode,
+    expiresAtUnixMs: expiresAtUnixMs,
+  );
+
+  @override
+  Future<LocalDeviceApprovalRequestKey?> loadDeviceApprovalRequest({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+  }) async => pendingRequest;
+
+  @override
+  Future<void> discardDeviceApprovalRequest({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String requestId,
+  }) async {
+    if (pendingRequest?.requestId == requestId) pendingRequest = null;
+  }
+
+  @override
+  Future<bool> completeDeviceApproval({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String requestId,
+    required List<int> approverPublicKey,
+    required List<int> nonce,
+    required List<int> ciphertext,
+    required int keyVersion,
+    required List<int> recoverySalt,
+    required List<int> recoveryNonce,
+    required List<int> recoveryCiphertext,
+  }) async {
+    pendingRequest = null;
+    localStatus = LocalContentKeyStatus.ready;
+    return true;
+  }
 }
 
 class _FakeEnvelopeTransport implements KeyEnvelopeTransport {
@@ -457,6 +547,9 @@ class _FakeApprovalTransport implements DeviceApprovalTransport {
   var approveCalls = 0;
   var rejectCalls = 0;
   RemoteDeviceApprovalDecision? lastDecision;
+  RemoteDeviceApprovalState? remoteState;
+  var consumeCalls = 0;
+  var cancelCalls = 0;
 
   @override
   Future<void> approve({
@@ -482,5 +575,38 @@ class _FakeApprovalTransport implements DeviceApprovalTransport {
     required String requestId,
   }) async {
     rejectCalls++;
+  }
+
+  @override
+  Future<DateTime> create({
+    required String accessToken,
+    required String requestId,
+    required List<int> requestToken,
+    required List<int> publicKey,
+  }) async => DateTime.now().toUtc().add(const Duration(minutes: 10));
+
+  @override
+  Future<RemoteDeviceApprovalState> loadStatus({
+    required String accessToken,
+    required String requestId,
+    required List<int> requestToken,
+  }) async => remoteState!;
+
+  @override
+  Future<void> consume({
+    required String accessToken,
+    required String requestId,
+    required List<int> requestToken,
+  }) async {
+    consumeCalls++;
+  }
+
+  @override
+  Future<void> cancel({
+    required String accessToken,
+    required String requestId,
+    required List<int> requestToken,
+  }) async {
+    cancelCalls++;
   }
 }

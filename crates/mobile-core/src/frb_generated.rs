@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.12.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1265920917;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 357177388;
 
 // Section: executor
 
@@ -1336,6 +1336,45 @@ fn wire__crate__api__mobile__initialize_content_key_impl(
         },
     )
 }
+fn wire__crate__api__mobile__load_device_approval_request_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "load_device_approval_request",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_vault_path = <String>::sse_decode(&mut deserializer);
+            let api_account_id = <String>::sse_decode(&mut deserializer);
+            let api_device_vault_key = <Vec<u8>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::mobile::load_device_approval_request(
+                        api_vault_path,
+                        api_account_id,
+                        api_device_vault_key,
+                    )?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__mobile__probe_host_key_mobile_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -1669,11 +1708,17 @@ impl SseDecode for crate::api::mobile::BridgeDeviceApprovalPackage {
 impl SseDecode for crate::api::mobile::BridgeDeviceApprovalRequestKey {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_requestId = <String>::sse_decode(deserializer);
         let mut var_publicKey = <Vec<u8>>::sse_decode(deserializer);
+        let mut var_requestToken = <Vec<u8>>::sse_decode(deserializer);
         let mut var_verificationCode = <String>::sse_decode(deserializer);
+        let mut var_expiresAtUnixMs = <u64>::sse_decode(deserializer);
         return crate::api::mobile::BridgeDeviceApprovalRequestKey {
+            request_id: var_requestId,
             public_key: var_publicKey,
+            request_token: var_requestToken,
             verification_code: var_verificationCode,
+            expires_at_unix_ms: var_expiresAtUnixMs,
         };
     }
 }
@@ -1748,6 +1793,19 @@ impl SseDecode for Option<String> {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         if (<bool>::sse_decode(deserializer)) {
             return Some(<String>::sse_decode(deserializer));
+        } else {
+            return None;
+        }
+    }
+}
+
+impl SseDecode for Option<crate::api::mobile::BridgeDeviceApprovalRequestKey> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        if (<bool>::sse_decode(deserializer)) {
+            return Some(
+                <crate::api::mobile::BridgeDeviceApprovalRequestKey>::sse_decode(deserializer),
+            );
         } else {
             return None;
         }
@@ -1937,10 +1995,16 @@ fn pde_ffi_dispatcher_primary_impl(
         26 => {
             wire__crate__api__mobile__initialize_content_key_impl(port, ptr, rust_vec_len, data_len)
         }
-        27 => {
+        27 => wire__crate__api__mobile__load_device_approval_request_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        28 => {
             wire__crate__api__mobile__probe_host_key_mobile_impl(port, ptr, rust_vec_len, data_len)
         }
-        28 => wire__crate__api__mobile__restore_content_key_impl(port, ptr, rust_vec_len, data_len),
+        29 => wire__crate__api__mobile__restore_content_key_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -2196,8 +2260,11 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::mobile::BridgeDeviceApprovalP
 impl flutter_rust_bridge::IntoDart for crate::api::mobile::BridgeDeviceApprovalRequestKey {
     fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
         [
+            self.request_id.into_into_dart().into_dart(),
             self.public_key.into_into_dart().into_dart(),
+            self.request_token.into_into_dart().into_dart(),
             self.verification_code.into_into_dart().into_dart(),
+            self.expires_at_unix_ms.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -2445,8 +2512,11 @@ impl SseEncode for crate::api::mobile::BridgeDeviceApprovalPackage {
 impl SseEncode for crate::api::mobile::BridgeDeviceApprovalRequestKey {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.request_id, serializer);
         <Vec<u8>>::sse_encode(self.public_key, serializer);
+        <Vec<u8>>::sse_encode(self.request_token, serializer);
         <String>::sse_encode(self.verification_code, serializer);
+        <u64>::sse_encode(self.expires_at_unix_ms, serializer);
     }
 }
 
@@ -2514,6 +2584,16 @@ impl SseEncode for Option<String> {
         <bool>::sse_encode(self.is_some(), serializer);
         if let Some(value) = self {
             <String>::sse_encode(value, serializer);
+        }
+    }
+}
+
+impl SseEncode for Option<crate::api::mobile::BridgeDeviceApprovalRequestKey> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <bool>::sse_encode(self.is_some(), serializer);
+        if let Some(value) = self {
+            <crate::api::mobile::BridgeDeviceApprovalRequestKey>::sse_encode(value, serializer);
         }
     }
 }

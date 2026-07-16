@@ -314,7 +314,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('sync-encryption')));
     await tester.pumpAndSettle();
-    expect(find.text('使用恢复密钥解锁'), findsOneWidget);
+    expect(find.text('通过受信设备恢复'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('e2ee-enable')));
     await tester.pumpAndSettle();
