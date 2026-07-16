@@ -12,7 +12,7 @@ void main() {
       MaterialApp(
         home: EndToEndEncryptionPage(
           source: source,
-          onRecoveryKeyReady: (_) {},
+          onRecoveryKeyReady: (_) async {},
           onOpenUnlock: () {},
         ),
       ),
@@ -42,7 +42,7 @@ void main() {
       MaterialApp(
         home: EndToEndEncryptionPage(
           source: source,
-          onRecoveryKeyReady: (value) => draft = value,
+          onRecoveryKeyReady: (value) async => draft = value,
           onOpenUnlock: () {},
         ),
       ),
@@ -70,7 +70,7 @@ void main() {
       MaterialApp(
         home: EndToEndEncryptionPage(
           source: source,
-          onRecoveryKeyReady: (_) {},
+          onRecoveryKeyReady: (_) async {},
           onOpenUnlock: () => unlockCalls++,
         ),
       ),

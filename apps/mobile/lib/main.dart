@@ -25,6 +25,7 @@ import 'src/presentation/login_page.dart';
 import 'src/presentation/my_page.dart';
 import 'src/presentation/notification_settings_page.dart';
 import 'src/presentation/password_change_page.dart';
+import 'src/presentation/recovery_key_page.dart';
 import 'src/presentation/toolbox_page.dart';
 import 'src/presentation/today_schedule_page.dart';
 
@@ -353,8 +354,21 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
       MaterialPageRoute<void>(
         builder: (_) => EndToEndEncryptionPage(
           source: runtime as ContentEncryptionSource,
-          onRecoveryKeyReady: (_) => _showPendingPage('保存恢复密钥'),
+          onRecoveryKeyReady: _openRecoveryKey,
           onOpenUnlock: () => _showPendingPage('恢复密钥解锁'),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openRecoveryKey(RecoveryKeyDraft draft) async {
+    final runtime = _runtime;
+    if (runtime is! ContentEncryptionSource) return;
+    await _navigatorKey.currentState!.push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => RecoveryKeyPage(
+          source: runtime as ContentEncryptionSource,
+          draft: draft,
         ),
       ),
     );

@@ -5,6 +5,9 @@ import 'package:flutter/services.dart';
 
 import '../domain/sync/content_encryption_models.dart';
 
+typedef RecoveryKeyReadyCallback =
+    Future<void> Function(RecoveryKeyDraft draft);
+
 class EndToEndEncryptionPage extends StatefulWidget {
   const EndToEndEncryptionPage({
     super.key,
@@ -14,7 +17,7 @@ class EndToEndEncryptionPage extends StatefulWidget {
   });
 
   final ContentEncryptionSource source;
-  final ValueChanged<RecoveryKeyDraft> onRecoveryKeyReady;
+  final RecoveryKeyReadyCallback onRecoveryKeyReady;
   final VoidCallback onOpenUnlock;
 
   @override
@@ -64,7 +67,8 @@ class _EndToEndEncryptionPageState extends State<EndToEndEncryptionPage> {
     try {
       final draft = await widget.source.prepareContentEncryption();
       if (!mounted) return;
-      widget.onRecoveryKeyReady(draft);
+      await widget.onRecoveryKeyReady(draft);
+      if (!mounted) return;
       await _load();
     } on ContentEncryptionException catch (error) {
       if (!mounted) return;

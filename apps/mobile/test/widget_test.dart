@@ -268,6 +268,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('e2ee-title')), findsOneWidget);
     expect(find.text('开启并生成恢复密钥'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('e2ee-enable')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('recovery-key-title')), findsOneWidget);
+    expect(find.text('保存你的恢复密钥'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('recovery-key-back')));
+    await tester.pumpAndSettle();
+    expect(find.text('继续保存恢复密钥'), findsOneWidget);
     await tester.tap(find.byKey(const Key('e2ee-back')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('data-sync-back')));
