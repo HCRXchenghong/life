@@ -22,6 +22,14 @@ type appAccountRecord struct {
 	LockedUntil            sql.NullTime
 }
 
+type appDeviceSession struct {
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	Current    bool      `json:"current"`
+	LastSeenAt time.Time `json:"lastSeenAt"`
+	CreatedAt  time.Time `json:"createdAt"`
+}
+
 func (a appAccountRecord) digest() security.PasswordDigest {
 	return security.PasswordDigest{Algorithm: a.PasswordAlgorithm, Hash: a.PasswordHash, Salt: a.PasswordSalt, Iterations: a.PasswordIterations}
 }
@@ -150,6 +158,75 @@ func (s *Server) handleAppSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"loggedOut": true})
 }
 
+func (s *Server) handleAppDevices(w http.ResponseWriter, r *http.Request) {
+	identity, ok := s.requireApp(w, r)
+	if !ok {
+		return
+	}
+	if r.Method == http.MethodGet {
+		s.listAppDevices(w, r, identity)
+		return
+	}
+	s.revokeOtherAppDevices(w, r, identity)
+}
+
+func (s *Server) listAppDevices(w http.ResponseWriter, r *http.Request, identity *appIdentity) {
+	rows, err := s.db.QueryContext(r.Context(), `SELECT id, device_name, last_seen_at, created_at
+      FROM app_sessions WHERE account_id = ? AND revoked_at IS NULL
+        AND refresh_expires_at > UTC_TIMESTAMP(6)
+      ORDER BY (id = ?) DESC, last_seen_at DESC LIMIT 100`, identity.AccountID, identity.SessionID)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "暂时无法读取登录设备")
+		return
+	}
+	defer rows.Close()
+	devices := make([]appDeviceSession, 0)
+	for rows.Next() {
+		var device appDeviceSession
+		if err := rows.Scan(&device.ID, &device.Name, &device.LastSeenAt, &device.CreatedAt); err != nil {
+			writeError(w, http.StatusServiceUnavailable, "database_unavailable", "暂时无法读取登录设备")
+			return
+		}
+		device.Current = device.ID == identity.SessionID
+		devices = append(devices, device)
+	}
+	if rows.Err() != nil {
+		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "暂时无法读取登录设备")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"devices": devices})
+}
+
+func (s *Server) revokeOtherAppDevices(w http.ResponseWriter, r *http.Request, identity *appIdentity) {
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "数据库暂时不可用")
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	_, err = tx.ExecContext(r.Context(), `UPDATE ai_gateway_tokens SET revoked_at = UTC_TIMESTAMP(6)
+      WHERE account_id = ? AND app_session_id <> ? AND revoked_at IS NULL`,
+		identity.AccountID, identity.SessionID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "session_revoke_failed", "退出其他设备失败")
+		return
+	}
+	result, err := tx.ExecContext(r.Context(), `UPDATE app_sessions SET revoked_at = UTC_TIMESTAMP(6)
+      WHERE account_id = ? AND id <> ? AND revoked_at IS NULL`,
+		identity.AccountID, identity.SessionID)
+	if err != nil || tx.Commit() != nil {
+		writeError(w, http.StatusInternalServerError, "session_revoke_failed", "退出其他设备失败")
+		return
+	}
+	revoked, err := result.RowsAffected()
+	if err != nil {
+		revoked = 0
+	}
+	s.syncHub.revokeOtherSessions(identity.AccountID, identity.SessionID, "session_revoked")
+	s.audit(r.Context(), "app:"+identity.AccountID, "app.sessions.revoke_others", "app_account", identity.AccountID, "allowed", "high")
+	writeJSON(w, http.StatusOK, map[string]any{"revoked": revoked})
+}
+
 func (s *Server) handleAppPassword(w http.ResponseWriter, r *http.Request) {
 	identity, ok := s.requireApp(w, r)
 	if !ok {
@@ -197,6 +274,7 @@ func (s *Server) handleAppPassword(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "password_change_failed", "修改密码失败")
 		return
 	}
+	s.syncHub.revoke(identity.AccountID, "credentials_changed")
 	s.audit(r.Context(), "app:"+identity.AccountID, "app.password.change", "app_account", identity.AccountID, "allowed", "critical")
 	writeJSON(w, http.StatusOK, map[string]any{
 		"account": map[string]any{"id": identity.AccountID, "username": identity.Username, "passwordChangeRequired": false},

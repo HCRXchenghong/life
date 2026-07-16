@@ -223,7 +223,7 @@ func (s *Server) handleSyncEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
-	channel, unsubscribe := s.syncHub.subscribe(identity.AccountID)
+	channel, unsubscribe := s.syncHub.subscribe(identity.AccountID, identity.SessionID)
 	defer unsubscribe()
 	_, _ = fmt.Fprint(w, "event: ready\ndata: {}\n\n")
 	flusher.Flush()

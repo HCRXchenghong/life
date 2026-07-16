@@ -12,10 +12,14 @@ class PasswordChangePage extends StatefulWidget {
     super.key,
     required this.onChangePassword,
     required this.onLogout,
+    this.firstLogin = true,
+    this.onChanged,
   });
 
   final ChangePasswordCallback onChangePassword;
   final LogoutCallback onLogout;
+  final bool firstLogin;
+  final VoidCallback? onChanged;
 
   @override
   State<PasswordChangePage> createState() => _PasswordChangePageState();
@@ -61,6 +65,7 @@ class _PasswordChangePageState extends State<PasswordChangePage> {
       _currentPassword.clear();
       _newPassword.clear();
       _confirmPassword.clear();
+      widget.onChanged?.call();
     } on AppAuthenticationException catch (error) {
       if (!mounted) return;
       _currentPassword.clear();
@@ -118,9 +123,9 @@ class _PasswordChangePageState extends State<PasswordChangePage> {
                       children: [
                         const _CompactBrand(),
                         const SizedBox(height: 80),
-                        const Text(
-                          '设置新密码',
-                          style: TextStyle(
+                        Text(
+                          widget.firstLogin ? '设置新密码' : '修改密码',
+                          style: const TextStyle(
                             color: _text,
                             fontSize: 32,
                             height: 1.2,
@@ -129,9 +134,9 @@ class _PasswordChangePageState extends State<PasswordChangePage> {
                           ),
                         ),
                         const SizedBox(height: 14),
-                        const Text(
-                          '首次登录需要修改密码',
-                          style: TextStyle(
+                        Text(
+                          widget.firstLogin ? '首次登录需要修改密码' : '修改后，其他设备将退出登录',
+                          style: const TextStyle(
                             color: _muted,
                             fontSize: 17,
                             height: 1.4,
@@ -242,7 +247,11 @@ class _PasswordChangePageState extends State<PasswordChangePage> {
                                       strokeWidth: 2,
                                     ),
                                   )
-                                : const Text('完成并进入 Daylink'),
+                                : Text(
+                                    widget.firstLogin
+                                        ? '完成并进入 Daylink'
+                                        : '保存新密码',
+                                  ),
                           ),
                         ),
                         if (_error != null) ...[
@@ -258,31 +267,33 @@ class _PasswordChangePageState extends State<PasswordChangePage> {
                             ),
                           ),
                         ],
-                        const Spacer(),
-                        const SizedBox(height: 48),
-                        TextButton(
-                          key: const Key('password-logout'),
-                          onPressed: _busy ? null : _logout,
-                          style: TextButton.styleFrom(
-                            foregroundColor: _muted,
-                            disabledForegroundColor: _muted.withValues(
-                              alpha: 0.5,
+                        if (widget.firstLogin) ...[
+                          const Spacer(),
+                          const SizedBox(height: 48),
+                          TextButton(
+                            key: const Key('password-logout'),
+                            onPressed: _busy ? null : _logout,
+                            style: TextButton.styleFrom(
+                              foregroundColor: _muted,
+                              disabledForegroundColor: _muted.withValues(
+                                alpha: 0.5,
+                              ),
+                              textStyle: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w400,
+                              ),
                             ),
-                            textStyle: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w400,
-                            ),
+                            child: _loggingOut
+                                ? const SizedBox.square(
+                                    dimension: 18,
+                                    child: CircularProgressIndicator(
+                                      color: _muted,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Text('退出登录'),
                           ),
-                          child: _loggingOut
-                              ? const SizedBox.square(
-                                  dimension: 18,
-                                  child: CircularProgressIndicator(
-                                    color: _muted,
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Text('退出登录'),
-                        ),
+                        ],
                       ],
                     ),
                   ),

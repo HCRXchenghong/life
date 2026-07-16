@@ -146,6 +146,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/app/auth/refresh", s.handleAppRefresh)
 	s.mux.HandleFunc("GET /api/app/auth/session", s.handleAppSession)
 	s.mux.HandleFunc("DELETE /api/app/auth/session", s.handleAppSession)
+	s.mux.HandleFunc("GET /api/app/auth/devices", s.handleAppDevices)
+	s.mux.HandleFunc("DELETE /api/app/auth/devices", s.handleAppDevices)
 	s.mux.HandleFunc("POST /api/app/auth/password", s.handleAppPassword)
 	s.mux.HandleFunc("GET /api/app/ai-settings", s.handleAppAISettings)
 	s.mux.HandleFunc("PUT /api/app/ai-preferences", s.handleAppAIPreferences)
@@ -278,6 +280,12 @@ func (s *Server) requireApp(w http.ResponseWriter, r *http.Request) (*appIdentit
 		writeError(w, http.StatusUnauthorized, "unauthorized", "App 登录已失效")
 		return nil, false
 	}
+	_, _ = s.db.ExecContext(r.Context(),
+		`UPDATE app_sessions SET last_seen_at = UTC_TIMESTAMP(6)
+         WHERE id = ? AND revoked_at IS NULL
+           AND last_seen_at < DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 30 SECOND)`,
+		identity.SessionID,
+	)
 	return &identity, true
 }
 

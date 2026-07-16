@@ -20,6 +20,8 @@ abstract interface class AppAuthentication {
     required String currentPassword,
     required String newPassword,
   });
+  Future<List<AppDeviceSession>> loadDeviceSessions();
+  Future<void> revokeOtherDeviceSessions();
   Future<void> logout();
   Future<String?> accessToken();
   Future<bool> refresh();
@@ -131,6 +133,34 @@ class AppSessionCredentials {
       );
 }
 
+class AppDeviceSession {
+  const AppDeviceSession({
+    required this.id,
+    required this.name,
+    required this.current,
+    required this.lastSeenAt,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String name;
+  final bool current;
+  final DateTime lastSeenAt;
+  final DateTime createdAt;
+
+  factory AppDeviceSession.fromJson(Map<String, Object?> value) {
+    final id = _requiredString(value, 'id', 36);
+    if (!_uuidPattern.hasMatch(id)) throw const FormatException();
+    return AppDeviceSession(
+      id: id,
+      name: _requiredString(value, 'name', 80),
+      current: _requiredBool(value, 'current'),
+      lastSeenAt: _requiredDate(value, 'lastSeenAt'),
+      createdAt: _requiredDate(value, 'createdAt'),
+    );
+  }
+}
+
 class AppAuthenticationException implements Exception {
   const AppAuthenticationException(
     this.message, {
@@ -219,6 +249,46 @@ class AppAuthenticator implements AppAuthentication {
     }
     _current = credentials;
     return credentials;
+  }
+
+  @override
+  Future<List<AppDeviceSession>> loadDeviceSessions() =>
+      _withAuthenticated(_client.loadDeviceSessions);
+
+  @override
+  Future<void> revokeOtherDeviceSessions() =>
+      _withAuthenticated(_client.revokeOtherDeviceSessions);
+
+  Future<T> _withAuthenticated<T>(
+    Future<T> Function(AppSessionCredentials current) action,
+  ) async {
+    await _refreshing;
+    var current = _current ?? await _store.read();
+    if (current == null) {
+      throw const AppAuthenticationException(
+        '登录已失效，请重新登录',
+        sessionRejected: true,
+      );
+    }
+    try {
+      return await action(current);
+    } on AppAuthenticationException catch (error) {
+      if (!error.sessionRejected) rethrow;
+      if (!await refresh()) {
+        throw const AppAuthenticationException(
+          '登录已失效，请重新登录',
+          sessionRejected: true,
+        );
+      }
+      current = _current ?? await _store.read();
+      if (current == null) {
+        throw const AppAuthenticationException(
+          '登录已失效，请重新登录',
+          sessionRejected: true,
+        );
+      }
+      return action(current);
+    }
   }
 
   @override
@@ -367,6 +437,52 @@ class AppAuthClient {
       'app/auth/session',
       accessToken: current.accessToken,
     );
+  }
+
+  Future<List<AppDeviceSession>> loadDeviceSessions(
+    AppSessionCredentials current,
+  ) async {
+    try {
+      final result = await _request(
+        'GET',
+        'app/auth/devices',
+        accessToken: current.accessToken,
+      );
+      final rawDevices = result['devices'];
+      if (rawDevices is! List<Object?> ||
+          rawDevices.isEmpty ||
+          rawDevices.length > 100) {
+        throw const FormatException();
+      }
+      final devices = <AppDeviceSession>[];
+      var currentCount = 0;
+      for (final raw in rawDevices) {
+        if (raw is! Map<String, Object?>) throw const FormatException();
+        final device = AppDeviceSession.fromJson(raw);
+        if (device.current) currentCount++;
+        devices.add(device);
+      }
+      if (currentCount != 1) throw const FormatException();
+      return List.unmodifiable(devices);
+    } on FormatException {
+      throw const AppAuthenticationException('Daylink 服务返回异常');
+    }
+  }
+
+  Future<void> revokeOtherDeviceSessions(AppSessionCredentials current) async {
+    try {
+      final result = await _request(
+        'DELETE',
+        'app/auth/devices',
+        accessToken: current.accessToken,
+      );
+      final revoked = result['revoked'];
+      if (revoked is! int || revoked < 0) {
+        throw const FormatException();
+      }
+    } on FormatException {
+      throw const AppAuthenticationException('Daylink 服务返回异常');
+    }
   }
 
   Future<Map<String, Object?>> _post(String path, Map<String, Object?> body) =>

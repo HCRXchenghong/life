@@ -602,6 +602,44 @@ paths:
       responses:
         "200": { description: Current App session revoked. }
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /app/auth/devices:
+    get:
+      security:
+        - appAccessToken: []
+      operationId: listAppDevices
+      description: Lists only the authenticated App account's active device sessions.
+      responses:
+        "200":
+          description: Active device sessions with the current session identified.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [devices]
+                properties:
+                  devices:
+                    type: array
+                    maxItems: 100
+                    items: { $ref: "#/components/schemas/AppDeviceSession" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    delete:
+      security:
+        - appAccessToken: []
+      operationId: revokeOtherAppDevices
+      description: Revokes every App session and AI gateway token for this account except the current session.
+      responses:
+        "200":
+          description: Other device sessions were revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [revoked]
+                properties:
+                  revoked: { type: integer, minimum: 0 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /app/auth/password:
     post:
       security:
@@ -1187,6 +1225,16 @@ components:
         id: { type: string, format: uuid }
         username: { type: string }
         passwordChangeRequired: { type: boolean }
+    AppDeviceSession:
+      type: object
+      additionalProperties: false
+      required: [id, name, current, lastSeenAt, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 80 }
+        current: { type: boolean }
+        lastSeenAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
     AppAccount:
       type: object
       additionalProperties: false

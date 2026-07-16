@@ -222,6 +222,16 @@ void main() {
     expect(find.text('active-user'), findsOneWidget);
     expect(find.text('2 / 10 亿 Token'), findsOneWidget);
 
+    await tester.tap(find.byKey(const Key('my-security')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('security-title')), findsOneWidget);
+    expect(find.text('active-user'), findsOneWidget);
+    expect(find.text('Daylink iPhone'), findsOneWidget);
+    expect(find.text('当前设备 · 刚刚活跃'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('security-back')));
+    await tester.pumpAndSettle();
+
     await tester.tap(find.byKey(const Key('nav-schedule')));
     await tester.pumpAndSettle();
     expect(find.text('今天'), findsOneWidget);
@@ -298,6 +308,20 @@ class _FakeAuthentication implements AppAuthentication {
 
   @override
   Future<bool> refresh() async => false;
+
+  @override
+  Future<List<AppDeviceSession>> loadDeviceSessions() async => [
+    AppDeviceSession(
+      id: '123e4567-e89b-12d3-a456-426614174001',
+      name: 'Daylink iPhone',
+      current: true,
+      lastSeenAt: DateTime.now().toUtc(),
+      createdAt: DateTime.utc(2030, 1, 1),
+    ),
+  ];
+
+  @override
+  Future<void> revokeOtherDeviceSessions() async {}
 
   @override
   Future<AppSessionCredentials?> restore() async => restored;

@@ -169,6 +169,93 @@ void main() {
     },
   );
 
+  test(
+    'device session client lists devices and revokes only other sessions',
+    () async {
+      final requests = <http.Request>[];
+      final current = _session(passwordChangeRequired: false);
+      final client = AppAuthClient(
+        apiBaseUri: Uri.parse('https://daylink.example/api/'),
+        httpClient: MockClient((request) async {
+          requests.add(request);
+          if (request.method == 'GET') {
+            return http.Response(
+              jsonEncode({
+                'devices': [
+                  {
+                    'id': '123e4567-e89b-12d3-a456-426614174001',
+                    'name': 'Daylink iPhone',
+                    'current': true,
+                    'lastSeenAt': '2030-07-16T01:41:00Z',
+                    'createdAt': '2030-07-01T01:41:00Z',
+                  },
+                  {
+                    'id': '123e4567-e89b-12d3-a456-426614174002',
+                    'name': 'Daylink Android',
+                    'current': false,
+                    'lastSeenAt': '2030-07-15T01:41:00Z',
+                    'createdAt': '2030-07-02T01:41:00Z',
+                  },
+                ],
+              }),
+              200,
+            );
+          }
+          return http.Response(jsonEncode({'revoked': 1}), 200);
+        }),
+      );
+
+      final devices = await client.loadDeviceSessions(current);
+      await client.revokeOtherDeviceSessions(current);
+
+      expect(devices, hasLength(2));
+      expect(devices.first.name, 'Daylink iPhone');
+      expect(devices.first.current, isTrue);
+      expect(requests.map((request) => request.method), ['GET', 'DELETE']);
+      expect(
+        requests.map((request) => request.url.path),
+        everyElement('/api/app/auth/devices'),
+      );
+      expect(
+        requests.map((request) => request.headers['authorization']),
+        everyElement('Bearer ${current.accessToken}'),
+      );
+      client.close();
+    },
+  );
+
+  test(
+    'device session client rejects a response without one current device',
+    () async {
+      final current = _session(passwordChangeRequired: false);
+      final client = AppAuthClient(
+        apiBaseUri: Uri.parse('https://daylink.example/api/'),
+        httpClient: MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'devices': [
+                {
+                  'id': '123e4567-e89b-12d3-a456-426614174002',
+                  'name': 'Daylink Android',
+                  'current': false,
+                  'lastSeenAt': '2030-07-15T01:41:00Z',
+                  'createdAt': '2030-07-02T01:41:00Z',
+                },
+              ],
+            }),
+            200,
+          ),
+        ),
+      );
+
+      await expectLater(
+        client.loadDeviceSessions(current),
+        throwsA(isA<AppAuthenticationException>()),
+      );
+      client.close();
+    },
+  );
+
   test('password validation matches the server complexity policy', () {
     expect(validateStrongAppPassword('Replacement2!'), isNull);
     expect(validateStrongAppPassword('replacement2!'), contains('大小写'));

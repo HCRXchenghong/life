@@ -13,6 +13,7 @@ import 'src/data/operations_repository.dart';
 import 'src/data/schedule_repository.dart';
 import 'src/domain/ai/ai_models.dart';
 import 'src/presentation/app_navigation.dart';
+import 'src/presentation/account_security_page.dart';
 import 'src/presentation/assistant_page.dart';
 import 'src/presentation/hosts_page.dart';
 import 'src/presentation/login_page.dart';
@@ -81,6 +82,7 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
   StreamSubscription<String>? _forcedSignOutSubscription;
   bool _bootstrapping = true;
   final _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+  final _navigatorKey = GlobalKey<NavigatorState>();
   AppDestination _selectedDestination = AppDestination.schedule;
 
   @override
@@ -127,7 +129,7 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
     String newPassword,
   ) async {
     final previous = _session;
-    if (previous == null || !previous.passwordChangeRequired) {
+    if (previous == null) {
       throw const AppAuthenticationException(
         '登录已失效，请重新登录',
         sessionRejected: true,
@@ -279,6 +281,50 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
       );
   }
 
+  Future<void> _openAccountSecurity() => _navigatorKey.currentState!.push<void>(
+    MaterialPageRoute<void>(
+      builder: (_) => AccountSecurityPage(
+        username: _session!.username,
+        authentication: _authentication,
+        onChangePassword: () => unawaited(_openPasswordChange()),
+        onSessionRejected: _closeDetailsAndLogout,
+      ),
+    ),
+  );
+
+  Future<void> _openPasswordChange() => _navigatorKey.currentState!.push<void>(
+    MaterialPageRoute<void>(
+      builder: (_) => PasswordChangePage(
+        firstLogin: false,
+        onChangePassword: _changePasswordFromSettings,
+        onLogout: _logout,
+        onChanged: () {
+          _navigatorKey.currentState?.popUntil((route) => route.isFirst);
+          _showMessage('密码已修改');
+        },
+      ),
+    ),
+  );
+
+  Future<void> _changePasswordFromSettings(
+    String currentPassword,
+    String newPassword,
+  ) async {
+    try {
+      await _changePassword(currentPassword, newPassword);
+    } on AppAuthenticationException catch (error) {
+      if (error.sessionRejected) {
+        _navigatorKey.currentState?.popUntil((route) => route.isFirst);
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _closeDetailsAndLogout() async {
+    await _logout();
+    _navigatorKey.currentState?.popUntil((route) => route.isFirst);
+  }
+
   void _selectDestination(AppDestination destination) {
     if (destination == AppDestination.schedule ||
         destination == AppDestination.toolbox ||
@@ -316,7 +362,7 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
       return MyPage(
         username: _session!.username,
         source: runtime as AccountEntitlementSource,
-        onOpenAccount: () => _showPendingPage('账号与安全'),
+        onOpenAccount: () => unawaited(_openAccountSecurity()),
         onOpenNotifications: () => _showPendingPage('通知设置'),
         onOpenSync: () => _showPendingPage('数据与同步'),
         onLogout: _logout,
@@ -378,6 +424,7 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
+    navigatorKey: _navigatorKey,
     scaffoldMessengerKey: _scaffoldMessengerKey,
     debugShowCheckedModeBanner: false,
     title: 'Daylink',
@@ -404,7 +451,7 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
 }
 
 String _deviceName() => switch (defaultTargetPlatform) {
-  TargetPlatform.iOS => 'Daylink iOS',
+  TargetPlatform.iOS => 'Daylink iPhone',
   TargetPlatform.android => 'Daylink Android',
   _ => 'Daylink device',
 };

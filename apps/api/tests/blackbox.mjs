@@ -136,17 +136,35 @@ async function main() {
     invariant(result.response.status === 201, `creating ${username} failed`);
   }
 
-  async function appLogin(username, password) {
+  async function appLogin(username, password, deviceName = "blackbox") {
     const login = await request("/api/app/auth/login", {
       method: "POST",
-      body: { username, password, deviceName: "blackbox" },
+      body: { username, password, deviceName },
     });
     invariant(login.response.status === 200 && login.payload?.tokens?.accessToken && login.payload?.tokens?.refreshToken, `login ${username} failed`);
     return login.payload.tokens;
   }
 
   const tokensA = await appLogin("member-a", accountAPassword);
+  const tokensASecondary = await appLogin("member-a", accountAPassword, "blackbox-secondary");
   const tokensB = await appLogin("member-b", accountBPassword);
+  result = await request("/api/app/auth/devices", { bearer: tokensA.accessToken });
+  invariant(
+    result.response.status === 200 &&
+      result.payload?.devices?.length === 2 &&
+      result.payload.devices.filter((device) => device.current).length === 1 &&
+      result.payload.devices.every((device) => device.name.startsWith("blackbox")),
+    "account-scoped device list failed",
+  );
+  result = await request("/api/app/auth/devices", {
+    method: "DELETE",
+    bearer: tokensA.accessToken,
+  });
+  invariant(result.response.status === 200 && result.payload?.revoked === 1, "revoking other devices failed");
+  result = await request("/api/app/auth/session", { bearer: tokensASecondary.accessToken });
+  invariant(result.response.status === 401, "revoked secondary device remained authenticated");
+  result = await request("/api/app/auth/session", { bearer: tokensA.accessToken });
+  invariant(result.response.status === 200, "current device was revoked with other devices");
   const objectId = randomUUID();
   const operationId = randomUUID();
   const deviceId = randomUUID();
