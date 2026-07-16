@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../data/app_authentication.dart';
+import 'trusted_device_details_page.dart';
 
 class TrustedDevicesPage extends StatefulWidget {
   const TrustedDevicesPage({
@@ -23,7 +24,6 @@ class _TrustedDevicesPageState extends State<TrustedDevicesPage> {
   List<AppDeviceSession> _devices = const [];
   var _loading = true;
   var _loadFailed = false;
-  String? _revokingId;
   var _generation = 0;
 
   AppDeviceSession? get _currentDevice {
@@ -80,32 +80,20 @@ class _TrustedDevicesPageState extends State<TrustedDevicesPage> {
     }
   }
 
-  Future<void> _confirmRevoke(AppDeviceSession device) async {
-    if (_revokingId != null || device.current || !device.trusted) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('撤销 ${device.name}？'),
-        content: const Text('该设备将立即退出并停止同步。再次使用时，需要重新登录并恢复加密内容。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            key: const Key('trusted-device-revoke-confirm'),
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: _danger),
-            child: const Text('撤销'),
-          ),
-        ],
+  Future<void> _openDetails(AppDeviceSession device) async {
+    if (device.current || !device.trusted) return;
+    final revoked = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => TrustedDeviceDetailsPage(
+          device: device,
+          authentication: widget.authentication,
+          onSessionRejected: widget.onSessionRejected,
+        ),
       ),
     );
-    if (confirmed != true || !mounted) return;
-    setState(() => _revokingId = device.id);
-    try {
-      await widget.authentication.revokeDeviceSession(device.id);
-      if (!mounted) return;
+    if (!mounted || revoked != true) return;
+    await _load();
+    if (mounted) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
@@ -114,27 +102,7 @@ class _TrustedDevicesPageState extends State<TrustedDevicesPage> {
             content: Text('设备已撤销'),
           ),
         );
-      await _load();
-    } on AppAuthenticationException catch (error) {
-      if (!mounted) return;
-      if (error.sessionRejected) {
-        await widget.onSessionRejected();
-        return;
-      }
-      _showMessage(error.message);
-    } on Object {
-      if (mounted) _showMessage('撤销设备失败，请稍后重试');
-    } finally {
-      if (mounted) setState(() => _revokingId = null);
     }
-  }
-
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(behavior: SnackBarBehavior.floating, content: Text(message)),
-      );
   }
 
   @override
@@ -212,8 +180,7 @@ class _TrustedDevicesPageState extends State<TrustedDevicesPage> {
                     : _TrustedDeviceContent(
                         currentDevice: _currentDevice!,
                         otherDevices: _otherDevices,
-                        revokingId: _revokingId,
-                        onRevoke: _confirmRevoke,
+                        onOpenDetails: _openDetails,
                       ),
               ),
             ),
@@ -228,14 +195,12 @@ class _TrustedDeviceContent extends StatelessWidget {
   const _TrustedDeviceContent({
     required this.currentDevice,
     required this.otherDevices,
-    required this.revokingId,
-    required this.onRevoke,
+    required this.onOpenDetails,
   });
 
   final AppDeviceSession currentDevice;
   final List<AppDeviceSession> otherDevices;
-  final String? revokingId;
-  final ValueChanged<AppDeviceSession> onRevoke;
+  final ValueChanged<AppDeviceSession> onOpenDetails;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -248,13 +213,7 @@ class _TrustedDeviceContent extends StatelessWidget {
       const SizedBox(height: 39),
       const _SectionLabel('当前设备'),
       const SizedBox(height: 11),
-      _DeviceCard(
-        child: _DeviceRow(
-          device: currentDevice,
-          current: true,
-          revoking: false,
-        ),
-      ),
+      _DeviceCard(child: _DeviceRow(device: currentDevice, current: true)),
       const SizedBox(height: 34),
       const _SectionLabel('其他设备'),
       const SizedBox(height: 11),
@@ -279,10 +238,7 @@ class _TrustedDeviceContent extends StatelessWidget {
                 _DeviceRow(
                   device: otherDevices[index],
                   current: false,
-                  revoking: revokingId == otherDevices[index].id,
-                  onTap: revokingId == null
-                      ? () => onRevoke(otherDevices[index])
-                      : null,
+                  onTap: () => onOpenDetails(otherDevices[index]),
                 ),
                 if (index != otherDevices.length - 1)
                   const Divider(
@@ -334,16 +290,10 @@ class _DeviceCard extends StatelessWidget {
 }
 
 class _DeviceRow extends StatelessWidget {
-  const _DeviceRow({
-    required this.device,
-    required this.current,
-    required this.revoking,
-    this.onTap,
-  });
+  const _DeviceRow({required this.device, required this.current, this.onTap});
 
   final AppDeviceSession device;
   final bool current;
-  final bool revoking;
   final VoidCallback? onTap;
 
   @override
@@ -403,11 +353,6 @@ class _DeviceRow extends StatelessWidget {
                   '当前',
                   style: TextStyle(color: _blue, fontSize: 14),
                 ),
-              )
-            else if (revoking)
-              const SizedBox.square(
-                dimension: 19,
-                child: CircularProgressIndicator(strokeWidth: 2, color: _blue),
               )
             else
               const Icon(Icons.chevron_right_rounded, color: _muted, size: 25),
@@ -488,6 +433,5 @@ const _background = Color(0xFFF7F8FA);
 const _text = Color(0xFF1F2329);
 const _muted = Color(0xFF8F959E);
 const _blue = Color(0xFF3370FF);
-const _danger = Color(0xFFE5484D);
 const _divider = Color(0xFFE7E9ED);
 const _cardBorder = Color(0xFFDDE1E7);

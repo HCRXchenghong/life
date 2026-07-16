@@ -52,6 +52,23 @@ void main() {
     );
     await tester.tap(target);
     await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('trusted-device-details-title')),
+      findsOneWidget,
+    );
+    expect(find.text('设备详情'), findsOneWidget);
+    expect(find.text('MacBook Pro'), findsOneWidget);
+    expect(find.text('受信设备'), findsOneWidget);
+    expect(find.text('设备信息'), findsOneWidget);
+    expect(find.text('受信状态'), findsOneWidget);
+    expect(find.text('可以同步加密内容'), findsOneWidget);
+    expect(find.text('上次活跃'), findsOneWidget);
+    expect(find.text('首次登录'), findsOneWidget);
+    expect(find.text('撤销此设备'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('trusted-device-details-revoke')));
+    await tester.pumpAndSettle();
     expect(find.text('撤销 MacBook Pro？'), findsOneWidget);
     expect(find.text('该设备将立即退出并停止同步。再次使用时，需要重新登录并恢复加密内容。'), findsOneWidget);
 
