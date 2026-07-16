@@ -8,9 +8,12 @@ use std::sync::{Mutex, OnceLock};
 
 use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{Aes256Gcm, Nonce};
+use curve25519_dalek::constants::X25519_BASEPOINT;
+use curve25519_dalek::montgomery::MontgomeryPoint;
 use hkdf::Hkdf;
 use serde::{Deserialize, Serialize};
-use sha2_11::Sha256;
+use sha2_11::{Digest, Sha256};
+use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
 
@@ -21,6 +24,10 @@ const KEY_BYTES: usize = 32;
 const RECOVERY_SALT_BYTES: usize = 32;
 const RECOVERY_NONCE_BYTES: usize = 12;
 const CONTENT_KEY_VERSION: u32 = 1;
+const DEVICE_APPROVAL_PUBLIC_KEY_BYTES: usize = 32;
+const DEVICE_APPROVAL_NONCE_BYTES: usize = 12;
+const DEVICE_APPROVAL_MAX_PENDING: usize = 8;
+const DEVICE_APPROVAL_MAX_LIFETIME_MS: u64 = 15 * 60 * 1000;
 
 static VAULT_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
@@ -39,6 +46,44 @@ pub struct ContentKeyInitialization {
     pub recovery_salt: Vec<u8>,
     pub recovery_nonce: Vec<u8>,
     pub recovery_ciphertext: Vec<u8>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct DeviceApprovalRequestKey {
+    pub public_key: Vec<u8>,
+    pub verification_code: String,
+}
+
+impl fmt::Debug for DeviceApprovalRequestKey {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("DeviceApprovalRequestKey")
+            .field("public_key_bytes", &self.public_key.len())
+            .field("verification_code", &self.verification_code)
+            .finish()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct DeviceApprovalPackage {
+    pub approver_public_key: Vec<u8>,
+    pub nonce: Vec<u8>,
+    pub ciphertext: Vec<u8>,
+    pub key_version: u32,
+    pub verification_code: String,
+}
+
+impl fmt::Debug for DeviceApprovalPackage {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("DeviceApprovalPackage")
+            .field("approver_public_key_bytes", &self.approver_public_key.len())
+            .field("nonce_bytes", &self.nonce.len())
+            .field("ciphertext_bytes", &self.ciphertext.len())
+            .field("key_version", &self.key_version)
+            .field("verification_code", &self.verification_code)
+            .finish()
+    }
 }
 
 impl fmt::Debug for ContentKeyInitialization {
@@ -61,6 +106,22 @@ struct VaultPlaintext {
     account_id: String,
     device_id: String,
     content_key: Option<ContentKeyRecord>,
+    #[serde(default)]
+    pending_device_approvals: Vec<PendingDeviceApprovalRecord>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct PendingDeviceApprovalRecord {
+    request_id: String,
+    private_key: Vec<u8>,
+    public_key: Vec<u8>,
+    expires_at_unix_ms: u64,
+}
+
+impl Drop for PendingDeviceApprovalRecord {
+    fn drop(&mut self) {
+        self.private_key.zeroize();
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -123,6 +184,7 @@ pub fn initialize_content_key(
                 account_id: account_id.clone(),
                 device_id: Uuid::new_v4().to_string(),
                 content_key: None,
+                pending_device_approvals: Vec::new(),
             });
 
         if let Some(record) = vault.content_key.as_ref() {
@@ -243,6 +305,7 @@ pub fn restore_content_key(
                 account_id: account_id.clone(),
                 device_id: Uuid::new_v4().to_string(),
                 content_key: None,
+                pending_device_approvals: Vec::new(),
             });
 
         if let Some(record) = vault.content_key.as_ref() {
@@ -287,6 +350,377 @@ pub fn restore_content_key(
         write_vault(&path, &account_id, device_vault_key, &vault)?;
         Ok(true)
     })
+}
+
+pub fn create_device_approval_request(
+    vault_path: &str,
+    account_id: &str,
+    device_vault_key: &[u8],
+    request_id: &str,
+    expires_at_unix_ms: u64,
+) -> Result<DeviceApprovalRequestKey, String> {
+    with_vault_lock(|| {
+        let account_id = canonical_account_id(account_id)?;
+        let request_id = canonical_request_id(request_id)?;
+        let path = validated_vault_path(vault_path)?;
+        validate_device_key(device_vault_key)?;
+        let now = unix_time_ms()?;
+        if expires_at_unix_ms <= now
+            || expires_at_unix_ms.saturating_sub(now) > DEVICE_APPROVAL_MAX_LIFETIME_MS
+        {
+            return Err("device approval expiry is invalid".to_owned());
+        }
+        let mut vault =
+            read_vault(&path, &account_id, device_vault_key)?.unwrap_or_else(|| VaultPlaintext {
+                format_version: 1,
+                account_id: account_id.clone(),
+                device_id: Uuid::new_v4().to_string(),
+                content_key: None,
+                pending_device_approvals: Vec::new(),
+            });
+        if vault.content_key.is_some() {
+            return Err("content key is already available on this device".to_owned());
+        }
+        vault
+            .pending_device_approvals
+            .retain(|pending| pending.expires_at_unix_ms > now);
+        if let Some(existing) = vault
+            .pending_device_approvals
+            .iter()
+            .find(|pending| pending.request_id == request_id)
+        {
+            return Ok(DeviceApprovalRequestKey {
+                public_key: existing.public_key.clone(),
+                verification_code: verification_code(
+                    &account_id,
+                    &request_id,
+                    &existing.public_key,
+                )?,
+            });
+        }
+        if vault.pending_device_approvals.len() >= DEVICE_APPROVAL_MAX_PENDING {
+            return Err("too many pending device approval requests".to_owned());
+        }
+        let mut private_key = vec![0_u8; KEY_BYTES];
+        getrandom::fill(&mut private_key)
+            .map_err(|_| "secure random generation failed".to_owned())?;
+        let private_array: [u8; KEY_BYTES] = private_key
+            .as_slice()
+            .try_into()
+            .map_err(|_| "device approval private key is invalid".to_owned())?;
+        let public_key = X25519_BASEPOINT
+            .mul_clamped(private_array)
+            .to_bytes()
+            .to_vec();
+        let code = verification_code(&account_id, &request_id, &public_key)?;
+        vault
+            .pending_device_approvals
+            .push(PendingDeviceApprovalRecord {
+                request_id,
+                private_key,
+                public_key: public_key.clone(),
+                expires_at_unix_ms,
+            });
+        write_vault(&path, &account_id, device_vault_key, &vault)?;
+        Ok(DeviceApprovalRequestKey {
+            public_key,
+            verification_code: code,
+        })
+    })
+}
+
+pub fn discard_device_approval_request(
+    vault_path: &str,
+    account_id: &str,
+    device_vault_key: &[u8],
+    request_id: &str,
+) -> Result<(), String> {
+    with_vault_lock(|| {
+        let account_id = canonical_account_id(account_id)?;
+        let request_id = canonical_request_id(request_id)?;
+        let path = validated_vault_path(vault_path)?;
+        let Some(mut vault) = read_vault(&path, &account_id, device_vault_key)? else {
+            return Ok(());
+        };
+        let previous = vault.pending_device_approvals.len();
+        vault
+            .pending_device_approvals
+            .retain(|pending| pending.request_id != request_id);
+        if vault.pending_device_approvals.len() == previous {
+            return Ok(());
+        }
+        write_vault(&path, &account_id, device_vault_key, &vault)
+    })
+}
+
+pub fn device_approval_verification_code(
+    account_id: &str,
+    request_id: &str,
+    requester_public_key: &[u8],
+) -> Result<String, String> {
+    let account_id = canonical_account_id(account_id)?;
+    let request_id = canonical_request_id(request_id)?;
+    verification_code(&account_id, &request_id, requester_public_key)
+}
+
+pub fn approve_device_request(
+    vault_path: &str,
+    account_id: &str,
+    device_vault_key: &[u8],
+    request_id: &str,
+    requester_public_key: &[u8],
+) -> Result<DeviceApprovalPackage, String> {
+    with_vault_lock(|| {
+        let account_id = canonical_account_id(account_id)?;
+        let request_id = canonical_request_id(request_id)?;
+        let requester_public_key = validate_approval_public_key(requester_public_key)?;
+        let path = validated_vault_path(vault_path)?;
+        let vault = read_vault(&path, &account_id, device_vault_key)?
+            .ok_or_else(|| "content key is not initialized".to_owned())?;
+        let record = vault
+            .content_key
+            .as_ref()
+            .filter(|record| record.pending_recovery_key.is_none())
+            .ok_or_else(|| "content key is not ready".to_owned())?;
+
+        let mut private_key = Zeroizing::new([0_u8; KEY_BYTES]);
+        getrandom::fill(&mut *private_key)
+            .map_err(|_| "secure random generation failed".to_owned())?;
+        let approver_public_key = X25519_BASEPOINT.mul_clamped(*private_key).to_bytes();
+        let shared_secret = Zeroizing::new(
+            MontgomeryPoint(requester_public_key)
+                .mul_clamped(*private_key)
+                .to_bytes(),
+        );
+        if all_zero(&shared_secret[..]) {
+            return Err("device approval public key is invalid".to_owned());
+        }
+        let context = device_approval_context(
+            &account_id,
+            &request_id,
+            record.key_version,
+            &requester_public_key,
+            &approver_public_key,
+        );
+        let mut kek = Zeroizing::new([0_u8; KEY_BYTES]);
+        Hkdf::<Sha256>::new(Some(request_id.as_bytes()), &shared_secret[..])
+            .expand(&context, &mut *kek)
+            .map_err(|_| "device approval key derivation failed".to_owned())?;
+        let mut nonce = [0_u8; DEVICE_APPROVAL_NONCE_BYTES];
+        getrandom::fill(&mut nonce).map_err(|_| "secure random generation failed".to_owned())?;
+        let cipher = Aes256Gcm::new_from_slice(&*kek)
+            .map_err(|_| "device approval key derivation failed".to_owned())?;
+        let nonce_ref = Nonce::try_from(nonce.as_slice())
+            .map_err(|_| "device approval nonce is invalid".to_owned())?;
+        let ciphertext = cipher
+            .encrypt(
+                &nonce_ref,
+                Payload {
+                    msg: &record.cmk,
+                    aad: &context,
+                },
+            )
+            .map_err(|_| "content key device wrapping failed".to_owned())?;
+        Ok(DeviceApprovalPackage {
+            approver_public_key: approver_public_key.to_vec(),
+            nonce: nonce.to_vec(),
+            ciphertext,
+            key_version: record.key_version,
+            verification_code: verification_code(&account_id, &request_id, &requester_public_key)?,
+        })
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn complete_device_approval(
+    vault_path: &str,
+    account_id: &str,
+    device_vault_key: &[u8],
+    request_id: &str,
+    approver_public_key: &[u8],
+    nonce: &[u8],
+    ciphertext: &[u8],
+    key_version: u32,
+    recovery_salt: &[u8],
+    recovery_nonce: &[u8],
+    recovery_ciphertext: &[u8],
+) -> Result<bool, String> {
+    with_vault_lock(|| {
+        let account_id = canonical_account_id(account_id)?;
+        let request_id = canonical_request_id(request_id)?;
+        let approver_public_key = validate_approval_public_key(approver_public_key)?;
+        if nonce.len() != DEVICE_APPROVAL_NONCE_BYTES || ciphertext.len() != KEY_BYTES + 16 {
+            return Err("device approval package is invalid".to_owned());
+        }
+        validate_stored_recovery_metadata(
+            key_version,
+            recovery_salt,
+            recovery_nonce,
+            recovery_ciphertext,
+        )?;
+        let path = validated_vault_path(vault_path)?;
+        let mut vault = read_vault(&path, &account_id, device_vault_key)?
+            .ok_or_else(|| "device approval request is missing".to_owned())?;
+        if vault.content_key.is_some() {
+            return Err("content key is already available on this device".to_owned());
+        }
+        let position = vault
+            .pending_device_approvals
+            .iter()
+            .position(|pending| pending.request_id == request_id)
+            .ok_or_else(|| "device approval request is missing".to_owned())?;
+        let pending = vault.pending_device_approvals.remove(position);
+        if pending.expires_at_unix_ms <= unix_time_ms()? {
+            return Err("device approval request has expired".to_owned());
+        }
+        let requester_public_key: [u8; KEY_BYTES] = pending
+            .public_key
+            .as_slice()
+            .try_into()
+            .map_err(|_| "device approval request is invalid".to_owned())?;
+        let private_key = Zeroizing::new(
+            pending
+                .private_key
+                .as_slice()
+                .try_into()
+                .map_err(|_| "device approval request is invalid".to_owned())?,
+        );
+        let shared_secret = Zeroizing::new(
+            MontgomeryPoint(approver_public_key)
+                .mul_clamped(*private_key)
+                .to_bytes(),
+        );
+        if all_zero(&shared_secret[..]) {
+            return Ok(false);
+        }
+        let context = device_approval_context(
+            &account_id,
+            &request_id,
+            key_version,
+            &requester_public_key,
+            &approver_public_key,
+        );
+        let mut kek = Zeroizing::new([0_u8; KEY_BYTES]);
+        Hkdf::<Sha256>::new(Some(request_id.as_bytes()), &shared_secret[..])
+            .expand(&context, &mut *kek)
+            .map_err(|_| "device approval key derivation failed".to_owned())?;
+        let cipher = Aes256Gcm::new_from_slice(&*kek)
+            .map_err(|_| "device approval key derivation failed".to_owned())?;
+        let nonce_ref =
+            Nonce::try_from(nonce).map_err(|_| "device approval package is invalid".to_owned())?;
+        let decrypted = cipher.decrypt(
+            &nonce_ref,
+            Payload {
+                msg: ciphertext,
+                aad: &context,
+            },
+        );
+        let Ok(mut cmk) = decrypted else {
+            return Ok(false);
+        };
+        if cmk.len() != KEY_BYTES {
+            cmk.zeroize();
+            return Ok(false);
+        }
+        vault.content_key = Some(ContentKeyRecord {
+            key_version,
+            cmk,
+            recovery_salt: recovery_salt.to_vec(),
+            recovery_nonce: recovery_nonce.to_vec(),
+            recovery_ciphertext: recovery_ciphertext.to_vec(),
+            pending_recovery_key: None,
+        });
+        write_vault(&path, &account_id, device_vault_key, &vault)?;
+        Ok(true)
+    })
+}
+
+fn verification_code(
+    account_id: &str,
+    request_id: &str,
+    requester_public_key: &[u8],
+) -> Result<String, String> {
+    let public_key = validate_approval_public_key(requester_public_key)?;
+    let mut digest = Sha256::new();
+    digest.update(b"daylink-device-approval-code-v1\0");
+    digest.update(account_id.as_bytes());
+    digest.update(b"\0");
+    digest.update(request_id.as_bytes());
+    digest.update(b"\0");
+    digest.update(public_key);
+    let output = digest.finalize();
+    let value = u32::from_be_bytes(
+        output[..4]
+            .try_into()
+            .map_err(|_| "device approval verification code could not be generated".to_owned())?,
+    ) % 1_000_000;
+    Ok(format!("{:03} {:03}", value / 1_000, value % 1_000))
+}
+
+fn device_approval_context(
+    account_id: &str,
+    request_id: &str,
+    key_version: u32,
+    requester_public_key: &[u8; KEY_BYTES],
+    approver_public_key: &[u8; KEY_BYTES],
+) -> Vec<u8> {
+    let mut context = Vec::with_capacity(180);
+    context.extend_from_slice(b"daylink-device-approval-envelope-v1\0");
+    context.extend_from_slice(account_id.as_bytes());
+    context.push(0);
+    context.extend_from_slice(request_id.as_bytes());
+    context.push(0);
+    context.extend_from_slice(&key_version.to_be_bytes());
+    context.extend_from_slice(requester_public_key);
+    context.extend_from_slice(approver_public_key);
+    context
+}
+
+fn validate_approval_public_key(value: &[u8]) -> Result<[u8; KEY_BYTES], String> {
+    let key: [u8; KEY_BYTES] = value
+        .try_into()
+        .map_err(|_| "device approval public key is invalid".to_owned())?;
+    if all_zero(&key) {
+        return Err("device approval public key is invalid".to_owned());
+    }
+    Ok(key)
+}
+
+fn validate_stored_recovery_metadata(
+    key_version: u32,
+    salt: &[u8],
+    nonce: &[u8],
+    ciphertext: &[u8],
+) -> Result<(), String> {
+    if key_version != CONTENT_KEY_VERSION
+        || salt.len() != RECOVERY_SALT_BYTES
+        || nonce.len() != RECOVERY_NONCE_BYTES
+        || ciphertext.len() != KEY_BYTES + 16
+    {
+        return Err("recovery envelope is invalid".to_owned());
+    }
+    Ok(())
+}
+
+fn canonical_request_id(value: &str) -> Result<String, String> {
+    let parsed =
+        Uuid::parse_str(value).map_err(|_| "device approval request ID is invalid".to_owned())?;
+    let canonical = parsed.hyphenated().to_string();
+    if value.to_ascii_lowercase() != canonical {
+        return Err("device approval request ID is not canonical".to_owned());
+    }
+    Ok(canonical)
+}
+
+fn unix_time_ms() -> Result<u64, String> {
+    let elapsed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| "system clock is invalid".to_owned())?;
+    u64::try_from(elapsed.as_millis()).map_err(|_| "system clock is invalid".to_owned())
+}
+
+fn all_zero(value: &[u8]) -> bool {
+    value.iter().fold(0_u8, |aggregate, item| aggregate | item) == 0
 }
 
 fn initialization_from_pending(
@@ -458,6 +892,7 @@ fn read_vault(
         return Err("vault device binding is invalid".to_owned());
     }
     validate_record(decoded.content_key.as_ref())?;
+    validate_pending_device_approvals(&decoded.pending_device_approvals)?;
     Ok(Some(decoded))
 }
 
@@ -469,6 +904,7 @@ fn write_vault(
 ) -> Result<(), String> {
     validate_device_key(device_vault_key)?;
     validate_record(vault.content_key.as_ref())?;
+    validate_pending_device_approvals(&vault.pending_device_approvals)?;
     let parent = path
         .parent()
         .ok_or_else(|| "vault path is invalid".to_owned())?;
@@ -534,6 +970,24 @@ fn validate_record(record: Option<&ContentKeyRecord>) -> Result<(), String> {
             .is_some_and(|key| key.len() != KEY_BYTES)
     {
         return Err("vault content key record is invalid".to_owned());
+    }
+    Ok(())
+}
+
+fn validate_pending_device_approvals(
+    approvals: &[PendingDeviceApprovalRecord],
+) -> Result<(), String> {
+    if approvals.len() > DEVICE_APPROVAL_MAX_PENDING
+        || approvals.iter().any(|approval| {
+            Uuid::parse_str(&approval.request_id).is_err()
+                || approval.private_key.len() != KEY_BYTES
+                || approval.public_key.len() != DEVICE_APPROVAL_PUBLIC_KEY_BYTES
+                || all_zero(&approval.private_key)
+                || all_zero(&approval.public_key)
+                || approval.expires_at_unix_ms == 0
+        })
+    {
+        return Err("vault device approval record is invalid".to_owned());
     }
     Ok(())
 }
@@ -850,5 +1304,182 @@ mod tests {
         let _ = fs::remove_dir_all(wrong_key_path.parent().expect("wrong key parent"));
         let _ = fs::remove_dir_all(cross_account_path.parent().expect("cross-account parent"));
         let _ = fs::remove_dir_all(tampered_path.parent().expect("tampered parent"));
+    }
+
+    #[test]
+    fn trusted_device_approval_transfers_the_same_cmk_without_server_plaintext() {
+        let source_path = test_path("approval-source");
+        let destination_path = test_path("approval-destination");
+        let account = "8f2e0a0d-574b-4e53-bf82-1ec9c9bc2521";
+        let request_id = Uuid::new_v4().to_string();
+        let source_device_key = generate_device_vault_key().expect("source device key");
+        let destination_device_key = generate_device_vault_key().expect("destination device key");
+        let initialized = initialize_content_key(
+            source_path.to_str().expect("source path"),
+            account,
+            &source_device_key,
+        )
+        .expect("initialize source");
+        acknowledge_recovery_key_saved(
+            source_path.to_str().expect("source path"),
+            account,
+            &source_device_key,
+        )
+        .expect("confirm source");
+        let request = create_device_approval_request(
+            destination_path.to_str().expect("destination path"),
+            account,
+            &destination_device_key,
+            &request_id,
+            unix_time_ms().expect("clock") + 600_000,
+        )
+        .expect("create request");
+        let package = approve_device_request(
+            source_path.to_str().expect("source path"),
+            account,
+            &source_device_key,
+            &request_id,
+            &request.public_key,
+        )
+        .expect("approve request");
+        assert_eq!(request.verification_code, package.verification_code);
+        assert_eq!(request.verification_code.len(), 7);
+        assert!(request.verification_code.as_bytes()[3] == b' ');
+        assert!(
+            complete_device_approval(
+                destination_path.to_str().expect("destination path"),
+                account,
+                &destination_device_key,
+                &request_id,
+                &package.approver_public_key,
+                &package.nonce,
+                &package.ciphertext,
+                package.key_version,
+                &initialized.recovery_salt,
+                &initialized.recovery_nonce,
+                &initialized.recovery_ciphertext,
+            )
+            .expect("complete request")
+        );
+        let source = read_vault(&source_path, account, &source_device_key)
+            .expect("read source")
+            .expect("source vault");
+        let destination = read_vault(&destination_path, account, &destination_device_key)
+            .expect("read destination")
+            .expect("destination vault");
+        assert!(constant_time_bytes_equal(
+            &source.content_key.expect("source content key").cmk,
+            &destination
+                .content_key
+                .expect("destination content key")
+                .cmk,
+        ));
+        let encrypted_vault = fs::read(&destination_path).expect("encrypted destination vault");
+        assert!(
+            !encrypted_vault
+                .windows(request.public_key.len())
+                .any(|window| window == request.public_key)
+        );
+        let debug = format!("{package:?}");
+        assert!(!debug.contains("ciphertext: ["));
+
+        let _ = fs::remove_dir_all(source_path.parent().expect("source parent"));
+        let _ = fs::remove_dir_all(destination_path.parent().expect("destination parent"));
+    }
+
+    #[test]
+    fn trusted_device_approval_rejects_tampering_and_expired_requests() {
+        let source_path = test_path("approval-reject-source");
+        let destination_path = test_path("approval-reject-destination");
+        let account = "8f2e0a0d-574b-4e53-bf82-1ec9c9bc2521";
+        let request_id = Uuid::new_v4().to_string();
+        let source_device_key = generate_device_vault_key().expect("source device key");
+        let destination_device_key = generate_device_vault_key().expect("destination device key");
+        let initialized = initialize_content_key(
+            source_path.to_str().expect("source path"),
+            account,
+            &source_device_key,
+        )
+        .expect("initialize source");
+        acknowledge_recovery_key_saved(
+            source_path.to_str().expect("source path"),
+            account,
+            &source_device_key,
+        )
+        .expect("confirm source");
+        let request = create_device_approval_request(
+            destination_path.to_str().expect("destination path"),
+            account,
+            &destination_device_key,
+            &request_id,
+            unix_time_ms().expect("clock") + 600_000,
+        )
+        .expect("create request");
+        let package = approve_device_request(
+            source_path.to_str().expect("source path"),
+            account,
+            &source_device_key,
+            &request_id,
+            &request.public_key,
+        )
+        .expect("approve request");
+        let mut tampered = package.ciphertext.clone();
+        tampered[0] ^= 1;
+        assert!(
+            !complete_device_approval(
+                destination_path.to_str().expect("destination path"),
+                account,
+                &destination_device_key,
+                &request_id,
+                &package.approver_public_key,
+                &package.nonce,
+                &tampered,
+                package.key_version,
+                &initialized.recovery_salt,
+                &initialized.recovery_nonce,
+                &initialized.recovery_ciphertext,
+            )
+            .expect("reject tampering")
+        );
+        assert_eq!(
+            content_key_status(
+                destination_path.to_str().expect("destination path"),
+                account,
+                &destination_device_key,
+            )
+            .expect("status"),
+            ContentKeyStatus::Missing,
+        );
+        let mut destination = read_vault(&destination_path, account, &destination_device_key)
+            .expect("read destination")
+            .expect("destination vault");
+        destination.pending_device_approvals[0].expires_at_unix_ms =
+            unix_time_ms().expect("clock") - 1;
+        write_vault(
+            &destination_path,
+            account,
+            &destination_device_key,
+            &destination,
+        )
+        .expect("write expired request");
+        assert!(
+            complete_device_approval(
+                destination_path.to_str().expect("destination path"),
+                account,
+                &destination_device_key,
+                &request_id,
+                &package.approver_public_key,
+                &package.nonce,
+                &package.ciphertext,
+                package.key_version,
+                &initialized.recovery_salt,
+                &initialized.recovery_nonce,
+                &initialized.recovery_ciphertext,
+            )
+            .is_err()
+        );
+
+        let _ = fs::remove_dir_all(source_path.parent().expect("source parent"));
+        let _ = fs::remove_dir_all(destination_path.parent().expect("destination parent"));
     }
 }

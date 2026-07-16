@@ -60,6 +60,41 @@ abstract interface class ContentEncryptionSource {
   Future<void> restoreWithRecoveryKey(String encodedKey);
 }
 
+class TrustedDeviceApprovalRequest {
+  const TrustedDeviceApprovalRequest({
+    required this.id,
+    required this.deviceName,
+    required this.requesterPublicKey,
+    required this.verificationCode,
+    required this.createdAt,
+    required this.expiresAt,
+    this.locationLabel,
+  });
+
+  final String id;
+  final String deviceName;
+  final Uint8List requesterPublicKey;
+  final String verificationCode;
+  final DateTime createdAt;
+  final DateTime expiresAt;
+  final String? locationLabel;
+
+  bool get expired => !expiresAt.isAfter(DateTime.now().toUtc());
+
+  @override
+  String toString() =>
+      'TrustedDeviceApprovalRequest(id: $id, deviceName: $deviceName, '
+      'requesterPublicKey: <redacted>, verificationCode: <redacted>)';
+}
+
+abstract interface class TrustedDeviceApprovalSource {
+  Future<TrustedDeviceApprovalRequest?> loadPendingDeviceApproval();
+
+  Future<void> approveDevice(TrustedDeviceApprovalRequest request);
+
+  Future<void> rejectDevice(TrustedDeviceApprovalRequest request);
+}
+
 abstract final class RecoveryKeyCodec {
   static Uint8List decode(String value) {
     if (value.length > 128) throw const FormatException();

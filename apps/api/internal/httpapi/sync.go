@@ -65,7 +65,13 @@ func (s *Server) handleContentKeyEnvelope(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "invalid_key_envelope", "恢复密钥信封无效")
 		return
 	}
-	result, err := s.db.ExecContext(r.Context(), `INSERT INTO content_key_envelopes
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "恢复密钥信封保存失败")
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(r.Context(), `INSERT INTO content_key_envelopes
 		(account_id, key_version, algorithm, kdf, salt, nonce, ciphertext, creator_device_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, identity.AccountID, envelope.KeyVersion, envelope.Algorithm,
 		envelope.KDF, envelope.Salt, envelope.Nonce, envelope.Ciphertext, envelope.CreatorDeviceID)
@@ -74,10 +80,21 @@ func (s *Server) handleContentKeyEnvelope(w http.ResponseWriter, r *http.Request
 			writeError(w, http.StatusInternalServerError, "key_envelope_failed", "恢复密钥信封保存失败")
 			return
 		}
+		trusted, trustErr := tx.ExecContext(r.Context(), `UPDATE app_sessions SET e2ee_trusted = TRUE
+			WHERE id = ? AND account_id = ? AND revoked_at IS NULL`, identity.SessionID, identity.AccountID)
+		if trustErr != nil {
+			writeError(w, http.StatusInternalServerError, "key_envelope_failed", "恢复密钥信封保存失败")
+			return
+		}
+		if rows, rowsErr := trusted.RowsAffected(); rowsErr != nil || rows != 1 || tx.Commit() != nil {
+			writeError(w, http.StatusInternalServerError, "key_envelope_failed", "恢复密钥信封保存失败")
+			return
+		}
 		s.audit(r.Context(), "app:"+identity.AccountID, "app.e2ee.initialize", "app_account", identity.AccountID, "allowed", "high")
 		writeJSON(w, http.StatusCreated, map[string]any{"created": true, "keyVersion": envelope.KeyVersion})
 		return
 	}
+	_ = tx.Rollback()
 	existing, loadErr := s.loadContentKeyEnvelope(r, identity.AccountID)
 	if loadErr != nil {
 		writeError(w, http.StatusInternalServerError, "key_envelope_failed", "恢复密钥信封保存失败")

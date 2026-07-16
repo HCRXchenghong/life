@@ -548,6 +548,7 @@ version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "bytes",
+ "curve25519-dalek",
  "daylink-protocol",
  "flutter_rust_bridge",
  "getrandom 0.4.3",

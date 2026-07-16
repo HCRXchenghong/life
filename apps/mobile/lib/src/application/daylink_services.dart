@@ -8,6 +8,7 @@ import '../data/artifact_client.dart';
 import '../data/artifact_repository.dart';
 import '../data/data_sync_client.dart';
 import '../data/data_sync_repository.dart';
+import '../data/device_approval_client.dart';
 import '../data/key_envelope_client.dart';
 import '../data/operations_repository.dart';
 import '../data/notification_preferences_repository.dart';
@@ -81,6 +82,7 @@ class DaylinkServices {
     final contentEncryption = await ContentEncryptionCoordinator.start(
       accountId: accountId,
       client: KeyEnvelopeClient(apiBaseUri: apiBaseUri),
+      approvalClient: DeviceApprovalClient(apiBaseUri: apiBaseUri),
       accessToken: accessToken,
       refreshAccessToken: refreshAccessToken,
     );
@@ -296,6 +298,15 @@ class DaylinkServices {
 
   Future<void> restoreWithRecoveryKey(String encodedKey) =>
       contentEncryption.restoreWithRecoveryKey(encodedKey);
+
+  Future<TrustedDeviceApprovalRequest?> loadPendingDeviceApproval() =>
+      contentEncryption.loadPendingDeviceApproval();
+
+  Future<void> approveDevice(TrustedDeviceApprovalRequest request) =>
+      contentEncryption.approveDevice(request);
+
+  Future<void> rejectDevice(TrustedDeviceApprovalRequest request) =>
+      contentEncryption.rejectDevice(request);
 
   AppSessionMonitor monitorSession({
     required Uri apiBaseUri,

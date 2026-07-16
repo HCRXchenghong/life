@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:daylink_mobile/src/domain/sync/content_encryption_models.dart';
 import 'package:daylink_mobile/src/presentation/end_to_end_encryption_page.dart';
 import 'package:flutter/material.dart';
@@ -89,6 +91,33 @@ void main() {
       expect(find.text('已开启'), findsOneWidget);
     },
   );
+
+  testWidgets('opens a pending trusted-device request from enabled state', (
+    tester,
+  ) async {
+    final source = _FakeContentEncryptionSource(
+      status: ContentEncryptionSetupStatus.enabled,
+    );
+    final approval = _FakeApprovalSource();
+    TrustedDeviceApprovalRequest? opened;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EndToEndEncryptionPage(
+          source: source,
+          approvalSource: approval,
+          onRecoveryKeyReady: (_) async {},
+          onOpenUnlock: () async {},
+          onOpenDeviceApproval: (request) async => opened = request,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('查看新设备请求'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('e2ee-enable')));
+    await tester.pumpAndSettle();
+    expect(opened?.verificationCode, '482 731');
+  });
 }
 
 class _FakeContentEncryptionSource implements ContentEncryptionSource {
@@ -125,4 +154,25 @@ class _FakeContentEncryptionSource implements ContentEncryptionSource {
       status: ContentEncryptionSetupStatus.enabled,
     );
   }
+}
+
+class _FakeApprovalSource implements TrustedDeviceApprovalSource {
+  final request = TrustedDeviceApprovalRequest(
+    id: '9b276a3e-b141-4d91-8dbf-0f217b62b071',
+    deviceName: 'Daylink iPhone',
+    requesterPublicKey: Uint8List.fromList(List<int>.filled(32, 7)),
+    verificationCode: '482 731',
+    createdAt: DateTime.now().toUtc(),
+    expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
+  );
+
+  @override
+  Future<void> approveDevice(TrustedDeviceApprovalRequest request) async {}
+
+  @override
+  Future<TrustedDeviceApprovalRequest?> loadPendingDeviceApproval() async =>
+      request;
+
+  @override
+  Future<void> rejectDevice(TrustedDeviceApprovalRequest request) async {}
 }

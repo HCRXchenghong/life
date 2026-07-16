@@ -66,7 +66,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => 884366365;
+  int get rustContentHash => -1265920917;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -157,6 +157,28 @@ abstract class RustLibApi extends BaseApi {
     required List<int> deviceVaultKey,
   });
 
+  Future<BridgeDeviceApprovalPackage> crateApiMobileApproveDeviceRequest({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String requestId,
+    required List<int> requesterPublicKey,
+  });
+
+  Future<bool> crateApiMobileCompleteDeviceApproval({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String requestId,
+    required List<int> approverPublicKey,
+    required List<int> nonce,
+    required List<int> ciphertext,
+    required int keyVersion,
+    required List<int> recoverySalt,
+    required List<int> recoveryNonce,
+    required List<int> recoveryCiphertext,
+  });
+
   Future<BridgeContentKeyStatus> crateApiMobileContentKeyStatus({
     required String vaultPath,
     required String accountId,
@@ -164,6 +186,28 @@ abstract class RustLibApi extends BaseApi {
   });
 
   Future<String> crateApiMobileCoreApiVersion();
+
+  Future<BridgeDeviceApprovalRequestKey>
+  crateApiMobileCreateDeviceApprovalRequest({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String requestId,
+    required BigInt expiresAtUnixMs,
+  });
+
+  Future<String> crateApiMobileDeviceApprovalVerificationCode({
+    required String accountId,
+    required String requestId,
+    required List<int> requesterPublicKey,
+  });
+
+  Future<void> crateApiMobileDiscardDeviceApprovalRequest({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String requestId,
+  });
 
   Future<void> crateApiMobileDiscardPendingContentKey({
     required String vaultPath,
@@ -829,6 +873,136 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<BridgeDeviceApprovalPackage> crateApiMobileApproveDeviceRequest({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String requestId,
+    required List<int> requesterPublicKey,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(vaultPath, serializer);
+          sse_encode_String(accountId, serializer);
+          sse_encode_list_prim_u_8_loose(deviceVaultKey, serializer);
+          sse_encode_String(requestId, serializer);
+          sse_encode_list_prim_u_8_loose(requesterPublicKey, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 16,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bridge_device_approval_package,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiMobileApproveDeviceRequestConstMeta,
+        argValues: [
+          vaultPath,
+          accountId,
+          deviceVaultKey,
+          requestId,
+          requesterPublicKey,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMobileApproveDeviceRequestConstMeta =>
+      const TaskConstMeta(
+        debugName: "approve_device_request",
+        argNames: [
+          "vaultPath",
+          "accountId",
+          "deviceVaultKey",
+          "requestId",
+          "requesterPublicKey",
+        ],
+      );
+
+  @override
+  Future<bool> crateApiMobileCompleteDeviceApproval({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String requestId,
+    required List<int> approverPublicKey,
+    required List<int> nonce,
+    required List<int> ciphertext,
+    required int keyVersion,
+    required List<int> recoverySalt,
+    required List<int> recoveryNonce,
+    required List<int> recoveryCiphertext,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(vaultPath, serializer);
+          sse_encode_String(accountId, serializer);
+          sse_encode_list_prim_u_8_loose(deviceVaultKey, serializer);
+          sse_encode_String(requestId, serializer);
+          sse_encode_list_prim_u_8_loose(approverPublicKey, serializer);
+          sse_encode_list_prim_u_8_loose(nonce, serializer);
+          sse_encode_list_prim_u_8_loose(ciphertext, serializer);
+          sse_encode_u_32(keyVersion, serializer);
+          sse_encode_list_prim_u_8_loose(recoverySalt, serializer);
+          sse_encode_list_prim_u_8_loose(recoveryNonce, serializer);
+          sse_encode_list_prim_u_8_loose(recoveryCiphertext, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 17,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiMobileCompleteDeviceApprovalConstMeta,
+        argValues: [
+          vaultPath,
+          accountId,
+          deviceVaultKey,
+          requestId,
+          approverPublicKey,
+          nonce,
+          ciphertext,
+          keyVersion,
+          recoverySalt,
+          recoveryNonce,
+          recoveryCiphertext,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMobileCompleteDeviceApprovalConstMeta =>
+      const TaskConstMeta(
+        debugName: "complete_device_approval",
+        argNames: [
+          "vaultPath",
+          "accountId",
+          "deviceVaultKey",
+          "requestId",
+          "approverPublicKey",
+          "nonce",
+          "ciphertext",
+          "keyVersion",
+          "recoverySalt",
+          "recoveryNonce",
+          "recoveryCiphertext",
+        ],
+      );
+
+  @override
   Future<BridgeContentKeyStatus> crateApiMobileContentKeyStatus({
     required String vaultPath,
     required String accountId,
@@ -844,7 +1018,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 18,
             port: port_,
           );
         },
@@ -874,7 +1048,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 19,
             port: port_,
           );
         },
@@ -893,6 +1067,136 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "core_api_version", argNames: []);
 
   @override
+  Future<BridgeDeviceApprovalRequestKey>
+  crateApiMobileCreateDeviceApprovalRequest({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String requestId,
+    required BigInt expiresAtUnixMs,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(vaultPath, serializer);
+          sse_encode_String(accountId, serializer);
+          sse_encode_list_prim_u_8_loose(deviceVaultKey, serializer);
+          sse_encode_String(requestId, serializer);
+          sse_encode_u_64(expiresAtUnixMs, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 20,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bridge_device_approval_request_key,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiMobileCreateDeviceApprovalRequestConstMeta,
+        argValues: [
+          vaultPath,
+          accountId,
+          deviceVaultKey,
+          requestId,
+          expiresAtUnixMs,
+        ],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMobileCreateDeviceApprovalRequestConstMeta =>
+      const TaskConstMeta(
+        debugName: "create_device_approval_request",
+        argNames: [
+          "vaultPath",
+          "accountId",
+          "deviceVaultKey",
+          "requestId",
+          "expiresAtUnixMs",
+        ],
+      );
+
+  @override
+  Future<String> crateApiMobileDeviceApprovalVerificationCode({
+    required String accountId,
+    required String requestId,
+    required List<int> requesterPublicKey,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(accountId, serializer);
+          sse_encode_String(requestId, serializer);
+          sse_encode_list_prim_u_8_loose(requesterPublicKey, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 21,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiMobileDeviceApprovalVerificationCodeConstMeta,
+        argValues: [accountId, requestId, requesterPublicKey],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMobileDeviceApprovalVerificationCodeConstMeta =>
+      const TaskConstMeta(
+        debugName: "device_approval_verification_code",
+        argNames: ["accountId", "requestId", "requesterPublicKey"],
+      );
+
+  @override
+  Future<void> crateApiMobileDiscardDeviceApprovalRequest({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String requestId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(vaultPath, serializer);
+          sse_encode_String(accountId, serializer);
+          sse_encode_list_prim_u_8_loose(deviceVaultKey, serializer);
+          sse_encode_String(requestId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 22,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiMobileDiscardDeviceApprovalRequestConstMeta,
+        argValues: [vaultPath, accountId, deviceVaultKey, requestId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMobileDiscardDeviceApprovalRequestConstMeta =>
+      const TaskConstMeta(
+        debugName: "discard_device_approval_request",
+        argNames: ["vaultPath", "accountId", "deviceVaultKey", "requestId"],
+      );
+
+  @override
   Future<void> crateApiMobileDiscardPendingContentKey({
     required String vaultPath,
     required String accountId,
@@ -908,7 +1212,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 23,
             port: port_,
           );
         },
@@ -938,7 +1242,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 24,
             port: port_,
           );
         },
@@ -965,7 +1269,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 25,
             port: port_,
           );
         },
@@ -999,7 +1303,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 26,
             port: port_,
           );
         },
@@ -1036,7 +1340,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 22,
+            funcId: 27,
             port: port_,
           );
         },
@@ -1083,7 +1387,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 28,
             port: port_,
           );
         },
@@ -1378,6 +1682,37 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   BridgeContentKeyStatus dco_decode_bridge_content_key_status(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return BridgeContentKeyStatus.values[raw as int];
+  }
+
+  @protected
+  BridgeDeviceApprovalPackage dco_decode_bridge_device_approval_package(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return BridgeDeviceApprovalPackage(
+      approverPublicKey: dco_decode_list_prim_u_8_strict(arr[0]),
+      nonce: dco_decode_list_prim_u_8_strict(arr[1]),
+      ciphertext: dco_decode_list_prim_u_8_strict(arr[2]),
+      keyVersion: dco_decode_u_32(arr[3]),
+      verificationCode: dco_decode_String(arr[4]),
+    );
+  }
+
+  @protected
+  BridgeDeviceApprovalRequestKey dco_decode_bridge_device_approval_request_key(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 2)
+      throw Exception('unexpected arr length: expect 2 but see ${arr.length}');
+    return BridgeDeviceApprovalRequestKey(
+      publicKey: dco_decode_list_prim_u_8_strict(arr[0]),
+      verificationCode: dco_decode_String(arr[1]),
+    );
   }
 
   @protected
@@ -1769,6 +2104,38 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  BridgeDeviceApprovalPackage sse_decode_bridge_device_approval_package(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_approverPublicKey = sse_decode_list_prim_u_8_strict(deserializer);
+    var var_nonce = sse_decode_list_prim_u_8_strict(deserializer);
+    var var_ciphertext = sse_decode_list_prim_u_8_strict(deserializer);
+    var var_keyVersion = sse_decode_u_32(deserializer);
+    var var_verificationCode = sse_decode_String(deserializer);
+    return BridgeDeviceApprovalPackage(
+      approverPublicKey: var_approverPublicKey,
+      nonce: var_nonce,
+      ciphertext: var_ciphertext,
+      keyVersion: var_keyVersion,
+      verificationCode: var_verificationCode,
+    );
+  }
+
+  @protected
+  BridgeDeviceApprovalRequestKey sse_decode_bridge_device_approval_request_key(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_publicKey = sse_decode_list_prim_u_8_strict(deserializer);
+    var var_verificationCode = sse_decode_String(deserializer);
+    return BridgeDeviceApprovalRequestKey(
+      publicKey: var_publicKey,
+      verificationCode: var_verificationCode,
+    );
+  }
+
+  @protected
   BridgeHostKey sse_decode_bridge_host_key(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_algorithm = sse_decode_String(deserializer);
@@ -2155,6 +2522,29 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
+  void sse_encode_bridge_device_approval_package(
+    BridgeDeviceApprovalPackage self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_prim_u_8_strict(self.approverPublicKey, serializer);
+    sse_encode_list_prim_u_8_strict(self.nonce, serializer);
+    sse_encode_list_prim_u_8_strict(self.ciphertext, serializer);
+    sse_encode_u_32(self.keyVersion, serializer);
+    sse_encode_String(self.verificationCode, serializer);
+  }
+
+  @protected
+  void sse_encode_bridge_device_approval_request_key(
+    BridgeDeviceApprovalRequestKey self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_list_prim_u_8_strict(self.publicKey, serializer);
+    sse_encode_String(self.verificationCode, serializer);
   }
 
   @protected

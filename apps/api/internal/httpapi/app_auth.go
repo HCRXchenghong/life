@@ -116,10 +116,11 @@ func (s *Server) handleAppRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	var sessionID, accountID, deviceName string
-	err = tx.QueryRowContext(r.Context(), `SELECT s.id, s.account_id, s.device_name FROM app_sessions s
-      JOIN app_accounts a ON a.id = s.account_id WHERE s.refresh_token_hash = ? AND s.revoked_at IS NULL
-      AND s.refresh_expires_at > UTC_TIMESTAMP(6) AND a.status = 'active' FOR UPDATE`, security.SHA256(input.RefreshToken)).
-		Scan(&sessionID, &accountID, &deviceName)
+	var e2eeTrusted bool
+	err = tx.QueryRowContext(r.Context(), `SELECT s.id, s.account_id, s.device_name, s.e2ee_trusted FROM app_sessions s
+		JOIN app_accounts a ON a.id = s.account_id WHERE s.refresh_token_hash = ? AND s.revoked_at IS NULL
+		AND s.refresh_expires_at > UTC_TIMESTAMP(6) AND a.status = 'active' FOR UPDATE`, security.SHA256(input.RefreshToken)).
+		Scan(&sessionID, &accountID, &deviceName, &e2eeTrusted)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "invalid_refresh_token", "登录已失效，请重新登录")
 		return
@@ -128,7 +129,7 @@ func (s *Server) handleAppRefresh(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "refresh_failed", "刷新登录失败")
 		return
 	}
-	pair, err := s.newAppSessionWith(r.Context(), tx, accountID, deviceName)
+	pair, err := s.newAppSessionWith(r.Context(), tx, accountID, deviceName, e2eeTrusted)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "refresh_failed", "刷新登录失败")
 		return
@@ -268,7 +269,7 @@ func (s *Server) handleAppPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	var pair appTokenPair
 	if err == nil {
-		pair, err = s.newAppSessionWith(r.Context(), tx, identity.AccountID, identity.DeviceName)
+		pair, err = s.newAppSessionWith(r.Context(), tx, identity.AccountID, identity.DeviceName, identity.E2EETrusted)
 	}
 	if err != nil || tx.Commit() != nil {
 		writeError(w, http.StatusInternalServerError, "password_change_failed", "修改密码失败")

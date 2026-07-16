@@ -20,6 +20,32 @@ class LocalContentKeyInitialization {
   final List<int> recoveryCiphertext;
 }
 
+class LocalDeviceApprovalRequestKey {
+  const LocalDeviceApprovalRequestKey({
+    required this.publicKey,
+    required this.verificationCode,
+  });
+
+  final List<int> publicKey;
+  final String verificationCode;
+}
+
+class LocalDeviceApprovalPackage {
+  const LocalDeviceApprovalPackage({
+    required this.approverPublicKey,
+    required this.nonce,
+    required this.ciphertext,
+    required this.keyVersion,
+    required this.verificationCode,
+  });
+
+  final List<int> approverPublicKey;
+  final List<int> nonce;
+  final List<int> ciphertext;
+  final int keyVersion;
+  final String verificationCode;
+}
+
 abstract interface class ContentKeyVault {
   Future<List<int>> generateDeviceVaultKey();
 
@@ -56,6 +82,20 @@ abstract interface class ContentKeyVault {
     required List<int> recoverySalt,
     required List<int> recoveryNonce,
     required List<int> recoveryCiphertext,
+  });
+
+  Future<String> deviceApprovalVerificationCode({
+    required String accountId,
+    required String requestId,
+    required List<int> requesterPublicKey,
+  });
+
+  Future<LocalDeviceApprovalPackage> approveDeviceRequest({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String requestId,
+    required List<int> requesterPublicKey,
   });
 }
 
@@ -144,4 +184,39 @@ class NativeContentKeyVault implements ContentKeyVault {
     recoveryNonce: recoveryNonce,
     recoveryCiphertext: recoveryCiphertext,
   );
+
+  @override
+  Future<String> deviceApprovalVerificationCode({
+    required String accountId,
+    required String requestId,
+    required List<int> requesterPublicKey,
+  }) => rust.deviceApprovalVerificationCode(
+    accountId: accountId,
+    requestId: requestId,
+    requesterPublicKey: requesterPublicKey,
+  );
+
+  @override
+  Future<LocalDeviceApprovalPackage> approveDeviceRequest({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String requestId,
+    required List<int> requesterPublicKey,
+  }) async {
+    final result = await rust.approveDeviceRequest(
+      vaultPath: vaultPath,
+      accountId: accountId,
+      deviceVaultKey: deviceVaultKey,
+      requestId: requestId,
+      requesterPublicKey: requesterPublicKey,
+    );
+    return LocalDeviceApprovalPackage(
+      approverPublicKey: result.approverPublicKey,
+      nonce: result.nonce,
+      ciphertext: result.ciphertext,
+      keyVersion: result.keyVersion,
+      verificationCode: result.verificationCode,
+    );
+  }
 }

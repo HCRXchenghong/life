@@ -57,6 +57,7 @@ type appIdentity struct {
 	SessionID              string
 	Username               string
 	DeviceName             string
+	E2EETrusted            bool
 	PasswordChangeRequired bool
 }
 
@@ -167,6 +168,12 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/sync/changes", s.handleSyncChanges)
 	s.mux.HandleFunc("GET /api/sync/key-envelope", s.handleContentKeyEnvelope)
 	s.mux.HandleFunc("PUT /api/sync/key-envelope", s.handleContentKeyEnvelope)
+	s.mux.HandleFunc("GET /api/sync/device-approvals", s.handleDeviceApprovals)
+	s.mux.HandleFunc("POST /api/sync/device-approvals", s.handleDeviceApprovals)
+	s.mux.HandleFunc("GET /api/sync/device-approvals/{id}", s.handleDeviceApprovalStatus)
+	s.mux.HandleFunc("POST /api/sync/device-approvals/{id}/approve", s.handleDeviceApprovalApprove)
+	s.mux.HandleFunc("POST /api/sync/device-approvals/{id}/reject", s.handleDeviceApprovalReject)
+	s.mux.HandleFunc("POST /api/sync/device-approvals/{id}/consume", s.handleDeviceApprovalConsume)
 	s.mux.HandleFunc("PUT /api/sync/objects/{collection}/{id}", s.handleSyncObject)
 	s.mux.HandleFunc("DELETE /api/sync/objects/{collection}/{id}", s.handleSyncObject)
 	s.mux.HandleFunc("GET /api/sync/events", s.handleSyncEvents)
@@ -273,11 +280,11 @@ func (s *Server) requireApp(w http.ResponseWriter, r *http.Request) (*appIdentit
 	}
 	hash := security.SHA256(strings.TrimPrefix(authorization, "Bearer "))
 	var identity appIdentity
-	err := s.db.QueryRowContext(r.Context(), `SELECT a.id, s.id, a.username, s.device_name, a.password_change_required
+	err := s.db.QueryRowContext(r.Context(), `SELECT a.id, s.id, a.username, s.device_name, s.e2ee_trusted, a.password_change_required
       FROM app_sessions s JOIN app_accounts a ON a.id = s.account_id
       WHERE s.access_token_hash = ? AND s.revoked_at IS NULL AND s.access_expires_at > UTC_TIMESTAMP(6)
         AND a.status = 'active' LIMIT 1`, hash).
-		Scan(&identity.AccountID, &identity.SessionID, &identity.Username, &identity.DeviceName, &identity.PasswordChangeRequired)
+		Scan(&identity.AccountID, &identity.SessionID, &identity.Username, &identity.DeviceName, &identity.E2EETrusted, &identity.PasswordChangeRequired)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "unauthorized", "App 登录已失效")
 		return nil, false
@@ -316,10 +323,10 @@ type appTokenPair struct {
 }
 
 func (s *Server) newAppSession(ctx context.Context, accountID, deviceName string) (appTokenPair, error) {
-	return s.newAppSessionWith(ctx, s.db, accountID, deviceName)
+	return s.newAppSessionWith(ctx, s.db, accountID, deviceName, false)
 }
 
-func (s *Server) newAppSessionWith(ctx context.Context, execer contextExecer, accountID, deviceName string) (appTokenPair, error) {
+func (s *Server) newAppSessionWith(ctx context.Context, execer contextExecer, accountID, deviceName string, e2eeTrusted bool) (appTokenPair, error) {
 	access, err := security.RandomToken("dlka_")
 	if err != nil {
 		return appTokenPair{}, err
@@ -335,10 +342,10 @@ func (s *Server) newAppSessionWith(ctx context.Context, execer contextExecer, ac
 	now := time.Now().UTC()
 	pair := appTokenPair{access, now.Add(appAccessTTL), refresh, now.Add(appRefreshTTL)}
 	_, err = execer.ExecContext(ctx, `INSERT INTO app_sessions
-      (id, account_id, access_token_hash, refresh_token_hash, device_name,
-       access_expires_at, refresh_expires_at, last_seen_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, id, accountID, security.SHA256(access),
-		security.SHA256(refresh), deviceName, pair.AccessExpiresAt, pair.RefreshExpiresAt, now)
+		(id, account_id, access_token_hash, refresh_token_hash, device_name, e2ee_trusted,
+		 access_expires_at, refresh_expires_at, last_seen_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, accountID, security.SHA256(access),
+		security.SHA256(refresh), deviceName, e2eeTrusted, pair.AccessExpiresAt, pair.RefreshExpiresAt, now)
 	return pair, err
 }
 

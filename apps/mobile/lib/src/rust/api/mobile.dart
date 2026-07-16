@@ -9,7 +9,7 @@ import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'mobile.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `bounded_timeout`, `validate_host_and_port`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`
 
 Future<String> coreApiVersion() =>
     RustLib.instance.api.crateApiMobileCoreApiVersion();
@@ -71,6 +71,82 @@ Future<bool> restoreContentKey({
   accountId: accountId,
   deviceVaultKey: deviceVaultKey,
   recoveryKey: recoveryKey,
+  keyVersion: keyVersion,
+  recoverySalt: recoverySalt,
+  recoveryNonce: recoveryNonce,
+  recoveryCiphertext: recoveryCiphertext,
+);
+
+Future<BridgeDeviceApprovalRequestKey> createDeviceApprovalRequest({
+  required String vaultPath,
+  required String accountId,
+  required List<int> deviceVaultKey,
+  required String requestId,
+  required BigInt expiresAtUnixMs,
+}) => RustLib.instance.api.crateApiMobileCreateDeviceApprovalRequest(
+  vaultPath: vaultPath,
+  accountId: accountId,
+  deviceVaultKey: deviceVaultKey,
+  requestId: requestId,
+  expiresAtUnixMs: expiresAtUnixMs,
+);
+
+Future<void> discardDeviceApprovalRequest({
+  required String vaultPath,
+  required String accountId,
+  required List<int> deviceVaultKey,
+  required String requestId,
+}) => RustLib.instance.api.crateApiMobileDiscardDeviceApprovalRequest(
+  vaultPath: vaultPath,
+  accountId: accountId,
+  deviceVaultKey: deviceVaultKey,
+  requestId: requestId,
+);
+
+Future<String> deviceApprovalVerificationCode({
+  required String accountId,
+  required String requestId,
+  required List<int> requesterPublicKey,
+}) => RustLib.instance.api.crateApiMobileDeviceApprovalVerificationCode(
+  accountId: accountId,
+  requestId: requestId,
+  requesterPublicKey: requesterPublicKey,
+);
+
+Future<BridgeDeviceApprovalPackage> approveDeviceRequest({
+  required String vaultPath,
+  required String accountId,
+  required List<int> deviceVaultKey,
+  required String requestId,
+  required List<int> requesterPublicKey,
+}) => RustLib.instance.api.crateApiMobileApproveDeviceRequest(
+  vaultPath: vaultPath,
+  accountId: accountId,
+  deviceVaultKey: deviceVaultKey,
+  requestId: requestId,
+  requesterPublicKey: requesterPublicKey,
+);
+
+Future<bool> completeDeviceApproval({
+  required String vaultPath,
+  required String accountId,
+  required List<int> deviceVaultKey,
+  required String requestId,
+  required List<int> approverPublicKey,
+  required List<int> nonce,
+  required List<int> ciphertext,
+  required int keyVersion,
+  required List<int> recoverySalt,
+  required List<int> recoveryNonce,
+  required List<int> recoveryCiphertext,
+}) => RustLib.instance.api.crateApiMobileCompleteDeviceApproval(
+  vaultPath: vaultPath,
+  accountId: accountId,
+  deviceVaultKey: deviceVaultKey,
+  requestId: requestId,
+  approverPublicKey: approverPublicKey,
+  nonce: nonce,
+  ciphertext: ciphertext,
   keyVersion: keyVersion,
   recoverySalt: recoverySalt,
   recoveryNonce: recoveryNonce,
@@ -288,6 +364,62 @@ class BridgeContentKeyInitialization {
 }
 
 enum BridgeContentKeyStatus { missing, pendingRecoveryConfirmation, ready }
+
+class BridgeDeviceApprovalPackage {
+  final Uint8List approverPublicKey;
+  final Uint8List nonce;
+  final Uint8List ciphertext;
+  final int keyVersion;
+  final String verificationCode;
+
+  const BridgeDeviceApprovalPackage({
+    required this.approverPublicKey,
+    required this.nonce,
+    required this.ciphertext,
+    required this.keyVersion,
+    required this.verificationCode,
+  });
+
+  @override
+  int get hashCode =>
+      approverPublicKey.hashCode ^
+      nonce.hashCode ^
+      ciphertext.hashCode ^
+      keyVersion.hashCode ^
+      verificationCode.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BridgeDeviceApprovalPackage &&
+          runtimeType == other.runtimeType &&
+          approverPublicKey == other.approverPublicKey &&
+          nonce == other.nonce &&
+          ciphertext == other.ciphertext &&
+          keyVersion == other.keyVersion &&
+          verificationCode == other.verificationCode;
+}
+
+class BridgeDeviceApprovalRequestKey {
+  final Uint8List publicKey;
+  final String verificationCode;
+
+  const BridgeDeviceApprovalRequestKey({
+    required this.publicKey,
+    required this.verificationCode,
+  });
+
+  @override
+  int get hashCode => publicKey.hashCode ^ verificationCode.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BridgeDeviceApprovalRequestKey &&
+          runtimeType == other.runtimeType &&
+          publicKey == other.publicKey &&
+          verificationCode == other.verificationCode;
+}
 
 class BridgeHostKey {
   final String algorithm;

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:daylink_mobile/main.dart';
 import 'package:daylink_mobile/src/data/app_authentication.dart';
@@ -336,6 +337,62 @@ void main() {
     expect(find.byKey(const Key('recovery-unlock-title')), findsNothing);
     expect(find.text('已开启'), findsOneWidget);
   });
+
+  testWidgets('trusted device opens and approves a real pending route', (
+    tester,
+  ) async {
+    final authentication = _FakeAuthentication(
+      restored: _FakeAuthentication.session(
+        username: 'trusted-user',
+        passwordChangeRequired: false,
+      ),
+    );
+    final runtime = _FakeScheduleRuntime(
+      encryptionStatus: ContentEncryptionSetupStatus.enabled,
+      pendingApproval: TrustedDeviceApprovalRequest(
+        id: '9b276a3e-b141-4d91-8dbf-0f217b62b071',
+        deviceName: 'Daylink iPhone',
+        requesterPublicKey: Uint8List.fromList(List<int>.filled(32, 7)),
+        verificationCode: '482 731',
+        createdAt: DateTime.now().toUtc(),
+        expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
+        locationLabel: '上海',
+      ),
+    );
+    await tester.pumpWidget(
+      DaylinkApp(
+        authentication: authentication,
+        runtimeFactory: (_, _) async => runtime,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('nav-me')));
+    await tester.pumpAndSettle();
+    final sync = find.byKey(const Key('my-sync'));
+    await tester.ensureVisible(sync);
+    await tester.tap(sync);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('sync-encryption')));
+    await tester.pumpAndSettle();
+    expect(find.text('查看新设备请求'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('e2ee-enable')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('device-approval-title')), findsOneWidget);
+    expect(find.text('482 731'), findsOneWidget);
+    await tester.drag(
+      find.byKey(const Key('device-approval-scroll')),
+      const Offset(0, -420),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('device-approval-confirm')));
+    await tester.pumpAndSettle();
+
+    expect(runtime.approveCalls, 1);
+    expect(find.byKey(const Key('device-approval-title')), findsNothing);
+    expect(find.text('已开启'), findsOneWidget);
+  });
 }
 
 class _FakeAuthentication implements AppAuthentication {
@@ -445,16 +502,20 @@ class _FakeScheduleRuntime
         AccountEntitlementSource,
         NotificationSettingsSource,
         DataSyncSource,
-        ContentEncryptionSource {
+        ContentEncryptionSource,
+        TrustedDeviceApprovalSource {
   _FakeScheduleRuntime({
     ContentEncryptionSetupStatus encryptionStatus =
         ContentEncryptionSetupStatus.notConfigured,
+    this.pendingApproval,
   }) : _contentEncryptionState = ContentEncryptionState(
          status: encryptionStatus,
        );
 
   final _source = _EmptyScheduleSource();
   final _hosts = _EmptyHostSource();
+  TrustedDeviceApprovalRequest? pendingApproval;
+  var approveCalls = 0;
 
   @override
   ScheduleEventSource get schedules => _source;
@@ -583,6 +644,21 @@ class _FakeScheduleRuntime
     _contentEncryptionState = const ContentEncryptionState(
       status: ContentEncryptionSetupStatus.enabled,
     );
+  }
+
+  @override
+  Future<void> approveDevice(TrustedDeviceApprovalRequest request) async {
+    approveCalls++;
+    pendingApproval = null;
+  }
+
+  @override
+  Future<TrustedDeviceApprovalRequest?> loadPendingDeviceApproval() async =>
+      pendingApproval;
+
+  @override
+  Future<void> rejectDevice(TrustedDeviceApprovalRequest request) async {
+    pendingApproval = null;
   }
 
   @override

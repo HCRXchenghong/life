@@ -148,6 +148,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   BridgeContentKeyStatus dco_decode_bridge_content_key_status(dynamic raw);
 
   @protected
+  BridgeDeviceApprovalPackage dco_decode_bridge_device_approval_package(
+    dynamic raw,
+  );
+
+  @protected
+  BridgeDeviceApprovalRequestKey dco_decode_bridge_device_approval_request_key(
+    dynamic raw,
+  );
+
+  @protected
   BridgeHostKey dco_decode_bridge_host_key(dynamic raw);
 
   @protected
@@ -307,6 +317,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   BridgeContentKeyStatus sse_decode_bridge_content_key_status(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  BridgeDeviceApprovalPackage sse_decode_bridge_device_approval_package(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  BridgeDeviceApprovalRequestKey sse_decode_bridge_device_approval_request_key(
     SseDeserializer deserializer,
   );
 
@@ -492,6 +512,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_bridge_content_key_status(
     BridgeContentKeyStatus self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_bridge_device_approval_package(
+    BridgeDeviceApprovalPackage self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_bridge_device_approval_request_key(
+    BridgeDeviceApprovalRequestKey self,
     SseSerializer serializer,
   );
 

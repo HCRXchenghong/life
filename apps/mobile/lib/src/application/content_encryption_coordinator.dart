@@ -7,18 +7,21 @@ import 'package:path_provider/path_provider.dart';
 
 import '../data/app_session_monitor.dart';
 import '../data/device_vault_key_store.dart';
+import '../data/device_approval_client.dart';
 import '../data/key_envelope_client.dart';
 import '../domain/sync/content_encryption_models.dart';
 import '../domain/sync/data_sync_models.dart';
 import '../platform/content_key_vault.dart';
 
-class ContentEncryptionCoordinator implements ContentEncryptionSource {
+class ContentEncryptionCoordinator
+    implements ContentEncryptionSource, TrustedDeviceApprovalSource {
   factory ContentEncryptionCoordinator({
     required String accountId,
     required String vaultPath,
     required ContentKeyVault vault,
     required DeviceVaultKeyStore deviceKeyStore,
     required KeyEnvelopeTransport client,
+    required DeviceApprovalTransport approvalClient,
     required AccessTokenProvider accessToken,
     required SessionRefreshCallback refreshAccessToken,
   }) => ContentEncryptionCoordinator._(
@@ -27,6 +30,7 @@ class ContentEncryptionCoordinator implements ContentEncryptionSource {
     vault: vault,
     deviceKeyStore: deviceKeyStore,
     client: client,
+    approvalClient: approvalClient,
     accessToken: accessToken,
     refreshAccessToken: refreshAccessToken,
   );
@@ -37,6 +41,7 @@ class ContentEncryptionCoordinator implements ContentEncryptionSource {
     required this._vault,
     required this._deviceKeyStore,
     required this._client,
+    required this._approvalClient,
     required this._accessToken,
     required this._refreshAccessToken,
   }) : _accountId = _canonicalAccountId(accountId),
@@ -45,6 +50,7 @@ class ContentEncryptionCoordinator implements ContentEncryptionSource {
   static Future<ContentEncryptionCoordinator> start({
     required String accountId,
     required KeyEnvelopeTransport client,
+    required DeviceApprovalTransport approvalClient,
     required AccessTokenProvider accessToken,
     required SessionRefreshCallback refreshAccessToken,
     ContentKeyVault vault = const NativeContentKeyVault(),
@@ -65,6 +71,7 @@ class ContentEncryptionCoordinator implements ContentEncryptionSource {
       vault: vault,
       deviceKeyStore: deviceKeyStore ?? PlatformDeviceVaultKeyStore(),
       client: client,
+      approvalClient: approvalClient,
       accessToken: accessToken,
       refreshAccessToken: refreshAccessToken,
     );
@@ -75,11 +82,13 @@ class ContentEncryptionCoordinator implements ContentEncryptionSource {
   final ContentKeyVault _vault;
   final DeviceVaultKeyStore _deviceKeyStore;
   final KeyEnvelopeTransport _client;
+  final DeviceApprovalTransport _approvalClient;
   final AccessTokenProvider _accessToken;
   final SessionRefreshCallback _refreshAccessToken;
   Future<List<int>>? _deviceKeyFuture;
   Future<RecoveryKeyDraft>? _activePreparation;
   Future<void>? _activeRestoration;
+  Future<void>? _activeDeviceApproval;
   bool _closed = false;
 
   @override
@@ -292,6 +301,116 @@ class ContentEncryptionCoordinator implements ContentEncryptionSource {
     }
   }
 
+  @override
+  Future<TrustedDeviceApprovalRequest?> loadPendingDeviceApproval() async {
+    _ensureOpen();
+    if (await _localStatus() != LocalContentKeyStatus.ready) return null;
+    late List<RemoteDeviceApprovalRequest> requests;
+    try {
+      requests = await _authenticatedApproval(
+        (token) => _approvalClient.listPending(accessToken: token),
+      );
+    } on DeviceApprovalClientException catch (error) {
+      throw ContentEncryptionException(error.message);
+    }
+    final now = DateTime.now().toUtc();
+    for (final request in requests) {
+      if (!request.expiresAt.isAfter(now)) continue;
+      late String code;
+      try {
+        code = await _vault.deviceApprovalVerificationCode(
+          accountId: _accountId,
+          requestId: request.id,
+          requesterPublicKey: request.publicKey,
+        );
+      } on Object {
+        continue;
+      }
+      if (!RegExp(r'^\d{3} \d{3}$').hasMatch(code)) continue;
+      return TrustedDeviceApprovalRequest(
+        id: request.id,
+        deviceName: request.deviceName,
+        requesterPublicKey: Uint8List.fromList(request.publicKey),
+        verificationCode: code,
+        createdAt: request.createdAt,
+        expiresAt: request.expiresAt,
+      );
+    }
+    return null;
+  }
+
+  @override
+  Future<void> approveDevice(TrustedDeviceApprovalRequest request) {
+    _ensureOpen();
+    final active = _activeDeviceApproval;
+    if (active != null) return active;
+    final operation = _approveDevice(
+      request,
+    ).whenComplete(() => _activeDeviceApproval = null);
+    _activeDeviceApproval = operation;
+    return operation;
+  }
+
+  Future<void> _approveDevice(TrustedDeviceApprovalRequest request) async {
+    if (request.expired) {
+      throw const ContentEncryptionException('设备批准请求已失效');
+    }
+    if (await _localStatus() != LocalContentKeyStatus.ready) {
+      throw const ContentEncryptionException('此设备没有可用于批准的内容密钥');
+    }
+    final deviceKey = await _deviceKey();
+    late LocalDeviceApprovalPackage package;
+    try {
+      package = await _vault.approveDeviceRequest(
+        vaultPath: _vaultPath,
+        accountId: _accountId,
+        deviceVaultKey: deviceKey,
+        requestId: request.id,
+        requesterPublicKey: request.requesterPublicKey,
+      );
+    } on Object {
+      throw const ContentEncryptionException('无法在此设备安全批准，请重试');
+    }
+    if (!_constantTimeTextEqual(
+      package.verificationCode,
+      request.verificationCode,
+    )) {
+      throw const ContentEncryptionException('两台设备验证码不一致，已停止批准');
+    }
+    try {
+      await _authenticatedApproval(
+        (token) => _approvalClient.approve(
+          accessToken: token,
+          requestId: request.id,
+          decision: RemoteDeviceApprovalDecision(
+            approverPublicKey: package.approverPublicKey,
+            nonce: package.nonce,
+            ciphertext: package.ciphertext,
+            keyVersion: package.keyVersion,
+          ),
+        ),
+      );
+    } on DeviceApprovalClientException catch (error) {
+      throw ContentEncryptionException(error.message);
+    }
+  }
+
+  @override
+  Future<void> rejectDevice(TrustedDeviceApprovalRequest request) async {
+    _ensureOpen();
+    if (request.expired) {
+      throw const ContentEncryptionException('设备批准请求已失效');
+    }
+    try {
+      await _authenticatedApproval(
+        (token) =>
+            _approvalClient.reject(accessToken: token, requestId: request.id),
+      );
+    } on DeviceApprovalClientException catch (error) {
+      throw ContentEncryptionException(error.message);
+    }
+  }
+
   Future<LocalContentKeyStatus> _localStatus() async {
     final deviceKey = await _deviceKey();
     return _vault.status(
@@ -350,15 +469,53 @@ class ContentEncryptionCoordinator implements ContentEncryptionSource {
     }
   }
 
+  Future<T> _authenticatedApproval<T>(
+    Future<T> Function(String token) operation,
+  ) async {
+    var refreshed = false;
+    while (true) {
+      final token = await _accessToken();
+      if (token == null) {
+        throw const DeviceApprovalClientException(
+          '登录已失效，请重新登录',
+          sessionRejected: true,
+        );
+      }
+      try {
+        return await operation(token);
+      } on DeviceApprovalClientException catch (error) {
+        if (!error.sessionRejected || refreshed) rethrow;
+        refreshed = true;
+        if (!await _refreshAccessToken()) rethrow;
+      }
+    }
+  }
+
   void close() {
     if (_closed) return;
     _closed = true;
     _client.close();
+    _approvalClient.close();
   }
 
   void _ensureOpen() {
     if (_closed) throw StateError('Content encryption is closed');
   }
+}
+
+bool _constantTimeTextEqual(String left, String right) {
+  final leftBytes = utf8.encode(left);
+  final rightBytes = utf8.encode(right);
+  var difference = leftBytes.length ^ rightBytes.length;
+  final length = leftBytes.length > rightBytes.length
+      ? leftBytes.length
+      : rightBytes.length;
+  for (var index = 0; index < length; index++) {
+    final leftValue = index < leftBytes.length ? leftBytes[index] : 0;
+    final rightValue = index < rightBytes.length ? rightBytes[index] : 0;
+    difference |= leftValue ^ rightValue;
+  }
+  return difference == 0;
 }
 
 String _canonicalAccountId(String value) {

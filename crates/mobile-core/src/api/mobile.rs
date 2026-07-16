@@ -49,6 +49,34 @@ pub struct BridgeContentKeyInitialization {
     pub recovery_ciphertext: Vec<u8>,
 }
 
+#[derive(Debug, Clone)]
+pub struct BridgeDeviceApprovalRequestKey {
+    pub public_key: Vec<u8>,
+    pub verification_code: String,
+}
+
+#[derive(Clone)]
+pub struct BridgeDeviceApprovalPackage {
+    pub approver_public_key: Vec<u8>,
+    pub nonce: Vec<u8>,
+    pub ciphertext: Vec<u8>,
+    pub key_version: u32,
+    pub verification_code: String,
+}
+
+impl fmt::Debug for BridgeDeviceApprovalPackage {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("BridgeDeviceApprovalPackage")
+            .field("approver_public_key_bytes", &self.approver_public_key.len())
+            .field("nonce_bytes", &self.nonce.len())
+            .field("ciphertext_bytes", &self.ciphertext.len())
+            .field("key_version", &self.key_version)
+            .field("verification_code", &self.verification_code)
+            .finish()
+    }
+}
+
 impl fmt::Debug for BridgeContentKeyInitialization {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
@@ -136,6 +164,112 @@ pub fn restore_content_key(
         &account_id,
         &device_vault_key,
         recovery_key,
+        key_version,
+        &recovery_salt,
+        &recovery_nonce,
+        &recovery_ciphertext,
+    );
+    device_vault_key.zeroize();
+    result
+}
+
+#[allow(clippy::needless_pass_by_value)]
+pub fn create_device_approval_request(
+    vault_path: String,
+    account_id: String,
+    mut device_vault_key: Vec<u8>,
+    request_id: String,
+    expires_at_unix_ms: u64,
+) -> Result<BridgeDeviceApprovalRequestKey, String> {
+    let result = vault::create_device_approval_request(
+        &vault_path,
+        &account_id,
+        &device_vault_key,
+        &request_id,
+        expires_at_unix_ms,
+    )
+    .map(|request| BridgeDeviceApprovalRequestKey {
+        public_key: request.public_key,
+        verification_code: request.verification_code,
+    });
+    device_vault_key.zeroize();
+    result
+}
+
+#[allow(clippy::needless_pass_by_value)]
+pub fn discard_device_approval_request(
+    vault_path: String,
+    account_id: String,
+    mut device_vault_key: Vec<u8>,
+    request_id: String,
+) -> Result<(), String> {
+    let result = vault::discard_device_approval_request(
+        &vault_path,
+        &account_id,
+        &device_vault_key,
+        &request_id,
+    );
+    device_vault_key.zeroize();
+    result
+}
+
+#[allow(clippy::needless_pass_by_value)]
+pub fn device_approval_verification_code(
+    account_id: String,
+    request_id: String,
+    requester_public_key: Vec<u8>,
+) -> Result<String, String> {
+    vault::device_approval_verification_code(&account_id, &request_id, &requester_public_key)
+}
+
+#[allow(clippy::needless_pass_by_value)]
+pub fn approve_device_request(
+    vault_path: String,
+    account_id: String,
+    mut device_vault_key: Vec<u8>,
+    request_id: String,
+    requester_public_key: Vec<u8>,
+) -> Result<BridgeDeviceApprovalPackage, String> {
+    let result = vault::approve_device_request(
+        &vault_path,
+        &account_id,
+        &device_vault_key,
+        &request_id,
+        &requester_public_key,
+    )
+    .map(|package| BridgeDeviceApprovalPackage {
+        approver_public_key: package.approver_public_key,
+        nonce: package.nonce,
+        ciphertext: package.ciphertext,
+        key_version: package.key_version,
+        verification_code: package.verification_code,
+    });
+    device_vault_key.zeroize();
+    result
+}
+
+#[allow(clippy::too_many_arguments, clippy::needless_pass_by_value)]
+pub fn complete_device_approval(
+    vault_path: String,
+    account_id: String,
+    mut device_vault_key: Vec<u8>,
+    request_id: String,
+    approver_public_key: Vec<u8>,
+    nonce: Vec<u8>,
+    ciphertext: Vec<u8>,
+    key_version: u32,
+    recovery_salt: Vec<u8>,
+    recovery_nonce: Vec<u8>,
+    recovery_ciphertext: Vec<u8>,
+) -> Result<bool, String> {
+    let result = vault::complete_device_approval(
+        &vault_path,
+        &account_id,
+        &device_vault_key,
+        &request_id,
+        &approver_public_key,
+        &nonce,
+        &ciphertext,
         key_version,
         &recovery_salt,
         &recovery_nonce,

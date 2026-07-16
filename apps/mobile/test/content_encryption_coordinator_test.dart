@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:daylink_mobile/src/application/content_encryption_coordinator.dart';
 import 'package:daylink_mobile/src/data/device_vault_key_store.dart';
+import 'package:daylink_mobile/src/data/device_approval_client.dart';
 import 'package:daylink_mobile/src/data/key_envelope_client.dart';
 import 'package:daylink_mobile/src/domain/sync/content_encryption_models.dart';
 import 'package:daylink_mobile/src/domain/sync/data_sync_models.dart';
@@ -200,18 +201,92 @@ void main() {
       throwsFormatException,
     );
   });
+
+  test('approves only a matching, unexpired device request', () async {
+    final vault = _FakeVault()
+      ..localStatus = LocalContentKeyStatus.ready
+      ..approvalCode = '482 731';
+    final approvals = _FakeApprovalTransport()
+      ..requests = [
+        RemoteDeviceApprovalRequest(
+          id: '9b276a3e-b141-4d91-8dbf-0f217b62b071',
+          deviceName: 'Daylink iPhone',
+          publicKey: Uint8List.fromList(List<int>.filled(32, 7)),
+          createdAt: DateTime.now().toUtc(),
+          expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
+        ),
+      ];
+    final coordinator = _coordinator(
+      vault: vault,
+      transport: _FakeEnvelopeTransport(),
+      approvals: approvals,
+    );
+
+    final request = await coordinator.loadPendingDeviceApproval();
+    expect(request, isNotNull);
+    expect(request!.verificationCode, '482 731');
+    expect(request.toString(), contains('requesterPublicKey: <redacted>'));
+
+    await coordinator.approveDevice(request);
+    expect(vault.approveCalls, 1);
+    expect(approvals.approveCalls, 1);
+    expect(approvals.lastDecision!.ciphertext, List<int>.filled(48, 4));
+
+    await coordinator.rejectDevice(request);
+    expect(approvals.rejectCalls, 1);
+    coordinator.close();
+  });
+
+  test(
+    'never uploads an approval package when verification codes differ',
+    () async {
+      final vault = _FakeVault()
+        ..localStatus = LocalContentKeyStatus.ready
+        ..approvalCode = '111 222'
+        ..packageCode = '333 444';
+      final approvals = _FakeApprovalTransport();
+      final coordinator = _coordinator(
+        vault: vault,
+        transport: _FakeEnvelopeTransport(),
+        approvals: approvals,
+      );
+      final request = TrustedDeviceApprovalRequest(
+        id: '9b276a3e-b141-4d91-8dbf-0f217b62b071',
+        deviceName: 'Daylink iPhone',
+        requesterPublicKey: Uint8List.fromList(List<int>.filled(32, 7)),
+        verificationCode: '111 222',
+        createdAt: DateTime.now().toUtc(),
+        expiresAt: DateTime.now().toUtc().add(const Duration(minutes: 10)),
+      );
+
+      await expectLater(
+        coordinator.approveDevice(request),
+        throwsA(
+          isA<ContentEncryptionException>().having(
+            (error) => error.message,
+            'message',
+            contains('验证码不一致'),
+          ),
+        ),
+      );
+      expect(approvals.approveCalls, 0);
+      coordinator.close();
+    },
+  );
 }
 
 ContentEncryptionCoordinator _coordinator({
   required _FakeVault vault,
   required _FakeEnvelopeTransport transport,
   Future<bool> Function()? refresh,
+  _FakeApprovalTransport? approvals,
 }) => ContentEncryptionCoordinator(
   accountId: '123e4567-e89b-42d3-a456-426614174000',
   vaultPath: '/tmp/vault.db',
   vault: vault,
   deviceKeyStore: _FakeDeviceKeyStore(),
   client: transport,
+  approvalClient: approvals ?? _FakeApprovalTransport(),
   accessToken: () async => 'dlka_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   refreshAccessToken: refresh ?? () async => false,
 );
@@ -233,6 +308,9 @@ class _FakeVault implements ContentKeyVault {
   var restoreCalls = 0;
   var restoreResult = true;
   List<int>? receivedRecoveryKey;
+  var approvalCode = '482 731';
+  var packageCode = '482 731';
+  var approveCalls = 0;
 
   @override
   Future<void> acknowledgeRecoveryKeySaved({
@@ -297,6 +375,31 @@ class _FakeVault implements ContentKeyVault {
     if (restoreResult) localStatus = LocalContentKeyStatus.ready;
     return restoreResult;
   }
+
+  @override
+  Future<LocalDeviceApprovalPackage> approveDeviceRequest({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String requestId,
+    required List<int> requesterPublicKey,
+  }) async {
+    approveCalls++;
+    return LocalDeviceApprovalPackage(
+      approverPublicKey: List<int>.filled(32, 2),
+      nonce: List<int>.filled(12, 3),
+      ciphertext: List<int>.filled(48, 4),
+      keyVersion: 1,
+      verificationCode: packageCode,
+    );
+  }
+
+  @override
+  Future<String> deviceApprovalVerificationCode({
+    required String accountId,
+    required String requestId,
+    required List<int> requesterPublicKey,
+  }) async => approvalCode;
 }
 
 class _FakeEnvelopeTransport implements KeyEnvelopeTransport {
@@ -346,5 +449,38 @@ class _FakeDeviceKeyStore implements DeviceVaultKeyStore {
   @override
   Future<void> write(String accountId, String encodedKey) async {
     value = encodedKey;
+  }
+}
+
+class _FakeApprovalTransport implements DeviceApprovalTransport {
+  List<RemoteDeviceApprovalRequest> requests = const [];
+  var approveCalls = 0;
+  var rejectCalls = 0;
+  RemoteDeviceApprovalDecision? lastDecision;
+
+  @override
+  Future<void> approve({
+    required String accessToken,
+    required String requestId,
+    required RemoteDeviceApprovalDecision decision,
+  }) async {
+    approveCalls++;
+    lastDecision = decision;
+  }
+
+  @override
+  void close() {}
+
+  @override
+  Future<List<RemoteDeviceApprovalRequest>> listPending({
+    required String accessToken,
+  }) async => requests;
+
+  @override
+  Future<void> reject({
+    required String accessToken,
+    required String requestId,
+  }) async {
+    rejectCalls++;
   }
 }

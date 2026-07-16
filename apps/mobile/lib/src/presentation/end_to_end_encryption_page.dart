@@ -8,6 +8,8 @@ import '../domain/sync/content_encryption_models.dart';
 typedef RecoveryKeyReadyCallback =
     Future<void> Function(RecoveryKeyDraft draft);
 typedef EncryptionUnlockCallback = Future<void> Function();
+typedef DeviceApprovalOpenCallback =
+    Future<void> Function(TrustedDeviceApprovalRequest request);
 
 class EndToEndEncryptionPage extends StatefulWidget {
   const EndToEndEncryptionPage({
@@ -15,11 +17,15 @@ class EndToEndEncryptionPage extends StatefulWidget {
     required this.source,
     required this.onRecoveryKeyReady,
     required this.onOpenUnlock,
+    this.approvalSource,
+    this.onOpenDeviceApproval,
   });
 
   final ContentEncryptionSource source;
   final RecoveryKeyReadyCallback onRecoveryKeyReady;
   final EncryptionUnlockCallback onOpenUnlock;
+  final TrustedDeviceApprovalSource? approvalSource;
+  final DeviceApprovalOpenCallback? onOpenDeviceApproval;
 
   @override
   State<EndToEndEncryptionPage> createState() => _EndToEndEncryptionPageState();
@@ -30,6 +36,7 @@ class _EndToEndEncryptionPageState extends State<EndToEndEncryptionPage> {
   var _loading = true;
   var _busy = false;
   var _generation = 0;
+  TrustedDeviceApprovalRequest? _pendingApproval;
 
   @override
   void initState() {
@@ -42,8 +49,19 @@ class _EndToEndEncryptionPageState extends State<EndToEndEncryptionPage> {
     try {
       final state = await widget.source.loadContentEncryptionState();
       if (!mounted || generation != _generation) return;
+      TrustedDeviceApprovalRequest? approval;
+      if (state.status == ContentEncryptionSetupStatus.enabled &&
+          widget.approvalSource != null) {
+        try {
+          approval = await widget.approvalSource!.loadPendingDeviceApproval();
+        } on Object {
+          approval = null;
+        }
+      }
+      if (!mounted || generation != _generation) return;
       setState(() {
         _state = state;
+        _pendingApproval = approval;
         _loading = false;
       });
     } on Object {
@@ -57,11 +75,19 @@ class _EndToEndEncryptionPageState extends State<EndToEndEncryptionPage> {
     final status = _state?.status;
     if (_busy ||
         status == null ||
-        status == ContentEncryptionSetupStatus.enabled) {
+        (status == ContentEncryptionSetupStatus.enabled &&
+            _pendingApproval == null)) {
       return;
     }
     setState(() => _busy = true);
     try {
+      if (status == ContentEncryptionSetupStatus.enabled) {
+        final approval = _pendingApproval;
+        final open = widget.onOpenDeviceApproval;
+        if (approval != null && open != null) await open(approval);
+        if (mounted) await _load();
+        return;
+      }
       if (status == ContentEncryptionSetupStatus.locked) {
         await widget.onOpenUnlock();
         if (!mounted) return;
@@ -203,7 +229,13 @@ class _EndToEndEncryptionPageState extends State<EndToEndEncryptionPage> {
               height: 52,
               child: FilledButton(
                 key: const Key('e2ee-enable'),
-                onPressed: _loading || _busy ? null : _primaryAction,
+                onPressed:
+                    _loading ||
+                        _busy ||
+                        (status == ContentEncryptionSetupStatus.enabled &&
+                            _pendingApproval == null)
+                    ? null
+                    : _primaryAction,
                 style: FilledButton.styleFrom(
                   backgroundColor: _blue,
                   disabledBackgroundColor:
@@ -226,7 +258,12 @@ class _EndToEndEncryptionPageState extends State<EndToEndEncryptionPage> {
                           color: Colors.white,
                         ),
                       )
-                    : Text(_buttonLabel(status)),
+                    : Text(
+                        status == ContentEncryptionSetupStatus.enabled &&
+                                _pendingApproval != null
+                            ? '查看新设备请求'
+                            : _buttonLabel(status),
+                      ),
               ),
             ),
             const SizedBox(height: 18),

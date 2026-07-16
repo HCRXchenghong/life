@@ -28,6 +28,7 @@ import 'src/presentation/password_change_page.dart';
 import 'src/presentation/recovery_key_page.dart';
 import 'src/presentation/recovery_unlock_page.dart';
 import 'src/presentation/toolbox_page.dart';
+import 'src/presentation/trusted_device_approval_page.dart';
 import 'src/presentation/today_schedule_page.dart';
 
 const _configuredApiBaseUrl = String.fromEnvironment(
@@ -357,6 +358,10 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
           source: runtime as ContentEncryptionSource,
           onRecoveryKeyReady: _openRecoveryKey,
           onOpenUnlock: _openRecoveryUnlock,
+          approvalSource: runtime is TrustedDeviceApprovalSource
+              ? runtime as TrustedDeviceApprovalSource
+              : null,
+          onOpenDeviceApproval: _openTrustedDeviceApproval,
         ),
       ),
     );
@@ -382,6 +387,21 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
       MaterialPageRoute<bool>(
         builder: (_) =>
             RecoveryUnlockPage(source: runtime as ContentEncryptionSource),
+      ),
+    );
+  }
+
+  Future<void> _openTrustedDeviceApproval(
+    TrustedDeviceApprovalRequest request,
+  ) async {
+    final runtime = _runtime;
+    if (runtime is! TrustedDeviceApprovalSource) return;
+    await _navigatorKey.currentState!.push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => TrustedDeviceApprovalPage(
+          source: runtime as TrustedDeviceApprovalSource,
+          request: request,
+        ),
       ),
     );
   }
@@ -546,7 +566,8 @@ class DaylinkRuntime
         AccountEntitlementSource,
         NotificationSettingsSource,
         DataSyncSource,
-        ContentEncryptionSource {
+        ContentEncryptionSource,
+        TrustedDeviceApprovalSource {
   DaylinkRuntime._(this.services, this._assistantSettings);
 
   final DaylinkServices services;
@@ -667,6 +688,18 @@ class DaylinkRuntime
   @override
   Future<void> restoreWithRecoveryKey(String encodedKey) =>
       services.restoreWithRecoveryKey(encodedKey);
+
+  @override
+  Future<TrustedDeviceApprovalRequest?> loadPendingDeviceApproval() =>
+      services.loadPendingDeviceApproval();
+
+  @override
+  Future<void> approveDevice(TrustedDeviceApprovalRequest request) =>
+      services.approveDevice(request);
+
+  @override
+  Future<void> rejectDevice(TrustedDeviceApprovalRequest request) =>
+      services.rejectDevice(request);
 
   Future<void> _forceSignOut(String reason) async {
     if (_signedOut) return;
