@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"bytes"
+	"encoding/json"
 	"testing"
 	"time"
 )
@@ -8,19 +10,35 @@ import (
 func TestAIPlanLimitValidation(t *testing.T) {
 	t.Parallel()
 	for _, test := range []struct {
-		weekly, monthly int64
-		valid           bool
+		monthly int64
+		valid   bool
 	}{
-		{0, 0, true},
-		{100, 400, true},
-		{400, 100, false},
-		{0, 100, false},
-		{-1, 100, false},
-		{100, maximumAIQuotaTokens + 1, false},
+		{0, true},
+		{400, true},
+		{-1, false},
+		{maximumAIQuotaTokens + 1, false},
 	} {
-		if actual := validAIPlanLimit(test.weekly, test.monthly); actual != test.valid {
-			t.Fatalf("validAIPlanLimit(%d, %d) = %v, want %v", test.weekly, test.monthly, actual, test.valid)
+		if actual := validAIPlanLimit(test.monthly); actual != test.valid {
+			t.Fatalf("validAIPlanLimit(%d) = %v, want %v", test.monthly, actual, test.valid)
 		}
+	}
+}
+
+func TestPublicAIEntitlementExposesMonthlyQuotaOnly(t *testing.T) {
+	t.Parallel()
+	payload, err := json.Marshal(publicAIEntitlement{
+		MonthlyUsed:     42,
+		MonthlyResetsAt: time.Date(2026, time.August, 1, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(bytes.ToLower(payload), []byte("week")) {
+		t.Fatalf("weekly quota leaked into App contract: %s", payload)
+	}
+	if !bytes.Contains(payload, []byte(`"monthlyUsed":42`)) ||
+		!bytes.Contains(payload, []byte(`"monthlyResetsAt"`)) {
+		t.Fatalf("monthly quota missing from App contract: %s", payload)
 	}
 }
 
@@ -40,16 +58,10 @@ func TestSubscriptionDurationsUseCalendarCards(t *testing.T) {
 	}
 }
 
-func TestAIQuotaWindowsResetOnUTCMondayAndMonth(t *testing.T) {
+func TestAIQuotaWindowResetsAtNextUTCMonth(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.July, 15, 9, 30, 0, 0, time.FixedZone("CST", 8*60*60))
-	weekStart, weekReset, monthStart, monthReset := aiQuotaWindows(now)
-	if want := time.Date(2026, time.July, 13, 0, 0, 0, 0, time.UTC); !weekStart.Equal(want) {
-		t.Fatalf("week start = %v, want %v", weekStart, want)
-	}
-	if !weekReset.Equal(time.Date(2026, time.July, 20, 0, 0, 0, 0, time.UTC)) {
-		t.Fatalf("week reset = %v", weekReset)
-	}
+	monthStart, monthReset := aiQuotaWindow(now)
 	if !monthStart.Equal(time.Date(2026, time.July, 1, 0, 0, 0, 0, time.UTC)) ||
 		!monthReset.Equal(time.Date(2026, time.August, 1, 0, 0, 0, 0, time.UTC)) {
 		t.Fatalf("month window = %v - %v", monthStart, monthReset)

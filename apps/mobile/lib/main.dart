@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import 'src/application/assistant_settings.dart';
 import 'src/application/daylink_services.dart';
+import 'src/data/ai_gateway_client.dart';
 import 'src/data/app_authentication.dart';
 import 'src/data/app_session_monitor.dart';
 import 'src/data/operations_repository.dart';
@@ -15,6 +16,7 @@ import 'src/presentation/app_navigation.dart';
 import 'src/presentation/assistant_page.dart';
 import 'src/presentation/hosts_page.dart';
 import 'src/presentation/login_page.dart';
+import 'src/presentation/my_page.dart';
 import 'src/presentation/password_change_page.dart';
 import 'src/presentation/toolbox_page.dart';
 import 'src/presentation/today_schedule_page.dart';
@@ -281,7 +283,8 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
     if (destination == AppDestination.schedule ||
         destination == AppDestination.toolbox ||
         destination == AppDestination.assistant ||
-        destination == AppDestination.hosts) {
+        destination == AppDestination.hosts ||
+        destination == AppDestination.me) {
       if (_selectedDestination == destination) return;
       setState(() => _selectedDestination = destination);
       return;
@@ -308,6 +311,18 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
 
   Widget _authenticatedHome() {
     final runtime = _runtime;
+    if (_selectedDestination == AppDestination.me &&
+        runtime is AccountEntitlementSource) {
+      return MyPage(
+        username: _session!.username,
+        source: runtime as AccountEntitlementSource,
+        onOpenAccount: () => _showPendingPage('账号与安全'),
+        onOpenNotifications: () => _showPendingPage('通知设置'),
+        onOpenSync: () => _showPendingPage('数据与同步'),
+        onLogout: _logout,
+        onDestinationSelected: _selectDestination,
+      );
+    }
     if (_selectedDestination == AppDestination.hosts &&
         runtime is HostAwareRuntime) {
       return HostsPage(
@@ -400,11 +415,12 @@ class DaylinkRuntime
         ForcedSignOutAwareRuntime,
         ScheduleAwareRuntime,
         HostAwareRuntime,
-        AssistantSettingsSource {
+        AssistantSettingsSource,
+        AccountEntitlementSource {
   DaylinkRuntime._(this.services, this._assistantSettings);
 
   final DaylinkServices services;
-  final AssistantSettingsSource _assistantSettings;
+  final DaylinkAssistantSettings _assistantSettings;
   final StreamController<String> _forcedSignOutController =
       StreamController<String>.broadcast();
   bool _signedOut = false;
@@ -459,6 +475,10 @@ class DaylinkRuntime
     model: model,
     reasoningEffort: reasoningEffort,
   );
+
+  @override
+  Future<AiEntitlement> loadAccountEntitlement() =>
+      _assistantSettings.loadAccountEntitlement();
 
   Future<void> _forceSignOut(String reason) async {
     if (_signedOut) return;

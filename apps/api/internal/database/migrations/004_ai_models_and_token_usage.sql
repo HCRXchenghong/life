@@ -1,5 +1,4 @@
 ALTER TABLE ai_plan_limits
-  MODIFY weekly_units BIGINT UNSIGNED NOT NULL DEFAULT 0,
   MODIFY monthly_units BIGINT UNSIGNED NOT NULL DEFAULT 0;
 
 ALTER TABLE ai_usage_events

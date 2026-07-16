@@ -27,7 +27,12 @@ abstract interface class AssistantSettingsSource {
   });
 }
 
-class DaylinkAssistantSettings implements AssistantSettingsSource {
+abstract interface class AccountEntitlementSource {
+  Future<AiEntitlement> loadAccountEntitlement();
+}
+
+class DaylinkAssistantSettings
+    implements AssistantSettingsSource, AccountEntitlementSource {
   const DaylinkAssistantSettings({
     required this.apiBaseUri,
     required this.accessToken,
@@ -35,6 +40,16 @@ class DaylinkAssistantSettings implements AssistantSettingsSource {
 
   final Uri apiBaseUri;
   final AccessTokenProvider accessToken;
+
+  @override
+  Future<AiEntitlement> loadAccountEntitlement() async {
+    final client = await _client();
+    try {
+      return await client.entitlement();
+    } finally {
+      client.close();
+    }
+  }
 
   @override
   Future<AssistantPreferences> loadAssistantPreferences() async {

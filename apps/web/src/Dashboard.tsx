@@ -282,7 +282,7 @@ function Audit() {
 type ProviderModel = { id: string; kind: "text" | "image" | "other" };
 type Provider = { id: string; baseUrl: string; textModel: string; imageModel: string | null; apiKeyHint: string; models?: ProviderModel[] };
 type GeneratedAsset = { id: string; url: string; createdAt: string };
-type PlanLimit = { plan: "plus" | "pro"; weeklyTokens: number; monthlyTokens: number; updatedAt: string };
+type PlanLimit = { plan: "plus" | "pro"; monthlyTokens: number; updatedAt: string };
 
 function Settings() {
   const [dialog, setDialog] = useState<"password" | "totp" | null>(null);
@@ -344,12 +344,12 @@ function Settings() {
       const result = await api<{ plans: PlanLimit[] }>("/api/admin/ai-plans", {
         method: "POST",
         body: JSON.stringify({
-          plus: { weeklyTokens: yiTokens(form.get("plusWeekly")), monthlyTokens: yiTokens(form.get("plusMonthly")) },
-          pro: { weeklyTokens: yiTokens(form.get("proWeekly")), monthlyTokens: yiTokens(form.get("proMonthly")) },
+          plus: { monthlyTokens: yiTokens(form.get("plusMonthly")) },
+          pro: { monthlyTokens: yiTokens(form.get("proMonthly")) },
         }),
       });
       setPlans(result.plans);
-      setMessage("Plus / Pro 周额度与月额度已保存");
+      setMessage("Plus / Pro 月额度已保存");
     } catch (reason) { setMessage(reason instanceof Error ? reason.message : "套餐额度保存失败"); }
   }
 
@@ -377,12 +377,12 @@ function Settings() {
       </section>
       <section className="admin-settings-card admin-settings-ai admin-settings-plans">
         <header><div><h2>AI 套餐额度</h2><p>本地 AI 与 SSH Agent 共用额度，按上游返回的真实 token 结算</p></div><span className="admin-plan-badge max">Max 无限额</span></header>
-        <form key={plans.map((item) => `${item.plan}:${item.weeklyTokens}:${item.monthlyTokens}`).join("|")} onSubmit={savePlans}>
+        <form key={plans.map((item) => `${item.plan}:${item.monthlyTokens}`).join("|")} onSubmit={savePlans}>
           <div className="admin-plan-limit-grid">
-            <strong>Plus</strong><label>每周（亿 token）<input name="plusWeekly" type="number" min="0.01" step="0.01" max="10000000" required defaultValue={tokensInYi(plans.find((item) => item.plan === "plus")?.weeklyTokens)} /></label><label>每月（亿 token）<input name="plusMonthly" type="number" min="0.01" step="0.01" max="10000000" required defaultValue={tokensInYi(plans.find((item) => item.plan === "plus")?.monthlyTokens)} /></label>
-            <strong>Pro</strong><label>每周（亿 token）<input name="proWeekly" type="number" min="0.01" step="0.01" max="10000000" required defaultValue={tokensInYi(plans.find((item) => item.plan === "pro")?.weeklyTokens)} /></label><label>每月（亿 token）<input name="proMonthly" type="number" min="0.01" step="0.01" max="10000000" required defaultValue={tokensInYi(plans.find((item) => item.plan === "pro")?.monthlyTokens)} /></label>
+            <strong>Plus</strong><label>每月（亿 token）<input name="plusMonthly" type="number" min="0.01" step="0.01" max="10000000" required defaultValue={tokensInYi(plans.find((item) => item.plan === "plus")?.monthlyTokens)} /></label>
+            <strong>Pro</strong><label>每月（亿 token）<input name="proMonthly" type="number" min="0.01" step="0.01" max="10000000" required defaultValue={tokensInYi(plans.find((item) => item.plan === "pro")?.monthlyTokens)} /></label>
           </div>
-          <p className="admin-settings-models">月额度不得低于周额度，Pro 不得低于 Plus。自然周按 UTC 周一重置，自然月 1 日重置。</p>
+          <p className="admin-settings-models">Pro 月额度不得低于 Plus。额度按自然月统计，并在 UTC 每月 1 日重置。</p>
           <div className="admin-settings-ai-actions"><button className="admin-accounts-primary">保存套餐额度</button></div>
         </form>
       </section>

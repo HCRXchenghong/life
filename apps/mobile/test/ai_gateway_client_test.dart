@@ -44,9 +44,6 @@ void main() {
                 'plan': 'pro',
                 'cardType': 'month',
                 'expiresAt': '2026-08-15T00:00:00Z',
-                'weeklyUsed': 8,
-                'weeklyLimit': 100,
-                'weeklyResetsAt': '2026-07-20T00:00:00Z',
                 'monthlyUsed': 30,
                 'monthlyLimit': 400,
                 'monthlyResetsAt': '2026-08-01T00:00:00Z',
@@ -110,6 +107,8 @@ void main() {
     expect(local.provider.reasoningEffort, AiReasoningEffort.high);
     expect(local.accessToken, 'dlka_app-access');
     expect(entitlement.plan, 'pro');
+    expect(entitlement.monthlyUsed, 30);
+    expect(entitlement.monthlyLimit, 400);
     expect(entitlement.supportedModes, [
       AiExecutionMode.localAI,
       AiExecutionMode.sshAgent,

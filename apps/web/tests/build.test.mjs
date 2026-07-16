@@ -29,3 +29,10 @@ test("renders real server metrics and paginated Chinese audit controls", async (
   assert.match(dashboard, /format=csv/);
   assert.match(dashboard, /下载日志/);
 });
+
+test("configures AI plans with monthly token quotas only", async () => {
+  const dashboard = await readFile(new URL("../src/Dashboard.tsx", import.meta.url), "utf8");
+  assert.match(dashboard, /plusMonthly/);
+  assert.match(dashboard, /自然月/);
+  assert.doesNotMatch(dashboard, /weeklyTokens|plusWeekly|proWeekly|周额度/);
+});

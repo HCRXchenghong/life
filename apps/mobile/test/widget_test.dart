@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:daylink_mobile/main.dart';
 import 'package:daylink_mobile/src/data/app_authentication.dart';
+import 'package:daylink_mobile/src/application/assistant_settings.dart';
+import 'package:daylink_mobile/src/data/ai_gateway_client.dart';
 import 'package:daylink_mobile/src/data/operations_repository.dart';
 import 'package:daylink_mobile/src/data/schedule_repository.dart';
 import 'package:daylink_mobile/src/domain/operations/operations_models.dart';
@@ -213,6 +215,13 @@ void main() {
     expect(find.byKey(const Key('hosts-title')), findsOneWidget);
     expect(find.byKey(const Key('hosts-empty')), findsOneWidget);
 
+    await tester.tap(find.byKey(const Key('nav-me')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('my-title')), findsOneWidget);
+    expect(find.text('active-user'), findsOneWidget);
+    expect(find.text('2 / 10 亿 Token'), findsOneWidget);
+
     await tester.tap(find.byKey(const Key('nav-schedule')));
     await tester.pumpAndSettle();
     expect(find.text('今天'), findsOneWidget);
@@ -305,7 +314,11 @@ class _FakeRuntime implements AppRuntime {
 }
 
 class _FakeScheduleRuntime
-    implements AppRuntime, ScheduleAwareRuntime, HostAwareRuntime {
+    implements
+        AppRuntime,
+        ScheduleAwareRuntime,
+        HostAwareRuntime,
+        AccountEntitlementSource {
   final _source = _EmptyScheduleSource();
   final _hosts = _EmptyHostSource();
 
@@ -314,6 +327,18 @@ class _FakeScheduleRuntime
 
   @override
   HostListSource get hosts => _hosts;
+
+  @override
+  Future<AiEntitlement> loadAccountEntitlement() async => AiEntitlement(
+    active: true,
+    plan: 'plus',
+    cardType: 'month',
+    expiresAt: DateTime.utc(2030, 1, 1, 12),
+    monthlyUsed: 200000000,
+    monthlyLimit: 1000000000,
+    monthlyResetsAt: DateTime.utc(2030, 1),
+    supportedModes: const [AiExecutionMode.localAI, AiExecutionMode.sshAgent],
+  );
 
   @override
   Future<void> close() async {}

@@ -209,9 +209,6 @@ class AiEntitlement {
     required this.plan,
     required this.cardType,
     required this.expiresAt,
-    required this.weeklyUsed,
-    required this.weeklyLimit,
-    required this.weeklyResetsAt,
     required this.monthlyUsed,
     required this.monthlyLimit,
     required this.monthlyResetsAt,
@@ -225,9 +222,6 @@ class AiEntitlement {
     expiresAt: value['expiresAt'] == null
         ? null
         : DateTime.parse(value['expiresAt']! as String).toUtc(),
-    weeklyUsed: value['weeklyUsed']! as int,
-    weeklyLimit: value['weeklyLimit'] as int?,
-    weeklyResetsAt: DateTime.parse(value['weeklyResetsAt']! as String).toUtc(),
     monthlyUsed: value['monthlyUsed']! as int,
     monthlyLimit: value['monthlyLimit'] as int?,
     monthlyResetsAt: DateTime.parse(
@@ -243,9 +237,6 @@ class AiEntitlement {
   final String? plan;
   final String? cardType;
   final DateTime? expiresAt;
-  final int weeklyUsed;
-  final int? weeklyLimit;
-  final DateTime weeklyResetsAt;
   final int monthlyUsed;
   final int? monthlyLimit;
   final DateTime monthlyResetsAt;

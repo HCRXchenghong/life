@@ -1216,9 +1216,8 @@ components:
     AiPlanLimitInput:
       type: object
       additionalProperties: false
-      required: [weeklyTokens, monthlyTokens]
+      required: [monthlyTokens]
       properties:
-        weeklyTokens: { type: integer, minimum: 0, maximum: 1000000000000000 }
         monthlyTokens: { type: integer, minimum: 0, maximum: 1000000000000000 }
     AiPlanLimit:
       allOf:
@@ -1231,16 +1230,13 @@ components:
     AiEntitlement:
       type: object
       additionalProperties: false
-      required: [active, weeklyUsed, weeklyLimit, weeklyResetsAt, monthlyUsed, monthlyLimit, monthlyResetsAt, supportedModes]
+      required: [active, monthlyUsed, monthlyLimit, monthlyResetsAt, supportedModes]
       properties:
         active: { type: boolean }
         plan: { enum: [plus, pro, max] }
         cardType: { enum: [week, month, quarter, year] }
         startsAt: { type: string, format: date-time }
         expiresAt: { type: string, format: date-time }
-        weeklyUsed: { type: integer, minimum: 0 }
-        weeklyLimit: { type: [integer, "null"], minimum: 0 }
-        weeklyResetsAt: { type: string, format: date-time }
         monthlyUsed: { type: integer, minimum: 0 }
         monthlyLimit: { type: [integer, "null"], minimum: 0 }
         monthlyResetsAt: { type: string, format: date-time }
