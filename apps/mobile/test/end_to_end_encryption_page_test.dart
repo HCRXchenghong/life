@@ -13,7 +13,7 @@ void main() {
         home: EndToEndEncryptionPage(
           source: source,
           onRecoveryKeyReady: (_) async {},
-          onOpenUnlock: () {},
+          onOpenUnlock: () async {},
         ),
       ),
     );
@@ -43,7 +43,7 @@ void main() {
         home: EndToEndEncryptionPage(
           source: source,
           onRecoveryKeyReady: (value) async => draft = value,
-          onOpenUnlock: () {},
+          onOpenUnlock: () async {},
         ),
       ),
     );
@@ -59,29 +59,36 @@ void main() {
     expect(find.text('继续保存恢复密钥'), findsOneWidget);
   });
 
-  testWidgets('locked account routes to recovery unlock without creating key', (
-    tester,
-  ) async {
-    final source = _FakeContentEncryptionSource(
-      status: ContentEncryptionSetupStatus.locked,
-    );
-    var unlockCalls = 0;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: EndToEndEncryptionPage(
-          source: source,
-          onRecoveryKeyReady: (_) async {},
-          onOpenUnlock: () => unlockCalls++,
+  testWidgets(
+    'locked account routes to recovery unlock and reloads on success',
+    (tester) async {
+      final source = _FakeContentEncryptionSource(
+        status: ContentEncryptionSetupStatus.locked,
+      );
+      var unlockCalls = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EndToEndEncryptionPage(
+            source: source,
+            onRecoveryKeyReady: (_) async {},
+            onOpenUnlock: () async {
+              unlockCalls++;
+              await source.restoreWithRecoveryKey(
+                RecoveryKeyDraft.fromBytes(List<int>.filled(32, 1)).encodedKey,
+              );
+            },
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('e2ee-enable')));
-    await tester.pumpAndSettle();
-    expect(unlockCalls, 1);
-    expect(source.prepareCalls, 0);
-  });
+      await tester.tap(find.byKey(const Key('e2ee-enable')));
+      await tester.pumpAndSettle();
+      expect(unlockCalls, 1);
+      expect(source.prepareCalls, 0);
+      expect(find.text('已开启'), findsOneWidget);
+    },
+  );
 }
 
 class _FakeContentEncryptionSource implements ContentEncryptionSource {
@@ -110,5 +117,12 @@ class _FakeContentEncryptionSource implements ContentEncryptionSource {
       status: ContentEncryptionSetupStatus.recoveryPending,
     );
     return RecoveryKeyDraft.fromBytes(List<int>.generate(32, (index) => index));
+  }
+
+  @override
+  Future<void> restoreWithRecoveryKey(String encodedKey) async {
+    state = const ContentEncryptionState(
+      status: ContentEncryptionSetupStatus.enabled,
+    );
   }
 }

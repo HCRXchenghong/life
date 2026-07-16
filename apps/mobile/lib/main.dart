@@ -26,6 +26,7 @@ import 'src/presentation/my_page.dart';
 import 'src/presentation/notification_settings_page.dart';
 import 'src/presentation/password_change_page.dart';
 import 'src/presentation/recovery_key_page.dart';
+import 'src/presentation/recovery_unlock_page.dart';
 import 'src/presentation/toolbox_page.dart';
 import 'src/presentation/today_schedule_page.dart';
 
@@ -355,7 +356,7 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
         builder: (_) => EndToEndEncryptionPage(
           source: runtime as ContentEncryptionSource,
           onRecoveryKeyReady: _openRecoveryKey,
-          onOpenUnlock: () => _showPendingPage('恢复密钥解锁'),
+          onOpenUnlock: _openRecoveryUnlock,
         ),
       ),
     );
@@ -370,6 +371,17 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
           source: runtime as ContentEncryptionSource,
           draft: draft,
         ),
+      ),
+    );
+  }
+
+  Future<void> _openRecoveryUnlock() async {
+    final runtime = _runtime;
+    if (runtime is! ContentEncryptionSource) return;
+    await _navigatorKey.currentState!.push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) =>
+            RecoveryUnlockPage(source: runtime as ContentEncryptionSource),
       ),
     );
   }
@@ -651,6 +663,10 @@ class DaylinkRuntime
   @override
   Future<void> acknowledgeRecoveryKeySaved() =>
       services.acknowledgeRecoveryKeySaved();
+
+  @override
+  Future<void> restoreWithRecoveryKey(String encodedKey) =>
+      services.restoreWithRecoveryKey(encodedKey);
 
   Future<void> _forceSignOut(String reason) async {
     if (_signedOut) return;

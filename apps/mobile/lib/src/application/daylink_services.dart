@@ -294,6 +294,9 @@ class DaylinkServices {
   Future<void> acknowledgeRecoveryKeySaved() =>
       contentEncryption.acknowledgeRecoveryKeySaved();
 
+  Future<void> restoreWithRecoveryKey(String encodedKey) =>
+      contentEncryption.restoreWithRecoveryKey(encodedKey);
+
   AppSessionMonitor monitorSession({
     required Uri apiBaseUri,
     required AccessTokenProvider accessToken,

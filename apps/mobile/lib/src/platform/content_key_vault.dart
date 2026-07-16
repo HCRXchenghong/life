@@ -46,6 +46,17 @@ abstract interface class ContentKeyVault {
     required String accountId,
     required List<int> deviceVaultKey,
   });
+
+  Future<bool> restore({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required List<int> recoveryKey,
+    required int keyVersion,
+    required List<int> recoverySalt,
+    required List<int> recoveryNonce,
+    required List<int> recoveryCiphertext,
+  });
 }
 
 class NativeContentKeyVault implements ContentKeyVault {
@@ -111,5 +122,26 @@ class NativeContentKeyVault implements ContentKeyVault {
     vaultPath: vaultPath,
     accountId: accountId,
     deviceVaultKey: deviceVaultKey,
+  );
+
+  @override
+  Future<bool> restore({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required List<int> recoveryKey,
+    required int keyVersion,
+    required List<int> recoverySalt,
+    required List<int> recoveryNonce,
+    required List<int> recoveryCiphertext,
+  }) => rust.restoreContentKey(
+    vaultPath: vaultPath,
+    accountId: accountId,
+    deviceVaultKey: deviceVaultKey,
+    recoveryKey: recoveryKey,
+    keyVersion: keyVersion,
+    recoverySalt: recoverySalt,
+    recoveryNonce: recoveryNonce,
+    recoveryCiphertext: recoveryCiphertext,
   );
 }

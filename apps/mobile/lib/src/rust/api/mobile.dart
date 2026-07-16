@@ -57,6 +57,26 @@ Future<void> discardPendingContentKey({
   deviceVaultKey: deviceVaultKey,
 );
 
+Future<bool> restoreContentKey({
+  required String vaultPath,
+  required String accountId,
+  required List<int> deviceVaultKey,
+  required List<int> recoveryKey,
+  required int keyVersion,
+  required List<int> recoverySalt,
+  required List<int> recoveryNonce,
+  required List<int> recoveryCiphertext,
+}) => RustLib.instance.api.crateApiMobileRestoreContentKey(
+  vaultPath: vaultPath,
+  accountId: accountId,
+  deviceVaultKey: deviceVaultKey,
+  recoveryKey: recoveryKey,
+  keyVersion: keyVersion,
+  recoverySalt: recoverySalt,
+  recoveryNonce: recoveryNonce,
+  recoveryCiphertext: recoveryCiphertext,
+);
+
 Future<BridgeHostKey> probeHostKeyMobile({
   required String host,
   required int port,

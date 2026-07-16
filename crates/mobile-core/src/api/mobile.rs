@@ -4,6 +4,7 @@
 #![forbid(unsafe_code)]
 #![allow(unexpected_cfgs)]
 
+use std::fmt;
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,6 +14,7 @@ use flutter_rust_bridge::frb;
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, watch};
 use tokio::task::JoinHandle;
+use zeroize::Zeroize;
 
 use crate::vault;
 use crate::{
@@ -37,7 +39,7 @@ pub enum BridgeContentKeyStatus {
     Ready,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct BridgeContentKeyInitialization {
     pub device_id: String,
     pub key_version: u32,
@@ -45,6 +47,20 @@ pub struct BridgeContentKeyInitialization {
     pub recovery_salt: Vec<u8>,
     pub recovery_nonce: Vec<u8>,
     pub recovery_ciphertext: Vec<u8>,
+}
+
+impl fmt::Debug for BridgeContentKeyInitialization {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("BridgeContentKeyInitialization")
+            .field("device_id", &self.device_id)
+            .field("key_version", &self.key_version)
+            .field("recovery_key", &"<redacted>")
+            .field("recovery_salt_bytes", &self.recovery_salt.len())
+            .field("recovery_nonce_bytes", &self.recovery_nonce.len())
+            .field("recovery_ciphertext_bytes", &self.recovery_ciphertext.len())
+            .finish()
+    }
 }
 
 pub fn generate_device_vault_key() -> Result<Vec<u8>, String> {
@@ -102,6 +118,31 @@ pub fn discard_pending_content_key(
     device_vault_key: Vec<u8>,
 ) -> Result<(), String> {
     vault::discard_pending_content_key(&vault_path, &account_id, &device_vault_key)
+}
+
+#[allow(clippy::too_many_arguments, clippy::needless_pass_by_value)]
+pub fn restore_content_key(
+    vault_path: String,
+    account_id: String,
+    mut device_vault_key: Vec<u8>,
+    recovery_key: Vec<u8>,
+    key_version: u32,
+    recovery_salt: Vec<u8>,
+    recovery_nonce: Vec<u8>,
+    recovery_ciphertext: Vec<u8>,
+) -> Result<bool, String> {
+    let result = vault::restore_content_key(
+        &vault_path,
+        &account_id,
+        &device_vault_key,
+        recovery_key,
+        key_version,
+        &recovery_salt,
+        &recovery_nonce,
+        &recovery_ciphertext,
+    );
+    device_vault_key.zeroize();
+    result
 }
 
 #[derive(Debug, Clone)]

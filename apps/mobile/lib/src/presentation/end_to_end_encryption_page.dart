@@ -7,6 +7,7 @@ import '../domain/sync/content_encryption_models.dart';
 
 typedef RecoveryKeyReadyCallback =
     Future<void> Function(RecoveryKeyDraft draft);
+typedef EncryptionUnlockCallback = Future<void> Function();
 
 class EndToEndEncryptionPage extends StatefulWidget {
   const EndToEndEncryptionPage({
@@ -18,7 +19,7 @@ class EndToEndEncryptionPage extends StatefulWidget {
 
   final ContentEncryptionSource source;
   final RecoveryKeyReadyCallback onRecoveryKeyReady;
-  final VoidCallback onOpenUnlock;
+  final EncryptionUnlockCallback onOpenUnlock;
 
   @override
   State<EndToEndEncryptionPage> createState() => _EndToEndEncryptionPageState();
@@ -59,12 +60,14 @@ class _EndToEndEncryptionPageState extends State<EndToEndEncryptionPage> {
         status == ContentEncryptionSetupStatus.enabled) {
       return;
     }
-    if (status == ContentEncryptionSetupStatus.locked) {
-      widget.onOpenUnlock();
-      return;
-    }
     setState(() => _busy = true);
     try {
+      if (status == ContentEncryptionSetupStatus.locked) {
+        await widget.onOpenUnlock();
+        if (!mounted) return;
+        await _load();
+        return;
+      }
       final draft = await widget.source.prepareContentEncryption();
       if (!mounted) return;
       await widget.onRecoveryKeyReady(draft);
@@ -72,7 +75,11 @@ class _EndToEndEncryptionPageState extends State<EndToEndEncryptionPage> {
       await _load();
     } on ContentEncryptionException catch (error) {
       if (!mounted) return;
-      if (error.locked) widget.onOpenUnlock();
+      if (error.locked) {
+        await widget.onOpenUnlock();
+        if (mounted) await _load();
+        return;
+      }
       _showMessage(error.message);
       await _load();
     } on Object {

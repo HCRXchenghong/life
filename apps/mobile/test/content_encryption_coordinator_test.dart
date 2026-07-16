@@ -101,6 +101,105 @@ void main() {
     expect(transport.loadCalls, 2);
     coordinator.close();
   });
+
+  test('decodes, restores, and zeroes the recovery key locally', () async {
+    final vault = _FakeVault();
+    final transport = _FakeEnvelopeTransport()..envelope = _envelope();
+    final coordinator = _coordinator(vault: vault, transport: transport);
+    final encoded = RecoveryKeyDraft.fromBytes(
+      List<int>.generate(32, (index) => index),
+    ).encodedKey;
+
+    await coordinator.restoreWithRecoveryKey(encoded.toLowerCase());
+
+    expect(vault.restoreCalls, 1);
+    expect(vault.localStatus, LocalContentKeyStatus.ready);
+    expect(vault.receivedRecoveryKey, everyElement(0));
+    expect(transport.storeCalls, 0);
+    expect(
+      (await coordinator.loadContentEncryptionState()).status,
+      ContentEncryptionSetupStatus.enabled,
+    );
+    coordinator.close();
+  });
+
+  test(
+    'rejects malformed and incorrect recovery keys without local writes',
+    () async {
+      final vault = _FakeVault()..restoreResult = false;
+      final transport = _FakeEnvelopeTransport()..envelope = _envelope();
+      final coordinator = _coordinator(vault: vault, transport: transport);
+
+      await expectLater(
+        coordinator.restoreWithRecoveryKey('NOT-A-RECOVERY-KEY'),
+        throwsA(
+          isA<ContentEncryptionException>().having(
+            (error) => error.message,
+            'message',
+            '恢复密钥格式不正确',
+          ),
+        ),
+      );
+      expect(vault.restoreCalls, 0);
+
+      final encoded = RecoveryKeyDraft.fromBytes(
+        List<int>.filled(32, 7),
+      ).encodedKey;
+      await expectLater(
+        coordinator.restoreWithRecoveryKey(encoded),
+        throwsA(
+          isA<ContentEncryptionException>().having(
+            (error) => error.message,
+            'message',
+            '恢复密钥不正确，请重新检查',
+          ),
+        ),
+      );
+      expect(vault.restoreCalls, 1);
+      expect(vault.localStatus, LocalContentKeyStatus.missing);
+      expect(vault.receivedRecoveryKey, everyElement(0));
+      coordinator.close();
+    },
+  );
+
+  test('does not send a recovery key when no remote envelope exists', () async {
+    final vault = _FakeVault();
+    final transport = _FakeEnvelopeTransport();
+    final coordinator = _coordinator(vault: vault, transport: transport);
+    final encoded = RecoveryKeyDraft.fromBytes(
+      List<int>.filled(32, 9),
+    ).encodedKey;
+
+    await expectLater(
+      coordinator.restoreWithRecoveryKey(encoded),
+      throwsA(
+        isA<ContentEncryptionException>().having(
+          (error) => error.message,
+          'message',
+          '该账号没有可恢复的加密内容',
+        ),
+      ),
+    );
+    expect(vault.restoreCalls, 0);
+    expect(transport.storeCalls, 0);
+    coordinator.close();
+  });
+
+  test('recovery key codec rejects non-canonical base32 padding', () {
+    final encoded = RecoveryKeyDraft.fromBytes(
+      List<int>.filled(32, 0),
+    ).encodedKey;
+    expect(RecoveryKeyCodec.decode(encoded), List<int>.filled(32, 0));
+    expect(
+      RecoveryKeyCodec.decode('  ${encoded.toLowerCase()}\n'),
+      List<int>.filled(32, 0),
+    );
+    final compact = encoded.replaceAll('-', '');
+    expect(
+      () => RecoveryKeyCodec.decode('${compact.substring(0, 51)}B'),
+      throwsFormatException,
+    );
+  });
 }
 
 ContentEncryptionCoordinator _coordinator({
@@ -131,6 +230,9 @@ class _FakeVault implements ContentKeyVault {
   LocalContentKeyStatus localStatus = LocalContentKeyStatus.missing;
   var initializeCalls = 0;
   var discardCalls = 0;
+  var restoreCalls = 0;
+  var restoreResult = true;
+  List<int>? receivedRecoveryKey;
 
   @override
   Future<void> acknowledgeRecoveryKeySaved({
@@ -178,6 +280,23 @@ class _FakeVault implements ContentKeyVault {
     required String accountId,
     required List<int> deviceVaultKey,
   }) async => localStatus;
+
+  @override
+  Future<bool> restore({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required List<int> recoveryKey,
+    required int keyVersion,
+    required List<int> recoverySalt,
+    required List<int> recoveryNonce,
+    required List<int> recoveryCiphertext,
+  }) async {
+    restoreCalls++;
+    receivedRecoveryKey = recoveryKey;
+    if (restoreResult) localStatus = LocalContentKeyStatus.ready;
+    return restoreResult;
+  }
 }
 
 class _FakeEnvelopeTransport implements KeyEnvelopeTransport {

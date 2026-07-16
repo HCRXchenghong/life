@@ -8,7 +8,7 @@
 | --- | --- |
 | Flutter 服务层 | Drift v3、按 App 账号隔离的 `app.db`、按账号命名空间隔离的安全保险库、统一 `DaylinkServices` 容器；Android/iOS 共用领域层 |
 | Flutter 密文同步接收层 | 按账号增量拉取、严格密文与 nonce 校验、单调游标、幂等本地缓存、SSE 与前台恢复触发；密钥未解锁时不解密或覆盖本机内容 |
-| 端到端密钥初始化 | Rust 用系统 CSPRNG 生成 256 位 CMK 与高熵恢复密钥；CMK 只进入设备密钥 AEAD 保护、原子写入且权限为 `0700/0600` 的账号级 `vault.db`，后端只保存 HKDF-SHA256 + AES-256-GCM 恢复密钥信封；并发初始化采用首写胜出且冲突时丢弃本地待确认密钥；Flutter 已实现恢复密钥展示、复制限时清理、后台遮挡和二次确认，确认成功后才清除本地待确认副本 |
+| 端到端密钥初始化与恢复 | Rust 用系统 CSPRNG 生成 256 位 CMK 与高熵恢复密钥；CMK 只进入设备密钥 AEAD 保护、原子写入且权限为 `0700/0600` 的账号级 `vault.db`，后端只保存 HKDF-SHA256 + AES-256-GCM 恢复密钥信封；并发初始化采用首写胜出且冲突时丢弃本地待确认密钥；Flutter 已实现恢复密钥展示、复制限时清理、后台遮挡和二次确认；新设备只下载加密信封，恢复密钥在 Rust 本地以账号绑定 AAD 解封，错误、篡改或跨账号信封不会写入内容密钥 |
 | SSH | 密码/私钥认证、严格 known-host/TOFU、命令、PTY、resize、断开、loopback TCP 转发 |
 | Linux Agent | CBOR 分帧协议、能力协商、Unix Socket/stdio、目录白名单、文件分块传输与 SHA-256 提交 |
 | Agent 安装 | Flutter FFI 上传、64 MiB 上限、本地/远端 SHA-256、远端自检、版本目录和原子 symlink 切换；自检失败不替换旧版本 |
@@ -29,14 +29,14 @@
 
 - Go：`gofmt`、`go test ./...`、`go vet ./...` 通过。
 - React：ESLint、TypeScript、Vite 生产构建与独立部署测试通过，npm audit 为 0。
-- Flutter：`flutter analyze` 0 条诊断，94 项测试通过，Android debug APK 与 iOS Simulator debug 构建通过。
-- Rust：`cargo fmt --all --check`、workspace Clippy `-D warnings`、11 项测试全部通过。
+- Flutter：`flutter analyze` 0 条诊断，106 项测试通过，Android debug APK 与 iOS Simulator debug 构建通过。
+- Rust：`cargo fmt --all --check`、workspace Clippy `-D warnings`、13 项测试全部通过。
 - 容器：Go 与 React 镜像构建成功；MySQL、API 均健康，Caddy 在局域网 HTTPS 端口运行；API/Web 只读与非特权标志已复验。
 - 黑盒：真实 Caddy → Go → MySQL 链路验证错误初始化口令拒绝、管理员初始化、Microsoft TOTP、同源保护、App 双账号、刷新令牌重放拒绝、跨账号密文隔离、管理员无法读取同步内容、投票和公开投票页；实时会话黑盒证明后台停用会在 2 秒门槛内推送 `account_disabled` 并同步撤销数据库会话。
 
 ## 尚未声称完成的边界
 
-- Flutter 已接入账号级增量密文拉取和恢复密钥展示/确认，Rust `vault.db` 已实现 CMK/恢复密钥初始化，服务端已实现账号隔离的恢复密钥信封。受信设备批准、新设备解锁、加密出站队列及解密落库仍未接入，因此不能把“新设备自动恢复全部历史内容”标记为端到端交付。
+- Flutter 已接入账号级增量密文拉取、恢复密钥展示/确认与新设备恢复密钥解锁，Rust `vault.db` 已实现 CMK 初始化和本地恢复，服务端只提供账号隔离的恢复密钥信封。受信设备批准、加密出站队列、解密落库及新设备历史内容重建仍未接入，因此不能把“新设备自动恢复全部历史内容”标记为端到端交付。
 - 管理员能够管理登录身份，但不能恢复用户内容。若所有受信设备和恢复密钥都丢失，旧密文按设计不可恢复。
 - 本轮提供的临时第三方凭据对标准 Bearer `/v1/models` 请求返回 HTTP 401，未写入源码、数据库、部署环境或日志；正式联调需要上游可接受的有效 Key。
 

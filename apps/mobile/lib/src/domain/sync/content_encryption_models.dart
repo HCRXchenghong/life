@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 enum ContentEncryptionSetupStatus {
   notConfigured,
   recoveryPending,
@@ -29,6 +31,7 @@ class RecoveryKeyDraft {
       while (bits >= 5) {
         bits -= 5;
         output.write(alphabet[(buffer >> bits) & 31]);
+        buffer = bits == 0 ? 0 : buffer & ((1 << bits) - 1);
       }
     }
     if (bits > 0) output.write(alphabet[(buffer << (5 - bits)) & 31]);
@@ -53,6 +56,57 @@ abstract interface class ContentEncryptionSource {
   Future<RecoveryKeyDraft> prepareContentEncryption();
 
   Future<void> acknowledgeRecoveryKeySaved();
+
+  Future<void> restoreWithRecoveryKey(String encodedKey);
+}
+
+abstract final class RecoveryKeyCodec {
+  static Uint8List decode(String value) {
+    if (value.length > 128) throw const FormatException();
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    final output = Uint8List(32);
+    var outputIndex = 0;
+    var symbolCount = 0;
+    var buffer = 0;
+    var bits = 0;
+    for (final original in value.codeUnits) {
+      if (original == 0x2D ||
+          original == 0x20 ||
+          original == 0x09 ||
+          original == 0x0A ||
+          original == 0x0D) {
+        continue;
+      }
+      final code = original >= 0x61 && original <= 0x7A
+          ? original - 0x20
+          : original;
+      final decoded = alphabet.indexOf(String.fromCharCode(code));
+      if (decoded < 0) {
+        output.fillRange(0, output.length, 0);
+        throw const FormatException();
+      }
+      symbolCount++;
+      buffer = (buffer << 5) | decoded;
+      bits += 5;
+      while (bits >= 8) {
+        bits -= 8;
+        if (outputIndex >= output.length) {
+          output.fillRange(0, output.length, 0);
+          throw const FormatException();
+        }
+        output[outputIndex++] = (buffer >> bits) & 0xFF;
+        buffer = bits == 0 ? 0 : buffer & ((1 << bits) - 1);
+      }
+    }
+    if (symbolCount != 52 ||
+        outputIndex != output.length ||
+        bits != 4 ||
+        buffer != 0) {
+      output.fillRange(0, output.length, 0);
+      throw const FormatException();
+    }
+    return output;
+  }
 }
 
 class ContentEncryptionException implements Exception {

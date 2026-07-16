@@ -284,6 +284,58 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('今天'), findsOneWidget);
   });
+
+  testWidgets('locked account restores through the real recovery route', (
+    tester,
+  ) async {
+    final authentication = _FakeAuthentication(
+      restored: _FakeAuthentication.session(
+        username: 'locked-user',
+        passwordChangeRequired: false,
+      ),
+    );
+    final runtime = _FakeScheduleRuntime(
+      encryptionStatus: ContentEncryptionSetupStatus.locked,
+    );
+    await tester.pumpWidget(
+      DaylinkApp(
+        authentication: authentication,
+        runtimeFactory: (_, _) async => runtime,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('nav-me')));
+    await tester.pumpAndSettle();
+    final sync = find.byKey(const Key('my-sync'));
+    await tester.ensureVisible(sync);
+    await tester.tap(sync);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('sync-encryption')));
+    await tester.pumpAndSettle();
+    expect(find.text('使用恢复密钥解锁'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('e2ee-enable')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('recovery-unlock-title')), findsOneWidget);
+    final encoded = RecoveryKeyDraft.fromBytes(
+      List<int>.filled(32, 3),
+    ).encodedKey;
+    await tester.enterText(
+      find.byKey(const Key('recovery-unlock-input')),
+      encoded,
+    );
+    await tester.drag(
+      find.byKey(const Key('recovery-unlock-scroll')),
+      const Offset(0, -140),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('recovery-unlock-submit')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('recovery-unlock-title')), findsNothing);
+    expect(find.text('已开启'), findsOneWidget);
+  });
 }
 
 class _FakeAuthentication implements AppAuthentication {
@@ -394,6 +446,13 @@ class _FakeScheduleRuntime
         NotificationSettingsSource,
         DataSyncSource,
         ContentEncryptionSource {
+  _FakeScheduleRuntime({
+    ContentEncryptionSetupStatus encryptionStatus =
+        ContentEncryptionSetupStatus.notConfigured,
+  }) : _contentEncryptionState = ContentEncryptionState(
+         status: encryptionStatus,
+       );
+
   final _source = _EmptyScheduleSource();
   final _hosts = _EmptyHostSource();
 
@@ -498,9 +557,7 @@ class _FakeScheduleRuntime
   @override
   Future<DataSyncState> syncNow() async => _dataSyncState;
 
-  ContentEncryptionState _contentEncryptionState = const ContentEncryptionState(
-    status: ContentEncryptionSetupStatus.notConfigured,
-  );
+  ContentEncryptionState _contentEncryptionState;
 
   @override
   Future<void> acknowledgeRecoveryKeySaved() async {
@@ -519,6 +576,13 @@ class _FakeScheduleRuntime
       status: ContentEncryptionSetupStatus.recoveryPending,
     );
     return RecoveryKeyDraft.fromBytes(List<int>.filled(32, 1));
+  }
+
+  @override
+  Future<void> restoreWithRecoveryKey(String encodedKey) async {
+    _contentEncryptionState = const ContentEncryptionState(
+      status: ContentEncryptionSetupStatus.enabled,
+    );
   }
 
   @override

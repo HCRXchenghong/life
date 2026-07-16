@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+use std::fmt;
 use std::fs::{self, File, OpenOptions};
 use std::io::{ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
@@ -11,7 +12,7 @@ use hkdf::Hkdf;
 use serde::{Deserialize, Serialize};
 use sha2_11::Sha256;
 use uuid::Uuid;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 const VAULT_MAGIC: &[u8; 8] = b"DLVLT001";
 const VAULT_NONCE_BYTES: usize = 12;
@@ -30,7 +31,7 @@ pub enum ContentKeyStatus {
     Ready,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ContentKeyInitialization {
     pub device_id: String,
     pub key_version: u32,
@@ -40,7 +41,21 @@ pub struct ContentKeyInitialization {
     pub recovery_ciphertext: Vec<u8>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+impl fmt::Debug for ContentKeyInitialization {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ContentKeyInitialization")
+            .field("device_id", &self.device_id)
+            .field("key_version", &self.key_version)
+            .field("recovery_key", &"<redacted>")
+            .field("recovery_salt_bytes", &self.recovery_salt.len())
+            .field("recovery_nonce_bytes", &self.recovery_nonce.len())
+            .field("recovery_ciphertext_bytes", &self.recovery_ciphertext.len())
+            .finish()
+    }
+}
+
+#[derive(Serialize, Deserialize)]
 struct VaultPlaintext {
     format_version: u32,
     account_id: String,
@@ -48,7 +63,7 @@ struct VaultPlaintext {
     content_key: Option<ContentKeyRecord>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct ContentKeyRecord {
     key_version: u32,
     cmk: Vec<u8>,
@@ -199,6 +214,81 @@ pub fn discard_pending_content_key(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
+pub fn restore_content_key(
+    vault_path: &str,
+    account_id: &str,
+    device_vault_key: &[u8],
+    recovery_key: Vec<u8>,
+    key_version: u32,
+    recovery_salt: &[u8],
+    recovery_nonce: &[u8],
+    recovery_ciphertext: &[u8],
+) -> Result<bool, String> {
+    let recovery_key = Zeroizing::new(recovery_key);
+    with_vault_lock(|| {
+        let account_id = canonical_account_id(account_id)?;
+        let path = validated_vault_path(vault_path)?;
+        validate_device_key(device_vault_key)?;
+        validate_recovery_envelope(
+            key_version,
+            &recovery_key,
+            recovery_salt,
+            recovery_nonce,
+            recovery_ciphertext,
+        )?;
+        let mut vault =
+            read_vault(&path, &account_id, device_vault_key)?.unwrap_or_else(|| VaultPlaintext {
+                format_version: 1,
+                account_id: account_id.clone(),
+                device_id: Uuid::new_v4().to_string(),
+                content_key: None,
+            });
+
+        if let Some(record) = vault.content_key.as_ref() {
+            if record.pending_recovery_key.is_some() {
+                return Err("pending recovery key must be confirmed first".to_owned());
+            }
+            let Some(mut candidate) = unwrap_content_key(
+                &account_id,
+                key_version,
+                &recovery_key,
+                recovery_salt,
+                recovery_nonce,
+                recovery_ciphertext,
+            )?
+            else {
+                return Ok(false);
+            };
+            let matches = constant_time_bytes_equal(&candidate, &record.cmk);
+            candidate.zeroize();
+            return Ok(matches);
+        }
+
+        let Some(cmk) = unwrap_content_key(
+            &account_id,
+            key_version,
+            &recovery_key,
+            recovery_salt,
+            recovery_nonce,
+            recovery_ciphertext,
+        )?
+        else {
+            return Ok(false);
+        };
+        vault.content_key = Some(ContentKeyRecord {
+            key_version,
+            cmk,
+            recovery_salt: recovery_salt.to_vec(),
+            recovery_nonce: recovery_nonce.to_vec(),
+            recovery_ciphertext: recovery_ciphertext.to_vec(),
+            pending_recovery_key: None,
+        });
+        write_vault(&path, &account_id, device_vault_key, &vault)?;
+        Ok(true)
+    })
+}
+
 fn initialization_from_pending(
     device_id: &str,
     record: &ContentKeyRecord,
@@ -245,6 +335,70 @@ fn wrap_content_key(
         .map_err(|_| "content key wrapping failed".to_owned());
     kek.zeroize();
     result
+}
+
+fn unwrap_content_key(
+    account_id: &str,
+    key_version: u32,
+    recovery_key: &[u8],
+    salt: &[u8],
+    nonce: &[u8],
+    ciphertext: &[u8],
+) -> Result<Option<Vec<u8>>, String> {
+    let hkdf = Hkdf::<Sha256>::new(Some(salt), recovery_key);
+    let mut kek = [0_u8; KEY_BYTES];
+    let info = format!("daylink-recovery-kek-v1\0{account_id}\0{key_version}");
+    hkdf.expand(info.as_bytes(), &mut kek)
+        .map_err(|_| "recovery key derivation failed".to_owned())?;
+    let cipher =
+        Aes256Gcm::new_from_slice(&kek).map_err(|_| "recovery key derivation failed".to_owned())?;
+    let aad = format!("daylink-recovery-envelope-v1\0{account_id}\0{key_version}");
+    let nonce = Nonce::try_from(nonce).map_err(|_| "recovery nonce is invalid".to_owned())?;
+    let decrypted = cipher.decrypt(
+        &nonce,
+        Payload {
+            msg: ciphertext,
+            aad: aad.as_bytes(),
+        },
+    );
+    kek.zeroize();
+    let Ok(mut cmk) = decrypted else {
+        return Ok(None);
+    };
+    if cmk.len() != KEY_BYTES {
+        cmk.zeroize();
+        return Err("recovery envelope plaintext is invalid".to_owned());
+    }
+    Ok(Some(cmk))
+}
+
+fn validate_recovery_envelope(
+    key_version: u32,
+    recovery_key: &[u8],
+    salt: &[u8],
+    nonce: &[u8],
+    ciphertext: &[u8],
+) -> Result<(), String> {
+    if key_version != CONTENT_KEY_VERSION
+        || recovery_key.len() != KEY_BYTES
+        || salt.len() != RECOVERY_SALT_BYTES
+        || nonce.len() != RECOVERY_NONCE_BYTES
+        || ciphertext.len() != KEY_BYTES + 16
+    {
+        return Err("recovery envelope is invalid".to_owned());
+    }
+    Ok(())
+}
+
+fn constant_time_bytes_equal(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut difference = 0_u8;
+    for (left, right) in left.iter().zip(right) {
+        difference |= left ^ right;
+    }
+    difference == 0
 }
 
 fn read_vault(
@@ -490,6 +644,9 @@ mod tests {
         let second = initialize_content_key(path.to_str().expect("path"), account, &device_key)
             .expect("resume pending");
         assert_eq!(first, second);
+        let debug = format!("{first:?}");
+        assert!(debug.contains("<redacted>"));
+        assert!(!debug.contains("recovery_key: ["));
         assert_eq!(first.recovery_ciphertext.len(), 48);
         assert_eq!(
             content_key_status(path.to_str().expect("path"), account, &device_key).expect("status"),
@@ -548,5 +705,150 @@ mod tests {
             ContentKeyStatus::Missing
         );
         let _ = fs::remove_dir_all(path.parent().expect("parent"));
+    }
+
+    #[test]
+    fn recovery_key_restores_the_same_cmk_on_a_new_device() {
+        let source_path = test_path("restore-source");
+        let destination_path = test_path("restore-destination");
+        let account = "8f2e0a0d-574b-4e53-bf82-1ec9c9bc2521";
+        let source_device_key = generate_device_vault_key().expect("source device key");
+        let destination_device_key = generate_device_vault_key().expect("destination device key");
+        let initialized = initialize_content_key(
+            source_path.to_str().expect("source path"),
+            account,
+            &source_device_key,
+        )
+        .expect("initialize");
+
+        assert!(
+            restore_content_key(
+                destination_path.to_str().expect("destination path"),
+                account,
+                &destination_device_key,
+                initialized.recovery_key.clone(),
+                initialized.key_version,
+                &initialized.recovery_salt,
+                &initialized.recovery_nonce,
+                &initialized.recovery_ciphertext,
+            )
+            .expect("restore")
+        );
+        assert!(
+            restore_content_key(
+                destination_path.to_str().expect("destination path"),
+                account,
+                &destination_device_key,
+                initialized.recovery_key.clone(),
+                initialized.key_version,
+                &initialized.recovery_salt,
+                &initialized.recovery_nonce,
+                &initialized.recovery_ciphertext,
+            )
+            .expect("idempotent restore")
+        );
+        assert_eq!(
+            content_key_status(
+                destination_path.to_str().expect("destination path"),
+                account,
+                &destination_device_key,
+            )
+            .expect("status"),
+            ContentKeyStatus::Ready
+        );
+
+        let source = read_vault(&source_path, account, &source_device_key)
+            .expect("read source")
+            .expect("source vault");
+        let destination = read_vault(&destination_path, account, &destination_device_key)
+            .expect("read destination")
+            .expect("destination vault");
+        let source_key = source.content_key.expect("source key");
+        let destination_key = destination.content_key.expect("destination key");
+        assert!(constant_time_bytes_equal(
+            &source_key.cmk,
+            &destination_key.cmk
+        ));
+        let destination_bytes = fs::read(&destination_path).expect("read destination bytes");
+        assert!(
+            !destination_bytes
+                .windows(initialized.recovery_key.len())
+                .any(|part| part == initialized.recovery_key)
+        );
+
+        let _ = fs::remove_dir_all(source_path.parent().expect("source parent"));
+        let _ = fs::remove_dir_all(destination_path.parent().expect("destination parent"));
+    }
+
+    #[test]
+    fn wrong_or_cross_account_recovery_key_never_creates_a_content_key() {
+        let source_path = test_path("restore-reject-source");
+        let wrong_key_path = test_path("restore-reject-wrong-key");
+        let cross_account_path = test_path("restore-reject-cross-account");
+        let tampered_path = test_path("restore-reject-tampered");
+        let account = "8f2e0a0d-574b-4e53-bf82-1ec9c9bc2521";
+        let other_account = "123e4567-e89b-42d3-a456-426614174000";
+        let source_device_key = generate_device_vault_key().expect("source device key");
+        let destination_device_key = generate_device_vault_key().expect("destination device key");
+        let initialized = initialize_content_key(
+            source_path.to_str().expect("source path"),
+            account,
+            &source_device_key,
+        )
+        .expect("initialize");
+        let mut wrong_key = initialized.recovery_key.clone();
+        wrong_key[0] ^= 1;
+
+        assert!(
+            !restore_content_key(
+                wrong_key_path.to_str().expect("wrong key path"),
+                account,
+                &destination_device_key,
+                wrong_key,
+                initialized.key_version,
+                &initialized.recovery_salt,
+                &initialized.recovery_nonce,
+                &initialized.recovery_ciphertext,
+            )
+            .expect("reject wrong key")
+        );
+        assert!(!wrong_key_path.exists());
+
+        let mut tampered_ciphertext = initialized.recovery_ciphertext.clone();
+        tampered_ciphertext[0] ^= 1;
+        assert!(
+            !restore_content_key(
+                tampered_path.to_str().expect("tampered path"),
+                account,
+                &destination_device_key,
+                initialized.recovery_key.clone(),
+                initialized.key_version,
+                &initialized.recovery_salt,
+                &initialized.recovery_nonce,
+                &tampered_ciphertext,
+            )
+            .expect("reject tampered envelope")
+        );
+        assert!(!tampered_path.exists());
+
+        assert!(
+            !restore_content_key(
+                cross_account_path.to_str().expect("cross-account path"),
+                other_account,
+                &destination_device_key,
+                initialized.recovery_key,
+                initialized.key_version,
+                &initialized.recovery_salt,
+                &initialized.recovery_nonce,
+                &initialized.recovery_ciphertext,
+            )
+            .expect("reject cross-account envelope")
+        );
+        assert!(!cross_account_path.exists());
+
+        let _ = fs::remove_dir_all(source_path.parent().expect("source parent"));
+        let _ = fs::remove_dir_all(wrong_key_path.parent().expect("wrong key parent"));
+        let _ = fs::remove_dir_all(cross_account_path.parent().expect("cross-account parent"));
+        let _ = fs::remove_dir_all(tampered_path.parent().expect("tampered parent"));
     }
 }

@@ -246,4 +246,7 @@ class _FakeContentEncryptionSource implements ContentEncryptionSource {
 
   @override
   Future<RecoveryKeyDraft> prepareContentEncryption() async => _draft();
+
+  @override
+  Future<void> restoreWithRecoveryKey(String encodedKey) async {}
 }

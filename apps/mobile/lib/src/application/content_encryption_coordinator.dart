@@ -79,6 +79,7 @@ class ContentEncryptionCoordinator implements ContentEncryptionSource {
   final SessionRefreshCallback _refreshAccessToken;
   Future<List<int>>? _deviceKeyFuture;
   Future<RecoveryKeyDraft>? _activePreparation;
+  Future<void>? _activeRestoration;
   bool _closed = false;
 
   @override
@@ -223,6 +224,72 @@ class ContentEncryptionCoordinator implements ContentEncryptionSource {
       accountId: _accountId,
       deviceVaultKey: deviceKey,
     );
+  }
+
+  @override
+  Future<void> restoreWithRecoveryKey(String encodedKey) {
+    _ensureOpen();
+    final active = _activeRestoration;
+    if (active != null) return active;
+    final operation = _restore(
+      encodedKey,
+    ).whenComplete(() => _activeRestoration = null);
+    _activeRestoration = operation;
+    return operation;
+  }
+
+  Future<void> _restore(String encodedKey) async {
+    late Uint8List recoveryKey;
+    try {
+      recoveryKey = RecoveryKeyCodec.decode(encodedKey);
+    } on FormatException {
+      throw const ContentEncryptionException('恢复密钥格式不正确');
+    }
+    try {
+      final deviceKey = await _deviceKey();
+      final local = await _vault.status(
+        vaultPath: _vaultPath,
+        accountId: _accountId,
+        deviceVaultKey: deviceKey,
+      );
+      if (local == LocalContentKeyStatus.ready) {
+        throw const ContentEncryptionException('此设备已恢复加密内容');
+      }
+      if (local == LocalContentKeyStatus.pendingRecoveryConfirmation) {
+        throw const ContentEncryptionException('请先完成当前恢复密钥的保存确认');
+      }
+      late KeyEnvelope? envelope;
+      try {
+        envelope = await _authenticated(
+          (token) => _client.load(accessToken: token),
+        );
+      } on KeyEnvelopeClientException catch (error) {
+        throw ContentEncryptionException(error.message);
+      }
+      if (envelope == null) {
+        throw const ContentEncryptionException('该账号没有可恢复的加密内容');
+      }
+      late bool restored;
+      try {
+        restored = await _vault.restore(
+          vaultPath: _vaultPath,
+          accountId: _accountId,
+          deviceVaultKey: deviceKey,
+          recoveryKey: recoveryKey,
+          keyVersion: envelope.keyVersion,
+          recoverySalt: envelope.salt,
+          recoveryNonce: envelope.nonce,
+          recoveryCiphertext: envelope.ciphertext,
+        );
+      } on Object {
+        throw const ContentEncryptionException('无法在此设备保存内容密钥，请重试');
+      }
+      if (!restored) {
+        throw const ContentEncryptionException('恢复密钥不正确，请重新检查');
+      }
+    } finally {
+      recoveryKey.fillRange(0, recoveryKey.length, 0);
+    }
   }
 
   Future<LocalContentKeyStatus> _localStatus() async {
