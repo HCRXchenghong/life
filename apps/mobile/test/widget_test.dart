@@ -229,6 +229,15 @@ void main() {
     expect(find.text('active-user'), findsOneWidget);
     expect(find.text('Daylink iPhone'), findsOneWidget);
     expect(find.text('当前设备 · 刚刚活跃'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('security-change-password')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('password-page-title')), findsOneWidget);
+    expect(find.text('保存新密码'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('password-back')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('security-title')), findsOneWidget);
+
     await tester.tap(find.byKey(const Key('security-back')));
     await tester.pumpAndSettle();
 

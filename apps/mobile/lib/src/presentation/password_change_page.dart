@@ -98,22 +98,64 @@ class _PasswordChangePageState extends State<PasswordChangePage> {
 
   @override
   Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
-    value: const SystemUiOverlayStyle(
+    value: SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.dark,
       statusBarBrightness: Brightness.light,
-      systemNavigationBarColor: _background,
+      systemNavigationBarColor: widget.firstLogin
+          ? _background
+          : _regularBackground,
       systemNavigationBarIconBrightness: Brightness.dark,
     ),
     child: Scaffold(
-      backgroundColor: _background,
+      backgroundColor: widget.firstLogin ? _background : _regularBackground,
+      appBar: widget.firstLogin
+          ? null
+          : AppBar(
+              backgroundColor: _regularBackground,
+              surfaceTintColor: Colors.transparent,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              centerTitle: true,
+              leadingWidth: 66,
+              leading: IconButton(
+                key: const Key('password-back'),
+                onPressed: () => Navigator.maybePop(context),
+                padding: const EdgeInsets.only(left: 18),
+                icon: const Icon(
+                  Icons.arrow_back_rounded,
+                  size: 29,
+                  color: _text,
+                ),
+              ),
+              title: const Text(
+                '修改密码',
+                key: Key('password-page-title'),
+                style: TextStyle(
+                  color: _text,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.3,
+                ),
+              ),
+              bottom: const PreferredSize(
+                preferredSize: Size.fromHeight(1),
+                child: Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: Color(0xFFE8EAED),
+                ),
+              ),
+            ),
       body: SafeArea(
         child: AutofillGroup(
           child: CustomScrollView(
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             slivers: [
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(32, 88, 32, 22),
+                padding: widget.firstLogin
+                    ? const EdgeInsets.fromLTRB(32, 88, 32, 22)
+                    : const EdgeInsets.fromLTRB(24, 30, 24, 48),
                 sliver: SliverFillRemaining(
                   hasScrollBody: false,
                   child: Form(
@@ -121,29 +163,41 @@ class _PasswordChangePageState extends State<PasswordChangePage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const _CompactBrand(),
-                        const SizedBox(height: 80),
-                        Text(
-                          widget.firstLogin ? '设置新密码' : '修改密码',
-                          style: const TextStyle(
-                            color: _text,
-                            fontSize: 32,
-                            height: 1.2,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: -0.8,
+                        if (widget.firstLogin) ...[
+                          const _CompactBrand(),
+                          const SizedBox(height: 80),
+                          const Text(
+                            '设置新密码',
+                            style: TextStyle(
+                              color: _text,
+                              fontSize: 32,
+                              height: 1.2,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.8,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 14),
-                        Text(
-                          widget.firstLogin ? '首次登录需要修改密码' : '修改后，其他设备将退出登录',
-                          style: const TextStyle(
-                            color: _muted,
-                            fontSize: 17,
-                            height: 1.4,
-                            fontWeight: FontWeight.w400,
+                          const SizedBox(height: 14),
+                          const Text(
+                            '首次登录需要修改密码',
+                            style: TextStyle(
+                              color: _muted,
+                              fontSize: 17,
+                              height: 1.4,
+                              fontWeight: FontWeight.w400,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 38),
+                          const SizedBox(height: 38),
+                        ] else ...[
+                          const Text(
+                            '修改后，其他设备将退出登录。',
+                            style: TextStyle(
+                              color: _regularMuted,
+                              fontSize: 15,
+                              height: 1.45,
+                            ),
+                          ),
+                          const SizedBox(height: 29),
+                        ],
                         const _FieldLabel('当前密码'),
                         const SizedBox(height: 10),
                         _PasswordField(
@@ -158,10 +212,11 @@ class _PasswordChangePageState extends State<PasswordChangePage> {
                           onToggleVisibility: () => setState(
                             () => _obscureCurrent = !_obscureCurrent,
                           ),
+                          regular: !widget.firstLogin,
                           validator: (value) =>
                               value == null || value.isEmpty ? '请输入当前密码' : null,
                         ),
-                        const SizedBox(height: 28),
+                        SizedBox(height: widget.firstLogin ? 28 : 25),
                         const _FieldLabel('新密码'),
                         const SizedBox(height: 10),
                         _PasswordField(
@@ -177,6 +232,7 @@ class _PasswordChangePageState extends State<PasswordChangePage> {
                               _confirmPasswordFocus.requestFocus(),
                           onToggleVisibility: () =>
                               setState(() => _obscureNew = !_obscureNew),
+                          regular: !widget.firstLogin,
                           validator: (value) {
                             if (value == null || value.isEmpty) {
                               return '请输入新密码';
@@ -199,7 +255,7 @@ class _PasswordChangePageState extends State<PasswordChangePage> {
                             fontWeight: FontWeight.w400,
                           ),
                         ),
-                        const SizedBox(height: 27),
+                        SizedBox(height: widget.firstLogin ? 27 : 25),
                         const _FieldLabel('确认新密码'),
                         const SizedBox(height: 10),
                         _PasswordField(
@@ -215,23 +271,30 @@ class _PasswordChangePageState extends State<PasswordChangePage> {
                           onToggleVisibility: () => setState(
                             () => _obscureConfirm = !_obscureConfirm,
                           ),
+                          regular: !widget.firstLogin,
                           validator: (value) =>
                               value != _newPassword.text ? '两次输入的新密码不一致' : null,
                         ),
-                        const SizedBox(height: 40),
+                        SizedBox(height: widget.firstLogin ? 40 : 30),
                         SizedBox(
-                          height: 54,
+                          height: widget.firstLogin ? 54 : 52,
                           child: FilledButton(
                             key: const Key('password-submit'),
                             onPressed: _busy ? null : _submit,
                             style: FilledButton.styleFrom(
-                              backgroundColor: _primary,
-                              disabledBackgroundColor: _primary.withValues(
-                                alpha: 0.58,
-                              ),
+                              backgroundColor: widget.firstLogin
+                                  ? _primary
+                                  : _regularPrimary,
+                              disabledBackgroundColor:
+                                  (widget.firstLogin
+                                          ? _primary
+                                          : _regularPrimary)
+                                      .withValues(alpha: 0.58),
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(11),
+                                borderRadius: BorderRadius.circular(
+                                  widget.firstLogin ? 11 : 14,
+                                ),
                               ),
                               elevation: 0,
                               textStyle: const TextStyle(
@@ -371,6 +434,7 @@ class _PasswordField extends StatelessWidget {
     required this.textInputAction,
     required this.onSubmitted,
     required this.onToggleVisibility,
+    this.regular = false,
     required this.validator,
   });
 
@@ -384,6 +448,7 @@ class _PasswordField extends StatelessWidget {
   final TextInputAction textInputAction;
   final ValueChanged<String> onSubmitted;
   final VoidCallback onToggleVisibility;
+  final bool regular;
   final FormFieldValidator<String> validator;
 
   @override
@@ -402,55 +467,81 @@ class _PasswordField extends StatelessWidget {
         (_, {required currentLength, required isFocused, maxLength}) => null,
     onFieldSubmitted: onSubmitted,
     validator: validator,
-    decoration: _inputDecoration(hint).copyWith(
+    style: regular
+        ? const TextStyle(
+            color: _text,
+            fontSize: 16,
+            fontWeight: FontWeight.w400,
+          )
+        : null,
+    decoration: _inputDecoration(hint, regular: regular).copyWith(
       suffixIcon: IconButton(
         tooltip: obscureText ? '显示密码' : '隐藏密码',
         onPressed: enabled ? onToggleVisibility : null,
         icon: Icon(
-          obscureText
-              ? Icons.visibility_outlined
-              : Icons.visibility_off_outlined,
-          size: 22,
-          color: _muted,
+          regular
+              ? (obscureText
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined)
+              : (obscureText
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined),
+          size: regular ? 24 : 22,
+          color: regular ? _regularMuted : _muted,
         ),
       ),
     ),
   );
 }
 
-InputDecoration _inputDecoration(String hint) => InputDecoration(
-  hintText: hint,
-  hintStyle: const TextStyle(
-    color: Color(0xFF9AA0A9),
-    fontSize: 16,
-    fontWeight: FontWeight.w400,
-  ),
-  filled: true,
-  fillColor: Colors.white,
-  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-  border: _fieldBorder,
-  enabledBorder: _fieldBorder,
-  disabledBorder: _fieldBorder,
-  focusedBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(11),
-    borderSide: const BorderSide(color: _primary, width: 1.4),
-  ),
-  errorBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(11),
-    borderSide: const BorderSide(color: Color(0xFFD54941)),
-  ),
-  focusedErrorBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(11),
-    borderSide: const BorderSide(color: Color(0xFFD54941), width: 1.4),
-  ),
-);
+InputDecoration _inputDecoration(String hint, {required bool regular}) =>
+    InputDecoration(
+      hintText: hint,
+      hintStyle: TextStyle(
+        color: regular ? _regularMuted : const Color(0xFF9AA0A9),
+        fontSize: regular ? 15 : 16,
+        fontWeight: FontWeight.w400,
+      ),
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: EdgeInsets.symmetric(
+        horizontal: regular ? 16 : 16,
+        vertical: regular ? 19 : 16,
+      ),
+      border: regular ? _regularFieldBorder : _fieldBorder,
+      enabledBorder: regular ? _regularFieldBorder : _fieldBorder,
+      disabledBorder: regular ? _regularFieldBorder : _fieldBorder,
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(regular ? 14 : 11),
+        borderSide: BorderSide(
+          color: regular ? _regularPrimary : _primary,
+          width: 1.4,
+        ),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(regular ? 14 : 11),
+        borderSide: const BorderSide(color: Color(0xFFD54941)),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(regular ? 14 : 11),
+        borderSide: const BorderSide(color: Color(0xFFD54941), width: 1.4),
+      ),
+    );
 
 final _fieldBorder = OutlineInputBorder(
   borderRadius: BorderRadius.circular(11),
   borderSide: const BorderSide(color: Color(0xFFD4D7DC)),
 );
 
+final _regularFieldBorder = OutlineInputBorder(
+  borderRadius: BorderRadius.circular(14),
+  borderSide: const BorderSide(color: Color(0xFFD9DCE1)),
+);
+
 const _background = Color(0xFFF7F8FA);
+const _regularBackground = Color(0xFFF8F9FB);
 const _text = Color(0xFF1F2329);
 const _muted = Color(0xFF646A73);
+const _regularMuted = Color(0xFF8F959E);
 const _primary = Color(0xFF3370FF);
+const _regularPrimary = Color(0xFF1677FF);
