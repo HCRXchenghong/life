@@ -10397,6 +10397,1059 @@ class SharePollRefsCompanion extends UpdateCompanion<SharePollRef> {
   }
 }
 
+class $DataSyncPreferencesTable extends DataSyncPreferences
+    with TableInfo<$DataSyncPreferencesTable, DataSyncPreference> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DataSyncPreferencesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _autoSyncEnabledMeta = const VerificationMeta(
+    'autoSyncEnabled',
+  );
+  @override
+  late final GeneratedColumn<bool> autoSyncEnabled = GeneratedColumn<bool>(
+    'auto_sync_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("auto_sync_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _cursorMeta = const VerificationMeta('cursor');
+  @override
+  late final GeneratedColumn<int> cursor = GeneratedColumn<int>(
+    'cursor',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _lastSyncedAtMeta = const VerificationMeta(
+    'lastSyncedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastSyncedAt = GeneratedColumn<DateTime>(
+    'last_synced_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    autoSyncEnabled,
+    cursor,
+    lastSyncedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'data_sync_preferences';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DataSyncPreference> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('auto_sync_enabled')) {
+      context.handle(
+        _autoSyncEnabledMeta,
+        autoSyncEnabled.isAcceptableOrUnknown(
+          data['auto_sync_enabled']!,
+          _autoSyncEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('cursor')) {
+      context.handle(
+        _cursorMeta,
+        cursor.isAcceptableOrUnknown(data['cursor']!, _cursorMeta),
+      );
+    }
+    if (data.containsKey('last_synced_at')) {
+      context.handle(
+        _lastSyncedAtMeta,
+        lastSyncedAt.isAcceptableOrUnknown(
+          data['last_synced_at']!,
+          _lastSyncedAtMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DataSyncPreference map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DataSyncPreference(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      autoSyncEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}auto_sync_enabled'],
+      )!,
+      cursor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cursor'],
+      )!,
+      lastSyncedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_synced_at'],
+      ),
+    );
+  }
+
+  @override
+  $DataSyncPreferencesTable createAlias(String alias) {
+    return $DataSyncPreferencesTable(attachedDatabase, alias);
+  }
+}
+
+class DataSyncPreference extends DataClass
+    implements Insertable<DataSyncPreference> {
+  final int id;
+  final bool autoSyncEnabled;
+  final int cursor;
+  final DateTime? lastSyncedAt;
+  const DataSyncPreference({
+    required this.id,
+    required this.autoSyncEnabled,
+    required this.cursor,
+    this.lastSyncedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['auto_sync_enabled'] = Variable<bool>(autoSyncEnabled);
+    map['cursor'] = Variable<int>(cursor);
+    if (!nullToAbsent || lastSyncedAt != null) {
+      map['last_synced_at'] = Variable<DateTime>(lastSyncedAt);
+    }
+    return map;
+  }
+
+  DataSyncPreferencesCompanion toCompanion(bool nullToAbsent) {
+    return DataSyncPreferencesCompanion(
+      id: Value(id),
+      autoSyncEnabled: Value(autoSyncEnabled),
+      cursor: Value(cursor),
+      lastSyncedAt: lastSyncedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastSyncedAt),
+    );
+  }
+
+  factory DataSyncPreference.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DataSyncPreference(
+      id: serializer.fromJson<int>(json['id']),
+      autoSyncEnabled: serializer.fromJson<bool>(json['autoSyncEnabled']),
+      cursor: serializer.fromJson<int>(json['cursor']),
+      lastSyncedAt: serializer.fromJson<DateTime?>(json['lastSyncedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'autoSyncEnabled': serializer.toJson<bool>(autoSyncEnabled),
+      'cursor': serializer.toJson<int>(cursor),
+      'lastSyncedAt': serializer.toJson<DateTime?>(lastSyncedAt),
+    };
+  }
+
+  DataSyncPreference copyWith({
+    int? id,
+    bool? autoSyncEnabled,
+    int? cursor,
+    Value<DateTime?> lastSyncedAt = const Value.absent(),
+  }) => DataSyncPreference(
+    id: id ?? this.id,
+    autoSyncEnabled: autoSyncEnabled ?? this.autoSyncEnabled,
+    cursor: cursor ?? this.cursor,
+    lastSyncedAt: lastSyncedAt.present ? lastSyncedAt.value : this.lastSyncedAt,
+  );
+  DataSyncPreference copyWithCompanion(DataSyncPreferencesCompanion data) {
+    return DataSyncPreference(
+      id: data.id.present ? data.id.value : this.id,
+      autoSyncEnabled: data.autoSyncEnabled.present
+          ? data.autoSyncEnabled.value
+          : this.autoSyncEnabled,
+      cursor: data.cursor.present ? data.cursor.value : this.cursor,
+      lastSyncedAt: data.lastSyncedAt.present
+          ? data.lastSyncedAt.value
+          : this.lastSyncedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DataSyncPreference(')
+          ..write('id: $id, ')
+          ..write('autoSyncEnabled: $autoSyncEnabled, ')
+          ..write('cursor: $cursor, ')
+          ..write('lastSyncedAt: $lastSyncedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, autoSyncEnabled, cursor, lastSyncedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DataSyncPreference &&
+          other.id == this.id &&
+          other.autoSyncEnabled == this.autoSyncEnabled &&
+          other.cursor == this.cursor &&
+          other.lastSyncedAt == this.lastSyncedAt);
+}
+
+class DataSyncPreferencesCompanion extends UpdateCompanion<DataSyncPreference> {
+  final Value<int> id;
+  final Value<bool> autoSyncEnabled;
+  final Value<int> cursor;
+  final Value<DateTime?> lastSyncedAt;
+  const DataSyncPreferencesCompanion({
+    this.id = const Value.absent(),
+    this.autoSyncEnabled = const Value.absent(),
+    this.cursor = const Value.absent(),
+    this.lastSyncedAt = const Value.absent(),
+  });
+  DataSyncPreferencesCompanion.insert({
+    this.id = const Value.absent(),
+    this.autoSyncEnabled = const Value.absent(),
+    this.cursor = const Value.absent(),
+    this.lastSyncedAt = const Value.absent(),
+  });
+  static Insertable<DataSyncPreference> custom({
+    Expression<int>? id,
+    Expression<bool>? autoSyncEnabled,
+    Expression<int>? cursor,
+    Expression<DateTime>? lastSyncedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (autoSyncEnabled != null) 'auto_sync_enabled': autoSyncEnabled,
+      if (cursor != null) 'cursor': cursor,
+      if (lastSyncedAt != null) 'last_synced_at': lastSyncedAt,
+    });
+  }
+
+  DataSyncPreferencesCompanion copyWith({
+    Value<int>? id,
+    Value<bool>? autoSyncEnabled,
+    Value<int>? cursor,
+    Value<DateTime?>? lastSyncedAt,
+  }) {
+    return DataSyncPreferencesCompanion(
+      id: id ?? this.id,
+      autoSyncEnabled: autoSyncEnabled ?? this.autoSyncEnabled,
+      cursor: cursor ?? this.cursor,
+      lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (autoSyncEnabled.present) {
+      map['auto_sync_enabled'] = Variable<bool>(autoSyncEnabled.value);
+    }
+    if (cursor.present) {
+      map['cursor'] = Variable<int>(cursor.value);
+    }
+    if (lastSyncedAt.present) {
+      map['last_synced_at'] = Variable<DateTime>(lastSyncedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DataSyncPreferencesCompanion(')
+          ..write('id: $id, ')
+          ..write('autoSyncEnabled: $autoSyncEnabled, ')
+          ..write('cursor: $cursor, ')
+          ..write('lastSyncedAt: $lastSyncedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $EncryptedSyncChangesTable extends EncryptedSyncChanges
+    with TableInfo<$EncryptedSyncChangesTable, EncryptedSyncChange> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $EncryptedSyncChangesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _cursorMeta = const VerificationMeta('cursor');
+  @override
+  late final GeneratedColumn<int> cursor = GeneratedColumn<int>(
+    'cursor',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _collectionNameMeta = const VerificationMeta(
+    'collectionName',
+  );
+  @override
+  late final GeneratedColumn<String> collectionName = GeneratedColumn<String>(
+    'collection_name',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 2,
+      maxTextLength: 64,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _objectIdMeta = const VerificationMeta(
+    'objectId',
+  );
+  @override
+  late final GeneratedColumn<String> objectId = GeneratedColumn<String>(
+    'object_id',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 36,
+      maxTextLength: 36,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _operationIdMeta = const VerificationMeta(
+    'operationId',
+  );
+  @override
+  late final GeneratedColumn<String> operationId = GeneratedColumn<String>(
+    'operation_id',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 36,
+      maxTextLength: 36,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deviceIdMeta = const VerificationMeta(
+    'deviceId',
+  );
+  @override
+  late final GeneratedColumn<String> deviceId = GeneratedColumn<String>(
+    'device_id',
+    aliasedName,
+    false,
+    additionalChecks: GeneratedColumn.checkTextLength(
+      minTextLength: 36,
+      maxTextLength: 36,
+    ),
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _revisionMeta = const VerificationMeta(
+    'revision',
+  );
+  @override
+  late final GeneratedColumn<int> revision = GeneratedColumn<int>(
+    'revision',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deletedMeta = const VerificationMeta(
+    'deleted',
+  );
+  @override
+  late final GeneratedColumn<bool> deleted = GeneratedColumn<bool>(
+    'deleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("deleted" IN (0, 1))',
+    ),
+  );
+  static const VerificationMeta _ciphertextMeta = const VerificationMeta(
+    'ciphertext',
+  );
+  @override
+  late final GeneratedColumn<Uint8List> ciphertext = GeneratedColumn<Uint8List>(
+    'ciphertext',
+    aliasedName,
+    true,
+    type: DriftSqlType.blob,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _nonceMeta = const VerificationMeta('nonce');
+  @override
+  late final GeneratedColumn<Uint8List> nonce = GeneratedColumn<Uint8List>(
+    'nonce',
+    aliasedName,
+    true,
+    type: DriftSqlType.blob,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _keyVersionMeta = const VerificationMeta(
+    'keyVersion',
+  );
+  @override
+  late final GeneratedColumn<int> keyVersion = GeneratedColumn<int>(
+    'key_version',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _clientUpdatedAtMeta = const VerificationMeta(
+    'clientUpdatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> clientUpdatedAt =
+      GeneratedColumn<DateTime>(
+        'client_updated_at',
+        aliasedName,
+        false,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _serverUpdatedAtMeta = const VerificationMeta(
+    'serverUpdatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> serverUpdatedAt =
+      GeneratedColumn<DateTime>(
+        'server_updated_at',
+        aliasedName,
+        false,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: true,
+      );
+  @override
+  List<GeneratedColumn> get $columns => [
+    cursor,
+    collectionName,
+    objectId,
+    operationId,
+    deviceId,
+    revision,
+    deleted,
+    ciphertext,
+    nonce,
+    keyVersion,
+    clientUpdatedAt,
+    serverUpdatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'encrypted_sync_changes';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<EncryptedSyncChange> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('cursor')) {
+      context.handle(
+        _cursorMeta,
+        cursor.isAcceptableOrUnknown(data['cursor']!, _cursorMeta),
+      );
+    }
+    if (data.containsKey('collection_name')) {
+      context.handle(
+        _collectionNameMeta,
+        collectionName.isAcceptableOrUnknown(
+          data['collection_name']!,
+          _collectionNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_collectionNameMeta);
+    }
+    if (data.containsKey('object_id')) {
+      context.handle(
+        _objectIdMeta,
+        objectId.isAcceptableOrUnknown(data['object_id']!, _objectIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_objectIdMeta);
+    }
+    if (data.containsKey('operation_id')) {
+      context.handle(
+        _operationIdMeta,
+        operationId.isAcceptableOrUnknown(
+          data['operation_id']!,
+          _operationIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_operationIdMeta);
+    }
+    if (data.containsKey('device_id')) {
+      context.handle(
+        _deviceIdMeta,
+        deviceId.isAcceptableOrUnknown(data['device_id']!, _deviceIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_deviceIdMeta);
+    }
+    if (data.containsKey('revision')) {
+      context.handle(
+        _revisionMeta,
+        revision.isAcceptableOrUnknown(data['revision']!, _revisionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_revisionMeta);
+    }
+    if (data.containsKey('deleted')) {
+      context.handle(
+        _deletedMeta,
+        deleted.isAcceptableOrUnknown(data['deleted']!, _deletedMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_deletedMeta);
+    }
+    if (data.containsKey('ciphertext')) {
+      context.handle(
+        _ciphertextMeta,
+        ciphertext.isAcceptableOrUnknown(data['ciphertext']!, _ciphertextMeta),
+      );
+    }
+    if (data.containsKey('nonce')) {
+      context.handle(
+        _nonceMeta,
+        nonce.isAcceptableOrUnknown(data['nonce']!, _nonceMeta),
+      );
+    }
+    if (data.containsKey('key_version')) {
+      context.handle(
+        _keyVersionMeta,
+        keyVersion.isAcceptableOrUnknown(data['key_version']!, _keyVersionMeta),
+      );
+    }
+    if (data.containsKey('client_updated_at')) {
+      context.handle(
+        _clientUpdatedAtMeta,
+        clientUpdatedAt.isAcceptableOrUnknown(
+          data['client_updated_at']!,
+          _clientUpdatedAtMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_clientUpdatedAtMeta);
+    }
+    if (data.containsKey('server_updated_at')) {
+      context.handle(
+        _serverUpdatedAtMeta,
+        serverUpdatedAt.isAcceptableOrUnknown(
+          data['server_updated_at']!,
+          _serverUpdatedAtMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_serverUpdatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {cursor};
+  @override
+  EncryptedSyncChange map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return EncryptedSyncChange(
+      cursor: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}cursor'],
+      )!,
+      collectionName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}collection_name'],
+      )!,
+      objectId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}object_id'],
+      )!,
+      operationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}operation_id'],
+      )!,
+      deviceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}device_id'],
+      )!,
+      revision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}revision'],
+      )!,
+      deleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}deleted'],
+      )!,
+      ciphertext: attachedDatabase.typeMapping.read(
+        DriftSqlType.blob,
+        data['${effectivePrefix}ciphertext'],
+      ),
+      nonce: attachedDatabase.typeMapping.read(
+        DriftSqlType.blob,
+        data['${effectivePrefix}nonce'],
+      ),
+      keyVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}key_version'],
+      ),
+      clientUpdatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}client_updated_at'],
+      )!,
+      serverUpdatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}server_updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $EncryptedSyncChangesTable createAlias(String alias) {
+    return $EncryptedSyncChangesTable(attachedDatabase, alias);
+  }
+}
+
+class EncryptedSyncChange extends DataClass
+    implements Insertable<EncryptedSyncChange> {
+  final int cursor;
+  final String collectionName;
+  final String objectId;
+  final String operationId;
+  final String deviceId;
+  final int revision;
+  final bool deleted;
+  final Uint8List? ciphertext;
+  final Uint8List? nonce;
+  final int? keyVersion;
+  final DateTime clientUpdatedAt;
+  final DateTime serverUpdatedAt;
+  const EncryptedSyncChange({
+    required this.cursor,
+    required this.collectionName,
+    required this.objectId,
+    required this.operationId,
+    required this.deviceId,
+    required this.revision,
+    required this.deleted,
+    this.ciphertext,
+    this.nonce,
+    this.keyVersion,
+    required this.clientUpdatedAt,
+    required this.serverUpdatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['cursor'] = Variable<int>(cursor);
+    map['collection_name'] = Variable<String>(collectionName);
+    map['object_id'] = Variable<String>(objectId);
+    map['operation_id'] = Variable<String>(operationId);
+    map['device_id'] = Variable<String>(deviceId);
+    map['revision'] = Variable<int>(revision);
+    map['deleted'] = Variable<bool>(deleted);
+    if (!nullToAbsent || ciphertext != null) {
+      map['ciphertext'] = Variable<Uint8List>(ciphertext);
+    }
+    if (!nullToAbsent || nonce != null) {
+      map['nonce'] = Variable<Uint8List>(nonce);
+    }
+    if (!nullToAbsent || keyVersion != null) {
+      map['key_version'] = Variable<int>(keyVersion);
+    }
+    map['client_updated_at'] = Variable<DateTime>(clientUpdatedAt);
+    map['server_updated_at'] = Variable<DateTime>(serverUpdatedAt);
+    return map;
+  }
+
+  EncryptedSyncChangesCompanion toCompanion(bool nullToAbsent) {
+    return EncryptedSyncChangesCompanion(
+      cursor: Value(cursor),
+      collectionName: Value(collectionName),
+      objectId: Value(objectId),
+      operationId: Value(operationId),
+      deviceId: Value(deviceId),
+      revision: Value(revision),
+      deleted: Value(deleted),
+      ciphertext: ciphertext == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ciphertext),
+      nonce: nonce == null && nullToAbsent
+          ? const Value.absent()
+          : Value(nonce),
+      keyVersion: keyVersion == null && nullToAbsent
+          ? const Value.absent()
+          : Value(keyVersion),
+      clientUpdatedAt: Value(clientUpdatedAt),
+      serverUpdatedAt: Value(serverUpdatedAt),
+    );
+  }
+
+  factory EncryptedSyncChange.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return EncryptedSyncChange(
+      cursor: serializer.fromJson<int>(json['cursor']),
+      collectionName: serializer.fromJson<String>(json['collectionName']),
+      objectId: serializer.fromJson<String>(json['objectId']),
+      operationId: serializer.fromJson<String>(json['operationId']),
+      deviceId: serializer.fromJson<String>(json['deviceId']),
+      revision: serializer.fromJson<int>(json['revision']),
+      deleted: serializer.fromJson<bool>(json['deleted']),
+      ciphertext: serializer.fromJson<Uint8List?>(json['ciphertext']),
+      nonce: serializer.fromJson<Uint8List?>(json['nonce']),
+      keyVersion: serializer.fromJson<int?>(json['keyVersion']),
+      clientUpdatedAt: serializer.fromJson<DateTime>(json['clientUpdatedAt']),
+      serverUpdatedAt: serializer.fromJson<DateTime>(json['serverUpdatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'cursor': serializer.toJson<int>(cursor),
+      'collectionName': serializer.toJson<String>(collectionName),
+      'objectId': serializer.toJson<String>(objectId),
+      'operationId': serializer.toJson<String>(operationId),
+      'deviceId': serializer.toJson<String>(deviceId),
+      'revision': serializer.toJson<int>(revision),
+      'deleted': serializer.toJson<bool>(deleted),
+      'ciphertext': serializer.toJson<Uint8List?>(ciphertext),
+      'nonce': serializer.toJson<Uint8List?>(nonce),
+      'keyVersion': serializer.toJson<int?>(keyVersion),
+      'clientUpdatedAt': serializer.toJson<DateTime>(clientUpdatedAt),
+      'serverUpdatedAt': serializer.toJson<DateTime>(serverUpdatedAt),
+    };
+  }
+
+  EncryptedSyncChange copyWith({
+    int? cursor,
+    String? collectionName,
+    String? objectId,
+    String? operationId,
+    String? deviceId,
+    int? revision,
+    bool? deleted,
+    Value<Uint8List?> ciphertext = const Value.absent(),
+    Value<Uint8List?> nonce = const Value.absent(),
+    Value<int?> keyVersion = const Value.absent(),
+    DateTime? clientUpdatedAt,
+    DateTime? serverUpdatedAt,
+  }) => EncryptedSyncChange(
+    cursor: cursor ?? this.cursor,
+    collectionName: collectionName ?? this.collectionName,
+    objectId: objectId ?? this.objectId,
+    operationId: operationId ?? this.operationId,
+    deviceId: deviceId ?? this.deviceId,
+    revision: revision ?? this.revision,
+    deleted: deleted ?? this.deleted,
+    ciphertext: ciphertext.present ? ciphertext.value : this.ciphertext,
+    nonce: nonce.present ? nonce.value : this.nonce,
+    keyVersion: keyVersion.present ? keyVersion.value : this.keyVersion,
+    clientUpdatedAt: clientUpdatedAt ?? this.clientUpdatedAt,
+    serverUpdatedAt: serverUpdatedAt ?? this.serverUpdatedAt,
+  );
+  EncryptedSyncChange copyWithCompanion(EncryptedSyncChangesCompanion data) {
+    return EncryptedSyncChange(
+      cursor: data.cursor.present ? data.cursor.value : this.cursor,
+      collectionName: data.collectionName.present
+          ? data.collectionName.value
+          : this.collectionName,
+      objectId: data.objectId.present ? data.objectId.value : this.objectId,
+      operationId: data.operationId.present
+          ? data.operationId.value
+          : this.operationId,
+      deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
+      revision: data.revision.present ? data.revision.value : this.revision,
+      deleted: data.deleted.present ? data.deleted.value : this.deleted,
+      ciphertext: data.ciphertext.present
+          ? data.ciphertext.value
+          : this.ciphertext,
+      nonce: data.nonce.present ? data.nonce.value : this.nonce,
+      keyVersion: data.keyVersion.present
+          ? data.keyVersion.value
+          : this.keyVersion,
+      clientUpdatedAt: data.clientUpdatedAt.present
+          ? data.clientUpdatedAt.value
+          : this.clientUpdatedAt,
+      serverUpdatedAt: data.serverUpdatedAt.present
+          ? data.serverUpdatedAt.value
+          : this.serverUpdatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('EncryptedSyncChange(')
+          ..write('cursor: $cursor, ')
+          ..write('collectionName: $collectionName, ')
+          ..write('objectId: $objectId, ')
+          ..write('operationId: $operationId, ')
+          ..write('deviceId: $deviceId, ')
+          ..write('revision: $revision, ')
+          ..write('deleted: $deleted, ')
+          ..write('ciphertext: $ciphertext, ')
+          ..write('nonce: $nonce, ')
+          ..write('keyVersion: $keyVersion, ')
+          ..write('clientUpdatedAt: $clientUpdatedAt, ')
+          ..write('serverUpdatedAt: $serverUpdatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    cursor,
+    collectionName,
+    objectId,
+    operationId,
+    deviceId,
+    revision,
+    deleted,
+    $driftBlobEquality.hash(ciphertext),
+    $driftBlobEquality.hash(nonce),
+    keyVersion,
+    clientUpdatedAt,
+    serverUpdatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is EncryptedSyncChange &&
+          other.cursor == this.cursor &&
+          other.collectionName == this.collectionName &&
+          other.objectId == this.objectId &&
+          other.operationId == this.operationId &&
+          other.deviceId == this.deviceId &&
+          other.revision == this.revision &&
+          other.deleted == this.deleted &&
+          $driftBlobEquality.equals(other.ciphertext, this.ciphertext) &&
+          $driftBlobEquality.equals(other.nonce, this.nonce) &&
+          other.keyVersion == this.keyVersion &&
+          other.clientUpdatedAt == this.clientUpdatedAt &&
+          other.serverUpdatedAt == this.serverUpdatedAt);
+}
+
+class EncryptedSyncChangesCompanion
+    extends UpdateCompanion<EncryptedSyncChange> {
+  final Value<int> cursor;
+  final Value<String> collectionName;
+  final Value<String> objectId;
+  final Value<String> operationId;
+  final Value<String> deviceId;
+  final Value<int> revision;
+  final Value<bool> deleted;
+  final Value<Uint8List?> ciphertext;
+  final Value<Uint8List?> nonce;
+  final Value<int?> keyVersion;
+  final Value<DateTime> clientUpdatedAt;
+  final Value<DateTime> serverUpdatedAt;
+  const EncryptedSyncChangesCompanion({
+    this.cursor = const Value.absent(),
+    this.collectionName = const Value.absent(),
+    this.objectId = const Value.absent(),
+    this.operationId = const Value.absent(),
+    this.deviceId = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.deleted = const Value.absent(),
+    this.ciphertext = const Value.absent(),
+    this.nonce = const Value.absent(),
+    this.keyVersion = const Value.absent(),
+    this.clientUpdatedAt = const Value.absent(),
+    this.serverUpdatedAt = const Value.absent(),
+  });
+  EncryptedSyncChangesCompanion.insert({
+    this.cursor = const Value.absent(),
+    required String collectionName,
+    required String objectId,
+    required String operationId,
+    required String deviceId,
+    required int revision,
+    required bool deleted,
+    this.ciphertext = const Value.absent(),
+    this.nonce = const Value.absent(),
+    this.keyVersion = const Value.absent(),
+    required DateTime clientUpdatedAt,
+    required DateTime serverUpdatedAt,
+  }) : collectionName = Value(collectionName),
+       objectId = Value(objectId),
+       operationId = Value(operationId),
+       deviceId = Value(deviceId),
+       revision = Value(revision),
+       deleted = Value(deleted),
+       clientUpdatedAt = Value(clientUpdatedAt),
+       serverUpdatedAt = Value(serverUpdatedAt);
+  static Insertable<EncryptedSyncChange> custom({
+    Expression<int>? cursor,
+    Expression<String>? collectionName,
+    Expression<String>? objectId,
+    Expression<String>? operationId,
+    Expression<String>? deviceId,
+    Expression<int>? revision,
+    Expression<bool>? deleted,
+    Expression<Uint8List>? ciphertext,
+    Expression<Uint8List>? nonce,
+    Expression<int>? keyVersion,
+    Expression<DateTime>? clientUpdatedAt,
+    Expression<DateTime>? serverUpdatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (cursor != null) 'cursor': cursor,
+      if (collectionName != null) 'collection_name': collectionName,
+      if (objectId != null) 'object_id': objectId,
+      if (operationId != null) 'operation_id': operationId,
+      if (deviceId != null) 'device_id': deviceId,
+      if (revision != null) 'revision': revision,
+      if (deleted != null) 'deleted': deleted,
+      if (ciphertext != null) 'ciphertext': ciphertext,
+      if (nonce != null) 'nonce': nonce,
+      if (keyVersion != null) 'key_version': keyVersion,
+      if (clientUpdatedAt != null) 'client_updated_at': clientUpdatedAt,
+      if (serverUpdatedAt != null) 'server_updated_at': serverUpdatedAt,
+    });
+  }
+
+  EncryptedSyncChangesCompanion copyWith({
+    Value<int>? cursor,
+    Value<String>? collectionName,
+    Value<String>? objectId,
+    Value<String>? operationId,
+    Value<String>? deviceId,
+    Value<int>? revision,
+    Value<bool>? deleted,
+    Value<Uint8List?>? ciphertext,
+    Value<Uint8List?>? nonce,
+    Value<int?>? keyVersion,
+    Value<DateTime>? clientUpdatedAt,
+    Value<DateTime>? serverUpdatedAt,
+  }) {
+    return EncryptedSyncChangesCompanion(
+      cursor: cursor ?? this.cursor,
+      collectionName: collectionName ?? this.collectionName,
+      objectId: objectId ?? this.objectId,
+      operationId: operationId ?? this.operationId,
+      deviceId: deviceId ?? this.deviceId,
+      revision: revision ?? this.revision,
+      deleted: deleted ?? this.deleted,
+      ciphertext: ciphertext ?? this.ciphertext,
+      nonce: nonce ?? this.nonce,
+      keyVersion: keyVersion ?? this.keyVersion,
+      clientUpdatedAt: clientUpdatedAt ?? this.clientUpdatedAt,
+      serverUpdatedAt: serverUpdatedAt ?? this.serverUpdatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (cursor.present) {
+      map['cursor'] = Variable<int>(cursor.value);
+    }
+    if (collectionName.present) {
+      map['collection_name'] = Variable<String>(collectionName.value);
+    }
+    if (objectId.present) {
+      map['object_id'] = Variable<String>(objectId.value);
+    }
+    if (operationId.present) {
+      map['operation_id'] = Variable<String>(operationId.value);
+    }
+    if (deviceId.present) {
+      map['device_id'] = Variable<String>(deviceId.value);
+    }
+    if (revision.present) {
+      map['revision'] = Variable<int>(revision.value);
+    }
+    if (deleted.present) {
+      map['deleted'] = Variable<bool>(deleted.value);
+    }
+    if (ciphertext.present) {
+      map['ciphertext'] = Variable<Uint8List>(ciphertext.value);
+    }
+    if (nonce.present) {
+      map['nonce'] = Variable<Uint8List>(nonce.value);
+    }
+    if (keyVersion.present) {
+      map['key_version'] = Variable<int>(keyVersion.value);
+    }
+    if (clientUpdatedAt.present) {
+      map['client_updated_at'] = Variable<DateTime>(clientUpdatedAt.value);
+    }
+    if (serverUpdatedAt.present) {
+      map['server_updated_at'] = Variable<DateTime>(serverUpdatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('EncryptedSyncChangesCompanion(')
+          ..write('cursor: $cursor, ')
+          ..write('collectionName: $collectionName, ')
+          ..write('objectId: $objectId, ')
+          ..write('operationId: $operationId, ')
+          ..write('deviceId: $deviceId, ')
+          ..write('revision: $revision, ')
+          ..write('deleted: $deleted, ')
+          ..write('ciphertext: $ciphertext, ')
+          ..write('nonce: $nonce, ')
+          ..write('keyVersion: $keyVersion, ')
+          ..write('clientUpdatedAt: $clientUpdatedAt, ')
+          ..write('serverUpdatedAt: $serverUpdatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -10430,6 +11483,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $AiRunsTable aiRuns = $AiRunsTable(this);
   late final $AiToolCallsTable aiToolCalls = $AiToolCallsTable(this);
   late final $SharePollRefsTable sharePollRefs = $SharePollRefsTable(this);
+  late final $DataSyncPreferencesTable dataSyncPreferences =
+      $DataSyncPreferencesTable(this);
+  late final $EncryptedSyncChangesTable encryptedSyncChanges =
+      $EncryptedSyncChangesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -10455,6 +11512,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     aiRuns,
     aiToolCalls,
     sharePollRefs,
+    dataSyncPreferences,
+    encryptedSyncChanges,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -19087,6 +20146,556 @@ typedef $$SharePollRefsTableProcessedTableManager =
       SharePollRef,
       PrefetchHooks Function()
     >;
+typedef $$DataSyncPreferencesTableCreateCompanionBuilder =
+    DataSyncPreferencesCompanion Function({
+      Value<int> id,
+      Value<bool> autoSyncEnabled,
+      Value<int> cursor,
+      Value<DateTime?> lastSyncedAt,
+    });
+typedef $$DataSyncPreferencesTableUpdateCompanionBuilder =
+    DataSyncPreferencesCompanion Function({
+      Value<int> id,
+      Value<bool> autoSyncEnabled,
+      Value<int> cursor,
+      Value<DateTime?> lastSyncedAt,
+    });
+
+class $$DataSyncPreferencesTableFilterComposer
+    extends Composer<_$AppDatabase, $DataSyncPreferencesTable> {
+  $$DataSyncPreferencesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get autoSyncEnabled => $composableBuilder(
+    column: $table.autoSyncEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get cursor => $composableBuilder(
+    column: $table.cursor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastSyncedAt => $composableBuilder(
+    column: $table.lastSyncedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$DataSyncPreferencesTableOrderingComposer
+    extends Composer<_$AppDatabase, $DataSyncPreferencesTable> {
+  $$DataSyncPreferencesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get autoSyncEnabled => $composableBuilder(
+    column: $table.autoSyncEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get cursor => $composableBuilder(
+    column: $table.cursor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastSyncedAt => $composableBuilder(
+    column: $table.lastSyncedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DataSyncPreferencesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $DataSyncPreferencesTable> {
+  $$DataSyncPreferencesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<bool> get autoSyncEnabled => $composableBuilder(
+    column: $table.autoSyncEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get cursor =>
+      $composableBuilder(column: $table.cursor, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastSyncedAt => $composableBuilder(
+    column: $table.lastSyncedAt,
+    builder: (column) => column,
+  );
+}
+
+class $$DataSyncPreferencesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $DataSyncPreferencesTable,
+          DataSyncPreference,
+          $$DataSyncPreferencesTableFilterComposer,
+          $$DataSyncPreferencesTableOrderingComposer,
+          $$DataSyncPreferencesTableAnnotationComposer,
+          $$DataSyncPreferencesTableCreateCompanionBuilder,
+          $$DataSyncPreferencesTableUpdateCompanionBuilder,
+          (
+            DataSyncPreference,
+            BaseReferences<
+              _$AppDatabase,
+              $DataSyncPreferencesTable,
+              DataSyncPreference
+            >,
+          ),
+          DataSyncPreference,
+          PrefetchHooks Function()
+        > {
+  $$DataSyncPreferencesTableTableManager(
+    _$AppDatabase db,
+    $DataSyncPreferencesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DataSyncPreferencesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DataSyncPreferencesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$DataSyncPreferencesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<bool> autoSyncEnabled = const Value.absent(),
+                Value<int> cursor = const Value.absent(),
+                Value<DateTime?> lastSyncedAt = const Value.absent(),
+              }) => DataSyncPreferencesCompanion(
+                id: id,
+                autoSyncEnabled: autoSyncEnabled,
+                cursor: cursor,
+                lastSyncedAt: lastSyncedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<bool> autoSyncEnabled = const Value.absent(),
+                Value<int> cursor = const Value.absent(),
+                Value<DateTime?> lastSyncedAt = const Value.absent(),
+              }) => DataSyncPreferencesCompanion.insert(
+                id: id,
+                autoSyncEnabled: autoSyncEnabled,
+                cursor: cursor,
+                lastSyncedAt: lastSyncedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DataSyncPreferencesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $DataSyncPreferencesTable,
+      DataSyncPreference,
+      $$DataSyncPreferencesTableFilterComposer,
+      $$DataSyncPreferencesTableOrderingComposer,
+      $$DataSyncPreferencesTableAnnotationComposer,
+      $$DataSyncPreferencesTableCreateCompanionBuilder,
+      $$DataSyncPreferencesTableUpdateCompanionBuilder,
+      (
+        DataSyncPreference,
+        BaseReferences<
+          _$AppDatabase,
+          $DataSyncPreferencesTable,
+          DataSyncPreference
+        >,
+      ),
+      DataSyncPreference,
+      PrefetchHooks Function()
+    >;
+typedef $$EncryptedSyncChangesTableCreateCompanionBuilder =
+    EncryptedSyncChangesCompanion Function({
+      Value<int> cursor,
+      required String collectionName,
+      required String objectId,
+      required String operationId,
+      required String deviceId,
+      required int revision,
+      required bool deleted,
+      Value<Uint8List?> ciphertext,
+      Value<Uint8List?> nonce,
+      Value<int?> keyVersion,
+      required DateTime clientUpdatedAt,
+      required DateTime serverUpdatedAt,
+    });
+typedef $$EncryptedSyncChangesTableUpdateCompanionBuilder =
+    EncryptedSyncChangesCompanion Function({
+      Value<int> cursor,
+      Value<String> collectionName,
+      Value<String> objectId,
+      Value<String> operationId,
+      Value<String> deviceId,
+      Value<int> revision,
+      Value<bool> deleted,
+      Value<Uint8List?> ciphertext,
+      Value<Uint8List?> nonce,
+      Value<int?> keyVersion,
+      Value<DateTime> clientUpdatedAt,
+      Value<DateTime> serverUpdatedAt,
+    });
+
+class $$EncryptedSyncChangesTableFilterComposer
+    extends Composer<_$AppDatabase, $EncryptedSyncChangesTable> {
+  $$EncryptedSyncChangesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get cursor => $composableBuilder(
+    column: $table.cursor,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get collectionName => $composableBuilder(
+    column: $table.collectionName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get objectId => $composableBuilder(
+    column: $table.objectId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get operationId => $composableBuilder(
+    column: $table.operationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deviceId => $composableBuilder(
+    column: $table.deviceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get deleted => $composableBuilder(
+    column: $table.deleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<Uint8List> get ciphertext => $composableBuilder(
+    column: $table.ciphertext,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<Uint8List> get nonce => $composableBuilder(
+    column: $table.nonce,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get keyVersion => $composableBuilder(
+    column: $table.keyVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get clientUpdatedAt => $composableBuilder(
+    column: $table.clientUpdatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get serverUpdatedAt => $composableBuilder(
+    column: $table.serverUpdatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$EncryptedSyncChangesTableOrderingComposer
+    extends Composer<_$AppDatabase, $EncryptedSyncChangesTable> {
+  $$EncryptedSyncChangesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get cursor => $composableBuilder(
+    column: $table.cursor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get collectionName => $composableBuilder(
+    column: $table.collectionName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get objectId => $composableBuilder(
+    column: $table.objectId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get operationId => $composableBuilder(
+    column: $table.operationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get deviceId => $composableBuilder(
+    column: $table.deviceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get deleted => $composableBuilder(
+    column: $table.deleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<Uint8List> get ciphertext => $composableBuilder(
+    column: $table.ciphertext,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<Uint8List> get nonce => $composableBuilder(
+    column: $table.nonce,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get keyVersion => $composableBuilder(
+    column: $table.keyVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get clientUpdatedAt => $composableBuilder(
+    column: $table.clientUpdatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get serverUpdatedAt => $composableBuilder(
+    column: $table.serverUpdatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$EncryptedSyncChangesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $EncryptedSyncChangesTable> {
+  $$EncryptedSyncChangesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get cursor =>
+      $composableBuilder(column: $table.cursor, builder: (column) => column);
+
+  GeneratedColumn<String> get collectionName => $composableBuilder(
+    column: $table.collectionName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get objectId =>
+      $composableBuilder(column: $table.objectId, builder: (column) => column);
+
+  GeneratedColumn<String> get operationId => $composableBuilder(
+    column: $table.operationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get deviceId =>
+      $composableBuilder(column: $table.deviceId, builder: (column) => column);
+
+  GeneratedColumn<int> get revision =>
+      $composableBuilder(column: $table.revision, builder: (column) => column);
+
+  GeneratedColumn<bool> get deleted =>
+      $composableBuilder(column: $table.deleted, builder: (column) => column);
+
+  GeneratedColumn<Uint8List> get ciphertext => $composableBuilder(
+    column: $table.ciphertext,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<Uint8List> get nonce =>
+      $composableBuilder(column: $table.nonce, builder: (column) => column);
+
+  GeneratedColumn<int> get keyVersion => $composableBuilder(
+    column: $table.keyVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get clientUpdatedAt => $composableBuilder(
+    column: $table.clientUpdatedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get serverUpdatedAt => $composableBuilder(
+    column: $table.serverUpdatedAt,
+    builder: (column) => column,
+  );
+}
+
+class $$EncryptedSyncChangesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $EncryptedSyncChangesTable,
+          EncryptedSyncChange,
+          $$EncryptedSyncChangesTableFilterComposer,
+          $$EncryptedSyncChangesTableOrderingComposer,
+          $$EncryptedSyncChangesTableAnnotationComposer,
+          $$EncryptedSyncChangesTableCreateCompanionBuilder,
+          $$EncryptedSyncChangesTableUpdateCompanionBuilder,
+          (
+            EncryptedSyncChange,
+            BaseReferences<
+              _$AppDatabase,
+              $EncryptedSyncChangesTable,
+              EncryptedSyncChange
+            >,
+          ),
+          EncryptedSyncChange,
+          PrefetchHooks Function()
+        > {
+  $$EncryptedSyncChangesTableTableManager(
+    _$AppDatabase db,
+    $EncryptedSyncChangesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$EncryptedSyncChangesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$EncryptedSyncChangesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$EncryptedSyncChangesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> cursor = const Value.absent(),
+                Value<String> collectionName = const Value.absent(),
+                Value<String> objectId = const Value.absent(),
+                Value<String> operationId = const Value.absent(),
+                Value<String> deviceId = const Value.absent(),
+                Value<int> revision = const Value.absent(),
+                Value<bool> deleted = const Value.absent(),
+                Value<Uint8List?> ciphertext = const Value.absent(),
+                Value<Uint8List?> nonce = const Value.absent(),
+                Value<int?> keyVersion = const Value.absent(),
+                Value<DateTime> clientUpdatedAt = const Value.absent(),
+                Value<DateTime> serverUpdatedAt = const Value.absent(),
+              }) => EncryptedSyncChangesCompanion(
+                cursor: cursor,
+                collectionName: collectionName,
+                objectId: objectId,
+                operationId: operationId,
+                deviceId: deviceId,
+                revision: revision,
+                deleted: deleted,
+                ciphertext: ciphertext,
+                nonce: nonce,
+                keyVersion: keyVersion,
+                clientUpdatedAt: clientUpdatedAt,
+                serverUpdatedAt: serverUpdatedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> cursor = const Value.absent(),
+                required String collectionName,
+                required String objectId,
+                required String operationId,
+                required String deviceId,
+                required int revision,
+                required bool deleted,
+                Value<Uint8List?> ciphertext = const Value.absent(),
+                Value<Uint8List?> nonce = const Value.absent(),
+                Value<int?> keyVersion = const Value.absent(),
+                required DateTime clientUpdatedAt,
+                required DateTime serverUpdatedAt,
+              }) => EncryptedSyncChangesCompanion.insert(
+                cursor: cursor,
+                collectionName: collectionName,
+                objectId: objectId,
+                operationId: operationId,
+                deviceId: deviceId,
+                revision: revision,
+                deleted: deleted,
+                ciphertext: ciphertext,
+                nonce: nonce,
+                keyVersion: keyVersion,
+                clientUpdatedAt: clientUpdatedAt,
+                serverUpdatedAt: serverUpdatedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$EncryptedSyncChangesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $EncryptedSyncChangesTable,
+      EncryptedSyncChange,
+      $$EncryptedSyncChangesTableFilterComposer,
+      $$EncryptedSyncChangesTableOrderingComposer,
+      $$EncryptedSyncChangesTableAnnotationComposer,
+      $$EncryptedSyncChangesTableCreateCompanionBuilder,
+      $$EncryptedSyncChangesTableUpdateCompanionBuilder,
+      (
+        EncryptedSyncChange,
+        BaseReferences<
+          _$AppDatabase,
+          $EncryptedSyncChangesTable,
+          EncryptedSyncChange
+        >,
+      ),
+      EncryptedSyncChange,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -19134,4 +20743,8 @@ class $AppDatabaseManager {
       $$AiToolCallsTableTableManager(_db, _db.aiToolCalls);
   $$SharePollRefsTableTableManager get sharePollRefs =>
       $$SharePollRefsTableTableManager(_db, _db.sharePollRefs);
+  $$DataSyncPreferencesTableTableManager get dataSyncPreferences =>
+      $$DataSyncPreferencesTableTableManager(_db, _db.dataSyncPreferences);
+  $$EncryptedSyncChangesTableTableManager get encryptedSyncChanges =>
+      $$EncryptedSyncChangesTableTableManager(_db, _db.encryptedSyncChanges);
 }

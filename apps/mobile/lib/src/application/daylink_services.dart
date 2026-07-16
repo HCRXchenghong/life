@@ -6,6 +6,8 @@ import '../data/app_session_monitor.dart';
 import '../data/app_database.dart';
 import '../data/artifact_client.dart';
 import '../data/artifact_repository.dart';
+import '../data/data_sync_client.dart';
+import '../data/data_sync_repository.dart';
 import '../data/operations_repository.dart';
 import '../data/notification_preferences_repository.dart';
 import '../data/schedule_repository.dart';
@@ -16,9 +18,11 @@ import '../domain/ai/agent_codex_transport.dart';
 import '../domain/ai/openai_responses_client.dart';
 import '../domain/ai/tool_protocol.dart';
 import '../domain/notifications/notification_settings.dart';
+import '../domain/sync/data_sync_models.dart';
 import '../platform/native_core_service.dart';
 import '../platform/notification_coordinator.dart';
 import 'artifact_tools.dart';
+import 'data_sync_coordinator.dart';
 import 'remote_operation_tools.dart';
 import 'schedule_tools.dart';
 import 'share_poll_coordinator.dart';
@@ -31,6 +35,7 @@ class DaylinkServices {
     required this.nativeCore,
     required this.notifications,
     required this.notificationPreferences,
+    required this.dataSync,
     required this.secrets,
     required this.schedules,
     required this.operations,
@@ -43,6 +48,7 @@ class DaylinkServices {
   final NativeCoreService nativeCore;
   final NotificationCoordinator notifications;
   final NotificationPreferencesRepository notificationPreferences;
+  final DataSyncCoordinator dataSync;
   final SecretStore secrets;
   final ScheduleRepository schedules;
   final OperationsRepository operations;
@@ -51,7 +57,12 @@ class DaylinkServices {
   final List<AppSessionMonitor> _sessionMonitors = [];
   bool _closed = false;
 
-  static Future<DaylinkServices> start({required String accountId}) async {
+  static Future<DaylinkServices> start({
+    required String accountId,
+    required Uri apiBaseUri,
+    required AccessTokenProvider accessToken,
+    required SessionRefreshCallback refreshAccessToken,
+  }) async {
     final nativeCore = await NativeCoreService.initialize();
     final database = AppDatabase.openForAccount(accountId);
     final secrets = SecretVault(accountId: accountId);
@@ -62,6 +73,12 @@ class DaylinkServices {
       repository: schedules,
       preferences: notificationPreferences,
     );
+    final dataSync = DataSyncCoordinator(
+      repository: DataSyncRepository(database),
+      client: DataSyncClient(apiBaseUri: apiBaseUri),
+      accessToken: accessToken,
+      refreshAccessToken: refreshAccessToken,
+    );
     final responses = OpenAiResponsesClient();
     final services = DaylinkServices._(
       accountId: accountId,
@@ -69,6 +86,7 @@ class DaylinkServices {
       nativeCore: nativeCore,
       notifications: notifications,
       notificationPreferences: notificationPreferences,
+      dataSync: dataSync,
       secrets: secrets,
       schedules: schedules,
       operations: OperationsRepository(database),
@@ -82,8 +100,10 @@ class DaylinkServices {
         },
       );
       await notifications.reconcile();
+      unawaited(dataSync.reconcile());
       return services;
     } on Object {
+      dataSync.close();
       responses.close();
       await database.close();
       rethrow;
@@ -242,6 +262,15 @@ class DaylinkServices {
   Future<void> openSystemNotificationSettings() =>
       notifications.openSystemNotificationSettings();
 
+  Future<DataSyncState> loadDataSyncState() => dataSync.loadDataSyncState();
+
+  Future<DataSyncState> setAutoSyncEnabled(bool enabled) =>
+      dataSync.setAutoSyncEnabled(enabled);
+
+  Future<DataSyncState> syncNow() => dataSync.syncNow();
+
+  Future<DataSyncState> clearLocalSyncCache() => dataSync.clearLocalSyncCache();
+
   AppSessionMonitor monitorSession({
     required Uri apiBaseUri,
     required AccessTokenProvider accessToken,
@@ -268,6 +297,7 @@ class DaylinkServices {
     for (final monitor in _sessionMonitors) {
       await monitor.reconcile();
     }
+    if (!_closed) await dataSync.reconcile();
     if (!_closed) await notifications.reconcile();
   }
 
@@ -278,6 +308,7 @@ class DaylinkServices {
       await monitor.close();
     }
     _sessionMonitors.clear();
+    dataSync.close();
     responses.close();
     await database.close();
   }

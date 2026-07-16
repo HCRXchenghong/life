@@ -9,6 +9,7 @@ import 'package:daylink_mobile/src/data/schedule_repository.dart';
 import 'package:daylink_mobile/src/domain/operations/operations_models.dart';
 import 'package:daylink_mobile/src/domain/notifications/notification_settings.dart';
 import 'package:daylink_mobile/src/domain/schedule/schedule_models.dart';
+import 'package:daylink_mobile/src/domain/sync/data_sync_models.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -255,6 +256,16 @@ void main() {
     await tester.tap(find.byKey(const Key('notification-settings-back')));
     await tester.pumpAndSettle();
 
+    final sync = find.byKey(const Key('my-sync'));
+    await tester.ensureVisible(sync);
+    await tester.pumpAndSettle();
+    await tester.tap(sync);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('data-sync-title')), findsOneWidget);
+    expect(find.text('端到端加密'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('data-sync-back')));
+    await tester.pumpAndSettle();
+
     await tester.tap(find.byKey(const Key('nav-schedule')));
     await tester.pumpAndSettle();
     expect(find.text('今天'), findsOneWidget);
@@ -366,7 +377,8 @@ class _FakeScheduleRuntime
         ScheduleAwareRuntime,
         HostAwareRuntime,
         AccountEntitlementSource,
-        NotificationSettingsSource {
+        NotificationSettingsSource,
+        DataSyncSource {
   final _source = _EmptyScheduleSource();
   final _hosts = _EmptyHostSource();
 
@@ -441,6 +453,35 @@ class _FakeScheduleRuntime
     );
     return _notificationSettings;
   }
+
+  DataSyncState _dataSyncState = DataSyncState(
+    autoSyncEnabled: true,
+    lastSyncedAt: DateTime.now().toUtc(),
+    encryptionStatus: DataEncryptionStatus.unlocked,
+    cachedChangeCount: 0,
+    cachedCiphertextBytes: 0,
+  );
+
+  @override
+  Future<DataSyncState> clearLocalSyncCache() async => _dataSyncState;
+
+  @override
+  Future<DataSyncState> loadDataSyncState() async => _dataSyncState;
+
+  @override
+  Future<DataSyncState> setAutoSyncEnabled(bool enabled) async {
+    _dataSyncState = DataSyncState(
+      autoSyncEnabled: enabled,
+      lastSyncedAt: _dataSyncState.lastSyncedAt,
+      encryptionStatus: _dataSyncState.encryptionStatus,
+      cachedChangeCount: _dataSyncState.cachedChangeCount,
+      cachedCiphertextBytes: _dataSyncState.cachedCiphertextBytes,
+    );
+    return _dataSyncState;
+  }
+
+  @override
+  Future<DataSyncState> syncNow() async => _dataSyncState;
 
   @override
   Future<void> close() async {}

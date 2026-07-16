@@ -13,9 +13,11 @@ import 'src/data/operations_repository.dart';
 import 'src/data/schedule_repository.dart';
 import 'src/domain/ai/ai_models.dart';
 import 'src/domain/notifications/notification_settings.dart';
+import 'src/domain/sync/data_sync_models.dart';
 import 'src/presentation/app_navigation.dart';
 import 'src/presentation/account_security_page.dart';
 import 'src/presentation/assistant_page.dart';
+import 'src/presentation/data_sync_page.dart';
 import 'src/presentation/hosts_page.dart';
 import 'src/presentation/login_page.dart';
 import 'src/presentation/my_page.dart';
@@ -323,6 +325,22 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _openDataSync() async {
+    final runtime = _runtime;
+    if (runtime is! DataSyncSource) {
+      _showPendingPage('数据与同步');
+      return;
+    }
+    await _navigatorKey.currentState!.push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => DataSyncPage(
+          source: runtime as DataSyncSource,
+          onOpenEncryption: () => _showPendingPage('端到端加密'),
+        ),
+      ),
+    );
+  }
+
   Future<void> _changePasswordFromSettings(
     String currentPassword,
     String newPassword,
@@ -381,7 +399,7 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
         source: runtime as AccountEntitlementSource,
         onOpenAccount: () => unawaited(_openAccountSecurity()),
         onOpenNotifications: () => unawaited(_openNotificationSettings()),
-        onOpenSync: () => _showPendingPage('数据与同步'),
+        onOpenSync: () => unawaited(_openDataSync()),
         onLogout: _logout,
         onDestinationSelected: _selectDestination,
       );
@@ -481,7 +499,8 @@ class DaylinkRuntime
         HostAwareRuntime,
         AssistantSettingsSource,
         AccountEntitlementSource,
-        NotificationSettingsSource {
+        NotificationSettingsSource,
+        DataSyncSource {
   DaylinkRuntime._(this.services, this._assistantSettings);
 
   final DaylinkServices services;
@@ -504,7 +523,12 @@ class DaylinkRuntime
     required SessionRefreshCallback refreshAccessToken,
     required SessionActionCallback clearCredentials,
   }) async {
-    final services = await DaylinkServices.start(accountId: accountId);
+    final services = await DaylinkServices.start(
+      accountId: accountId,
+      apiBaseUri: apiBaseUri,
+      accessToken: accessToken,
+      refreshAccessToken: refreshAccessToken,
+    );
     final runtime = DaylinkRuntime._(
       services,
       DaylinkAssistantSettings(
@@ -568,6 +592,19 @@ class DaylinkRuntime
   @override
   Future<void> openSystemNotificationSettings() =>
       services.openSystemNotificationSettings();
+
+  @override
+  Future<DataSyncState> loadDataSyncState() => services.loadDataSyncState();
+
+  @override
+  Future<DataSyncState> setAutoSyncEnabled(bool enabled) =>
+      services.setAutoSyncEnabled(enabled);
+
+  @override
+  Future<DataSyncState> syncNow() => services.syncNow();
+
+  @override
+  Future<DataSyncState> clearLocalSyncCache() => services.clearLocalSyncCache();
 
   Future<void> _forceSignOut(String reason) async {
     if (_signedOut) return;

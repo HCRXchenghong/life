@@ -1,6 +1,6 @@
 # Daylink Mobile Core
 
-Flutter Android/iOS 工程。目前按需求不实现产品页面，只提供启动壳和可被后续 UI 调用的完整非 UI 服务。
+Flutter Android/iOS 工程。底层服务与已审核的产品页面正按真实接口逐页落地。
 
 已接入：
 
@@ -9,6 +9,7 @@ Flutter Android/iOS 工程。目前按需求不实现产品页面，只提供启
 - Android/iOS 原生本地通知：重复规则、时区/DST、通知窗口、完成与 snooze、启动/恢复对账。
 - 第三方 Responses/Images API Provider、Daylink Web Gateway 与 Codex App Server JSON-RPC 客户端。
 - 好友选时间：创建/刷新/定稿、管理令牌安全存储、版本冲突保护、定稿后导入日程与提醒。
+- 密文同步接收层：账号级增量拉取、严格密文/nonce 校验、单调游标、SSE 与前台触发、本地密文缓存；内容密钥未解锁时不伪装成已恢复。
 - AI 工具：递归 strict schema 校验、风险审批、日程/投票工具，以及系统、监控、进程、文件、tmux、systemd、Docker 和命令工具。
 - 双 AI 模式：本地 AI 使用 App 访问令牌调用 Daylink 网关；SSH Agent 在用户自己的主机启动官方 `codex app-server`，使用后台签发的短期账号凭证和自定义 Responses Provider，不接收上游 API Key。
 - Codex：Flutter transport 负责 JSON-RPC 消息泵、审批请求和关闭回收；Agent 为每个会话创建 `0700` 隔离 `CODEX_HOME`，令牌仅注入子进程环境，配置不落令牌，停止后删除会话目录。

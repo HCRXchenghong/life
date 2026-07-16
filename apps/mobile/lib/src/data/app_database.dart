@@ -232,6 +232,35 @@ class NotificationPreferences extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+class DataSyncPreferences extends Table {
+  IntColumn get id => integer().withDefault(const Constant(1))();
+  BoolColumn get autoSyncEnabled =>
+      boolean().withDefault(const Constant(true))();
+  IntColumn get cursor => integer().withDefault(const Constant(0))();
+  DateTimeColumn get lastSyncedAt => dateTime().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
+class EncryptedSyncChanges extends Table {
+  IntColumn get cursor => integer()();
+  TextColumn get collectionName => text().withLength(min: 2, max: 64)();
+  TextColumn get objectId => text().withLength(min: 36, max: 36)();
+  TextColumn get operationId => text().withLength(min: 36, max: 36)();
+  TextColumn get deviceId => text().withLength(min: 36, max: 36)();
+  IntColumn get revision => integer()();
+  BoolColumn get deleted => boolean()();
+  BlobColumn get ciphertext => blob().nullable()();
+  BlobColumn get nonce => blob().nullable()();
+  IntColumn get keyVersion => integer().nullable()();
+  DateTimeColumn get clientUpdatedAt => dateTime()();
+  DateTimeColumn get serverUpdatedAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {cursor};
+}
+
 class AiProviderConfigs extends Table {
   TextColumn get id => text()();
   TextColumn get name => text().withLength(min: 1, max: 80)();
@@ -332,6 +361,8 @@ class SharePollRefs extends Table {
     AiRuns,
     AiToolCalls,
     SharePollRefs,
+    DataSyncPreferences,
+    EncryptedSyncChanges,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -342,7 +373,7 @@ class AppDatabase extends _$AppDatabase {
   factory AppDatabase.inMemory() => AppDatabase(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -374,6 +405,10 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 5) {
         await migrator.createTable(notificationPreferences);
+      }
+      if (from < 6) {
+        await migrator.createTable(dataSyncPreferences);
+        await migrator.createTable(encryptedSyncChanges);
       }
     },
     beforeOpen: (details) async {
