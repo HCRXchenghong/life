@@ -3,18 +3,22 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
 import '../data/app_database.dart';
+import '../data/notification_preferences_repository.dart';
 import '../data/schedule_repository.dart';
+import '../domain/notifications/notification_settings.dart';
 import '../domain/schedule/recurrence_engine.dart';
 import '../domain/schedule/schedule_models.dart';
 
 const _scheduleCategory = 'daylink_schedule';
 const _doneAction = 'done';
 const _snoozeAction = 'snooze_10';
+const _settingsChannel = MethodChannel('app.daylink.daylink_mobile/settings');
 
 @pragma('vm:entry-point')
 Future<void> daylinkNotificationBackground(
@@ -29,9 +33,11 @@ Future<void> daylinkNotificationBackground(
   final database = AppDatabase.openForAccount(accountId);
   try {
     final repository = ScheduleRepository(database);
+    final preferences = NotificationPreferencesRepository(database);
     final coordinator = NotificationCoordinator(
       accountId: accountId,
       repository: repository,
+      preferences: preferences,
     );
     await coordinator.initialize();
     await coordinator.handleAction(response);
@@ -44,11 +50,13 @@ class NotificationCoordinator {
   NotificationCoordinator({
     required this.accountId,
     required this._repository,
+    required this._preferences,
     FlutterLocalNotificationsPlugin? plugin,
     this._recurrence = const RecurrenceEngine(),
   }) : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
 
   final ScheduleRepository _repository;
+  final NotificationPreferencesRepository _preferences;
   final String accountId;
   final FlutterLocalNotificationsPlugin _plugin;
   final RecurrenceEngine _recurrence;
@@ -104,6 +112,20 @@ class NotificationCoordinator {
     return false;
   }
 
+  Future<NotificationPermissionStatus> notificationPermissionStatus() async {
+    if (!Platform.isAndroid && !Platform.isIOS) {
+      return NotificationPermissionStatus.unsupported;
+    }
+    return await _notificationsAllowed()
+        ? NotificationPermissionStatus.authorized
+        : NotificationPermissionStatus.denied;
+  }
+
+  Future<void> openSystemNotificationSettings() async {
+    if (!Platform.isAndroid && !Platform.isIOS) return;
+    await _settingsChannel.invokeMethod<void>('openNotificationSettings');
+  }
+
   Future<bool> requestExactAlarmPermission() async {
     if (!Platform.isAndroid) return true;
     return await _plugin
@@ -117,6 +139,7 @@ class NotificationCoordinator {
   Future<ReconcileResult> reconcile({DateTime? nowUtc}) async {
     if (!_initialized) await initialize();
     final now = (nowUtc ?? DateTime.now()).toUtc();
+    final preferences = await _preferences.load();
     final events = await _repository.activeEvents();
     final reminders = await _repository.remindersForEvents(
       events.map((event) => event.id),
@@ -155,11 +178,15 @@ class NotificationCoordinator {
     candidates.sort((a, b) => a.scheduledForUtc.compareTo(b.scheduledForUtc));
     final limit = Platform.isIOS ? 50 : 500;
     final selected = candidates.take(limit).toList(growable: false);
-    for (final mapping in await _repository.scheduledNotificationMappings()) {
+    final canSchedule = notificationAllowed && preferences.remindersEnabled;
+    final existingMappings = canSchedule
+        ? await _repository.scheduledNotificationMappings()
+        : await _repository.allNotificationMappings();
+    for (final mapping in existingMappings) {
       await _plugin.cancel(id: mapping.notificationId);
     }
     final mappings = <NotificationMappingDraft>[];
-    if (notificationAllowed) {
+    if (canSchedule) {
       for (final candidate in selected) {
         final exact = candidate.reminder.exactRequested && exactAllowed;
         final id = _stableNotificationId(
@@ -180,21 +207,8 @@ class NotificationCoordinator {
             candidate.scheduledForUtc,
             tz.local,
           ),
-          notificationDetails: const NotificationDetails(
-            android: AndroidNotificationDetails(
-              'daylink_schedule',
-              '日程提醒',
-              channelDescription: 'Daylink 日程和活动提醒',
-              importance: Importance.high,
-              priority: Priority.high,
-              actions: [
-                AndroidNotificationAction(_doneAction, '完成'),
-                AndroidNotificationAction(_snoozeAction, '10 分钟后提醒'),
-              ],
-            ),
-            iOS: DarwinNotificationDetails(
-              categoryIdentifier: _scheduleCategory,
-            ),
+          notificationDetails: _notificationDetails(
+            preferences.soundAndVibrationEnabled,
           ),
           androidScheduleMode: exact
               ? AndroidScheduleMode.exactAllowWhileIdle
@@ -215,11 +229,15 @@ class NotificationCoordinator {
         );
       }
     }
-    await _repository.replaceNotificationMappings(mappings);
+    if (canSchedule) {
+      await _repository.replaceNotificationMappings(mappings);
+    } else {
+      await _repository.deleteAllNotificationMappings();
+    }
     return ReconcileResult(
       scheduled: mappings.length,
       deferred: candidates.length - selected.length,
-      capability: !notificationAllowed
+      capability: !notificationAllowed || !preferences.remindersEnabled
           ? ReminderCapability.denied
           : exactAllowed
           ? ReminderCapability.exact
@@ -250,6 +268,8 @@ class NotificationCoordinator {
     final occurrenceRaw = payload['occurrenceStartsAtUtc'] as String?;
     if (event == null || reminderId == null || occurrenceRaw == null) return;
     if (!_initialized) await initialize();
+    final preferences = await _preferences.load();
+    if (!preferences.remindersEnabled || !await _notificationsAllowed()) return;
     final scheduledFor = DateTime.now().toUtc().add(
       const Duration(minutes: 10),
     );
@@ -261,7 +281,9 @@ class NotificationCoordinator {
       title: event.title,
       body: '稍后提醒：${event.title}',
       scheduledDate: tz.TZDateTime.from(scheduledFor, tz.local),
-      notificationDetails: _notificationDetails,
+      notificationDetails: _notificationDetails(
+        preferences.soundAndVibrationEnabled,
+      ),
       androidScheduleMode: await _exactAlarmsAllowed()
           ? AndroidScheduleMode.exactAllowWhileIdle
           : AndroidScheduleMode.inexactAllowWhileIdle,
@@ -327,20 +349,28 @@ class NotificationCoordinator {
   }
 }
 
-const _notificationDetails = NotificationDetails(
-  android: AndroidNotificationDetails(
-    'daylink_schedule',
-    '日程提醒',
-    channelDescription: 'Daylink 日程和活动提醒',
-    importance: Importance.high,
-    priority: Priority.high,
-    actions: [
-      AndroidNotificationAction(_doneAction, '完成'),
-      AndroidNotificationAction(_snoozeAction, '10 分钟后提醒'),
-    ],
-  ),
-  iOS: DarwinNotificationDetails(categoryIdentifier: _scheduleCategory),
-);
+NotificationDetails _notificationDetails(bool soundAndVibrationEnabled) =>
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        soundAndVibrationEnabled
+            ? 'daylink_schedule_alerts'
+            : 'daylink_schedule_quiet',
+        soundAndVibrationEnabled ? '日程提醒' : '静音日程提醒',
+        channelDescription: 'Daylink 日程和活动提醒',
+        importance: Importance.high,
+        priority: Priority.high,
+        playSound: soundAndVibrationEnabled,
+        enableVibration: soundAndVibrationEnabled,
+        actions: const [
+          AndroidNotificationAction(_doneAction, '完成'),
+          AndroidNotificationAction(_snoozeAction, '10 分钟后提醒'),
+        ],
+      ),
+      iOS: DarwinNotificationDetails(
+        presentSound: soundAndVibrationEnabled,
+        categoryIdentifier: _scheduleCategory,
+      ),
+    );
 
 class ReconcileResult {
   const ReconcileResult({

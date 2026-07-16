@@ -7,6 +7,7 @@ import 'package:daylink_mobile/src/data/ai_gateway_client.dart';
 import 'package:daylink_mobile/src/data/operations_repository.dart';
 import 'package:daylink_mobile/src/data/schedule_repository.dart';
 import 'package:daylink_mobile/src/domain/operations/operations_models.dart';
+import 'package:daylink_mobile/src/domain/notifications/notification_settings.dart';
 import 'package:daylink_mobile/src/domain/schedule/schedule_models.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -241,6 +242,19 @@ void main() {
     await tester.tap(find.byKey(const Key('security-back')));
     await tester.pumpAndSettle();
 
+    final notifications = find.byKey(const Key('my-notifications'));
+    await tester.ensureVisible(notifications);
+    await tester.pumpAndSettle();
+    await tester.tap(notifications);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('notification-settings-title')),
+      findsOneWidget,
+    );
+    expect(find.text('系统通知权限'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('notification-settings-back')));
+    await tester.pumpAndSettle();
+
     await tester.tap(find.byKey(const Key('nav-schedule')));
     await tester.pumpAndSettle();
     expect(find.text('今天'), findsOneWidget);
@@ -351,7 +365,8 @@ class _FakeScheduleRuntime
         AppRuntime,
         ScheduleAwareRuntime,
         HostAwareRuntime,
-        AccountEntitlementSource {
+        AccountEntitlementSource,
+        NotificationSettingsSource {
   final _source = _EmptyScheduleSource();
   final _hosts = _EmptyHostSource();
 
@@ -372,6 +387,60 @@ class _FakeScheduleRuntime
     monthlyResetsAt: DateTime.utc(2030, 1),
     supportedModes: const [AiExecutionMode.localAI, AiExecutionMode.sshAgent],
   );
+
+  NotificationSettingsState _notificationSettings =
+      const NotificationSettingsState(
+        remindersEnabled: true,
+        defaultLeadMinutes: 10,
+        soundAndVibrationEnabled: true,
+        permissionStatus: NotificationPermissionStatus.authorized,
+      );
+
+  @override
+  Future<NotificationSettingsState> loadNotificationSettings() async =>
+      _notificationSettings;
+
+  @override
+  Future<void> openSystemNotificationSettings() async {}
+
+  @override
+  Future<NotificationSettingsState> requestNotificationPermission() async =>
+      _notificationSettings;
+
+  @override
+  Future<NotificationSettingsState> setDefaultLeadMinutes(int minutes) async {
+    _notificationSettings = NotificationSettingsState(
+      remindersEnabled: _notificationSettings.remindersEnabled,
+      defaultLeadMinutes: minutes,
+      soundAndVibrationEnabled: _notificationSettings.soundAndVibrationEnabled,
+      permissionStatus: _notificationSettings.permissionStatus,
+    );
+    return _notificationSettings;
+  }
+
+  @override
+  Future<NotificationSettingsState> setRemindersEnabled(bool enabled) async {
+    _notificationSettings = NotificationSettingsState(
+      remindersEnabled: enabled,
+      defaultLeadMinutes: _notificationSettings.defaultLeadMinutes,
+      soundAndVibrationEnabled: _notificationSettings.soundAndVibrationEnabled,
+      permissionStatus: _notificationSettings.permissionStatus,
+    );
+    return _notificationSettings;
+  }
+
+  @override
+  Future<NotificationSettingsState> setSoundAndVibrationEnabled(
+    bool enabled,
+  ) async {
+    _notificationSettings = NotificationSettingsState(
+      remindersEnabled: _notificationSettings.remindersEnabled,
+      defaultLeadMinutes: _notificationSettings.defaultLeadMinutes,
+      soundAndVibrationEnabled: enabled,
+      permissionStatus: _notificationSettings.permissionStatus,
+    );
+    return _notificationSettings;
+  }
 
   @override
   Future<void> close() async {}

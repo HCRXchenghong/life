@@ -1,17 +1,20 @@
 import 'package:uuid/uuid.dart';
 
 import '../data/schedule_repository.dart';
+import '../data/notification_preferences_repository.dart';
 import '../domain/ai/tool_protocol.dart';
 import '../domain/schedule/schedule_models.dart';
 
 class ScheduleTools {
   ScheduleTools({
     required this._repository,
+    required this._notificationPreferences,
     required this._reconcileNotifications,
     this._uuid = const Uuid(),
   });
 
   final ScheduleRepository _repository;
+  final NotificationPreferencesRepository _notificationPreferences;
   final Future<void> Function() _reconcileNotifications;
   final Uuid _uuid;
 
@@ -71,17 +74,13 @@ class ScheduleTools {
               },
               'reminder_offsets_minutes': {
                 'type': 'array',
+                'description':
+                    'Optional explicit reminder offsets. Omit to use the account default.',
                 'items': {'type': 'integer', 'minimum': 0, 'maximum': 525600},
                 'maxItems': 8,
               },
             },
-            'required': [
-              'title',
-              'starts_at',
-              'timezone',
-              'duration_minutes',
-              'reminder_offsets_minutes',
-            ],
+            'required': ['title', 'starts_at', 'timezone', 'duration_minutes'],
             'additionalProperties': false,
           },
           risk: ToolRisk.medium,
@@ -126,12 +125,14 @@ class ScheduleTools {
     if (duration < 1 || duration > 10080) {
       throw const FormatException('invalid duration');
     }
-    final offsets =
-        (arguments['reminder_offsets_minutes']! as List<Object?>)
-            .map((value) => (value! as num).toInt())
-            .toSet()
-            .toList()
-          ..sort();
+    final explicitOffsets = arguments['reminder_offsets_minutes'];
+    final offsets = explicitOffsets == null
+        ? <int>[(await _notificationPreferences.load()).defaultLeadMinutes]
+        : (explicitOffsets as List<Object?>)
+              .map((value) => (value! as num).toInt())
+              .toSet()
+              .toList();
+    offsets.sort();
     final eventId = _uuid.v4();
     final event = ScheduleEventModel(
       id: eventId,

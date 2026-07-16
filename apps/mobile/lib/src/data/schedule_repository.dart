@@ -128,6 +128,12 @@ class ScheduleRepository implements ScheduleEventSource {
           ))
           .get();
 
+  Future<List<NotificationMapping>> allNotificationMappings() =>
+      _db.select(_db.notificationMappings).get();
+
+  Future<void> deleteAllNotificationMappings() =>
+      _db.delete(_db.notificationMappings).go();
+
   Future<void> deleteNotificationMapping(int notificationId) => (_db.delete(
     _db.notificationMappings,
   )..where((table) => table.notificationId.equals(notificationId))).go();

@@ -7160,6 +7160,390 @@ class NotificationMappingsCompanion
   }
 }
 
+class $NotificationPreferencesTable extends NotificationPreferences
+    with TableInfo<$NotificationPreferencesTable, NotificationPreference> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $NotificationPreferencesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _remindersEnabledMeta = const VerificationMeta(
+    'remindersEnabled',
+  );
+  @override
+  late final GeneratedColumn<bool> remindersEnabled = GeneratedColumn<bool>(
+    'reminders_enabled',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("reminders_enabled" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _defaultLeadMinutesMeta =
+      const VerificationMeta('defaultLeadMinutes');
+  @override
+  late final GeneratedColumn<int> defaultLeadMinutes = GeneratedColumn<int>(
+    'default_lead_minutes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(10),
+  );
+  static const VerificationMeta _soundAndVibrationEnabledMeta =
+      const VerificationMeta('soundAndVibrationEnabled');
+  @override
+  late final GeneratedColumn<bool> soundAndVibrationEnabled =
+      GeneratedColumn<bool>(
+        'sound_and_vibration_enabled',
+        aliasedName,
+        false,
+        type: DriftSqlType.bool,
+        requiredDuringInsert: false,
+        defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("sound_and_vibration_enabled" IN (0, 1))',
+        ),
+        defaultValue: const Constant(true),
+      );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    remindersEnabled,
+    defaultLeadMinutes,
+    soundAndVibrationEnabled,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'notification_preferences';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<NotificationPreference> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('reminders_enabled')) {
+      context.handle(
+        _remindersEnabledMeta,
+        remindersEnabled.isAcceptableOrUnknown(
+          data['reminders_enabled']!,
+          _remindersEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('default_lead_minutes')) {
+      context.handle(
+        _defaultLeadMinutesMeta,
+        defaultLeadMinutes.isAcceptableOrUnknown(
+          data['default_lead_minutes']!,
+          _defaultLeadMinutesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('sound_and_vibration_enabled')) {
+      context.handle(
+        _soundAndVibrationEnabledMeta,
+        soundAndVibrationEnabled.isAcceptableOrUnknown(
+          data['sound_and_vibration_enabled']!,
+          _soundAndVibrationEnabledMeta,
+        ),
+      );
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  NotificationPreference map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return NotificationPreference(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      remindersEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}reminders_enabled'],
+      )!,
+      defaultLeadMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}default_lead_minutes'],
+      )!,
+      soundAndVibrationEnabled: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}sound_and_vibration_enabled'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $NotificationPreferencesTable createAlias(String alias) {
+    return $NotificationPreferencesTable(attachedDatabase, alias);
+  }
+}
+
+class NotificationPreference extends DataClass
+    implements Insertable<NotificationPreference> {
+  final int id;
+  final bool remindersEnabled;
+  final int defaultLeadMinutes;
+  final bool soundAndVibrationEnabled;
+  final DateTime updatedAt;
+  const NotificationPreference({
+    required this.id,
+    required this.remindersEnabled,
+    required this.defaultLeadMinutes,
+    required this.soundAndVibrationEnabled,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['reminders_enabled'] = Variable<bool>(remindersEnabled);
+    map['default_lead_minutes'] = Variable<int>(defaultLeadMinutes);
+    map['sound_and_vibration_enabled'] = Variable<bool>(
+      soundAndVibrationEnabled,
+    );
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  NotificationPreferencesCompanion toCompanion(bool nullToAbsent) {
+    return NotificationPreferencesCompanion(
+      id: Value(id),
+      remindersEnabled: Value(remindersEnabled),
+      defaultLeadMinutes: Value(defaultLeadMinutes),
+      soundAndVibrationEnabled: Value(soundAndVibrationEnabled),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory NotificationPreference.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return NotificationPreference(
+      id: serializer.fromJson<int>(json['id']),
+      remindersEnabled: serializer.fromJson<bool>(json['remindersEnabled']),
+      defaultLeadMinutes: serializer.fromJson<int>(json['defaultLeadMinutes']),
+      soundAndVibrationEnabled: serializer.fromJson<bool>(
+        json['soundAndVibrationEnabled'],
+      ),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'remindersEnabled': serializer.toJson<bool>(remindersEnabled),
+      'defaultLeadMinutes': serializer.toJson<int>(defaultLeadMinutes),
+      'soundAndVibrationEnabled': serializer.toJson<bool>(
+        soundAndVibrationEnabled,
+      ),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  NotificationPreference copyWith({
+    int? id,
+    bool? remindersEnabled,
+    int? defaultLeadMinutes,
+    bool? soundAndVibrationEnabled,
+    DateTime? updatedAt,
+  }) => NotificationPreference(
+    id: id ?? this.id,
+    remindersEnabled: remindersEnabled ?? this.remindersEnabled,
+    defaultLeadMinutes: defaultLeadMinutes ?? this.defaultLeadMinutes,
+    soundAndVibrationEnabled:
+        soundAndVibrationEnabled ?? this.soundAndVibrationEnabled,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  NotificationPreference copyWithCompanion(
+    NotificationPreferencesCompanion data,
+  ) {
+    return NotificationPreference(
+      id: data.id.present ? data.id.value : this.id,
+      remindersEnabled: data.remindersEnabled.present
+          ? data.remindersEnabled.value
+          : this.remindersEnabled,
+      defaultLeadMinutes: data.defaultLeadMinutes.present
+          ? data.defaultLeadMinutes.value
+          : this.defaultLeadMinutes,
+      soundAndVibrationEnabled: data.soundAndVibrationEnabled.present
+          ? data.soundAndVibrationEnabled.value
+          : this.soundAndVibrationEnabled,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NotificationPreference(')
+          ..write('id: $id, ')
+          ..write('remindersEnabled: $remindersEnabled, ')
+          ..write('defaultLeadMinutes: $defaultLeadMinutes, ')
+          ..write('soundAndVibrationEnabled: $soundAndVibrationEnabled, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    remindersEnabled,
+    defaultLeadMinutes,
+    soundAndVibrationEnabled,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is NotificationPreference &&
+          other.id == this.id &&
+          other.remindersEnabled == this.remindersEnabled &&
+          other.defaultLeadMinutes == this.defaultLeadMinutes &&
+          other.soundAndVibrationEnabled == this.soundAndVibrationEnabled &&
+          other.updatedAt == this.updatedAt);
+}
+
+class NotificationPreferencesCompanion
+    extends UpdateCompanion<NotificationPreference> {
+  final Value<int> id;
+  final Value<bool> remindersEnabled;
+  final Value<int> defaultLeadMinutes;
+  final Value<bool> soundAndVibrationEnabled;
+  final Value<DateTime> updatedAt;
+  const NotificationPreferencesCompanion({
+    this.id = const Value.absent(),
+    this.remindersEnabled = const Value.absent(),
+    this.defaultLeadMinutes = const Value.absent(),
+    this.soundAndVibrationEnabled = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  NotificationPreferencesCompanion.insert({
+    this.id = const Value.absent(),
+    this.remindersEnabled = const Value.absent(),
+    this.defaultLeadMinutes = const Value.absent(),
+    this.soundAndVibrationEnabled = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  static Insertable<NotificationPreference> custom({
+    Expression<int>? id,
+    Expression<bool>? remindersEnabled,
+    Expression<int>? defaultLeadMinutes,
+    Expression<bool>? soundAndVibrationEnabled,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (remindersEnabled != null) 'reminders_enabled': remindersEnabled,
+      if (defaultLeadMinutes != null)
+        'default_lead_minutes': defaultLeadMinutes,
+      if (soundAndVibrationEnabled != null)
+        'sound_and_vibration_enabled': soundAndVibrationEnabled,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  NotificationPreferencesCompanion copyWith({
+    Value<int>? id,
+    Value<bool>? remindersEnabled,
+    Value<int>? defaultLeadMinutes,
+    Value<bool>? soundAndVibrationEnabled,
+    Value<DateTime>? updatedAt,
+  }) {
+    return NotificationPreferencesCompanion(
+      id: id ?? this.id,
+      remindersEnabled: remindersEnabled ?? this.remindersEnabled,
+      defaultLeadMinutes: defaultLeadMinutes ?? this.defaultLeadMinutes,
+      soundAndVibrationEnabled:
+          soundAndVibrationEnabled ?? this.soundAndVibrationEnabled,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (remindersEnabled.present) {
+      map['reminders_enabled'] = Variable<bool>(remindersEnabled.value);
+    }
+    if (defaultLeadMinutes.present) {
+      map['default_lead_minutes'] = Variable<int>(defaultLeadMinutes.value);
+    }
+    if (soundAndVibrationEnabled.present) {
+      map['sound_and_vibration_enabled'] = Variable<bool>(
+        soundAndVibrationEnabled.value,
+      );
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('NotificationPreferencesCompanion(')
+          ..write('id: $id, ')
+          ..write('remindersEnabled: $remindersEnabled, ')
+          ..write('defaultLeadMinutes: $defaultLeadMinutes, ')
+          ..write('soundAndVibrationEnabled: $soundAndVibrationEnabled, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $AiProviderConfigsTable extends AiProviderConfigs
     with TableInfo<$AiProviderConfigsTable, AiProviderConfig> {
   @override
@@ -10036,6 +10420,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $ScheduleRemindersTable(this);
   late final $NotificationMappingsTable notificationMappings =
       $NotificationMappingsTable(this);
+  late final $NotificationPreferencesTable notificationPreferences =
+      $NotificationPreferencesTable(this);
   late final $AiProviderConfigsTable aiProviderConfigs =
       $AiProviderConfigsTable(this);
   late final $AiConversationsTable aiConversations = $AiConversationsTable(
@@ -10063,6 +10449,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     scheduleEvents,
     scheduleReminders,
     notificationMappings,
+    notificationPreferences,
     aiProviderConfigs,
     aiConversations,
     aiRuns,
@@ -16411,6 +16798,225 @@ typedef $$NotificationMappingsTableProcessedTableManager =
       NotificationMapping,
       PrefetchHooks Function({bool reminderId, bool eventId})
     >;
+typedef $$NotificationPreferencesTableCreateCompanionBuilder =
+    NotificationPreferencesCompanion Function({
+      Value<int> id,
+      Value<bool> remindersEnabled,
+      Value<int> defaultLeadMinutes,
+      Value<bool> soundAndVibrationEnabled,
+      Value<DateTime> updatedAt,
+    });
+typedef $$NotificationPreferencesTableUpdateCompanionBuilder =
+    NotificationPreferencesCompanion Function({
+      Value<int> id,
+      Value<bool> remindersEnabled,
+      Value<int> defaultLeadMinutes,
+      Value<bool> soundAndVibrationEnabled,
+      Value<DateTime> updatedAt,
+    });
+
+class $$NotificationPreferencesTableFilterComposer
+    extends Composer<_$AppDatabase, $NotificationPreferencesTable> {
+  $$NotificationPreferencesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get remindersEnabled => $composableBuilder(
+    column: $table.remindersEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get defaultLeadMinutes => $composableBuilder(
+    column: $table.defaultLeadMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get soundAndVibrationEnabled => $composableBuilder(
+    column: $table.soundAndVibrationEnabled,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$NotificationPreferencesTableOrderingComposer
+    extends Composer<_$AppDatabase, $NotificationPreferencesTable> {
+  $$NotificationPreferencesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get remindersEnabled => $composableBuilder(
+    column: $table.remindersEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get defaultLeadMinutes => $composableBuilder(
+    column: $table.defaultLeadMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get soundAndVibrationEnabled => $composableBuilder(
+    column: $table.soundAndVibrationEnabled,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$NotificationPreferencesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $NotificationPreferencesTable> {
+  $$NotificationPreferencesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<bool> get remindersEnabled => $composableBuilder(
+    column: $table.remindersEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get defaultLeadMinutes => $composableBuilder(
+    column: $table.defaultLeadMinutes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get soundAndVibrationEnabled => $composableBuilder(
+    column: $table.soundAndVibrationEnabled,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$NotificationPreferencesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $NotificationPreferencesTable,
+          NotificationPreference,
+          $$NotificationPreferencesTableFilterComposer,
+          $$NotificationPreferencesTableOrderingComposer,
+          $$NotificationPreferencesTableAnnotationComposer,
+          $$NotificationPreferencesTableCreateCompanionBuilder,
+          $$NotificationPreferencesTableUpdateCompanionBuilder,
+          (
+            NotificationPreference,
+            BaseReferences<
+              _$AppDatabase,
+              $NotificationPreferencesTable,
+              NotificationPreference
+            >,
+          ),
+          NotificationPreference,
+          PrefetchHooks Function()
+        > {
+  $$NotificationPreferencesTableTableManager(
+    _$AppDatabase db,
+    $NotificationPreferencesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$NotificationPreferencesTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$NotificationPreferencesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$NotificationPreferencesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<bool> remindersEnabled = const Value.absent(),
+                Value<int> defaultLeadMinutes = const Value.absent(),
+                Value<bool> soundAndVibrationEnabled = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => NotificationPreferencesCompanion(
+                id: id,
+                remindersEnabled: remindersEnabled,
+                defaultLeadMinutes: defaultLeadMinutes,
+                soundAndVibrationEnabled: soundAndVibrationEnabled,
+                updatedAt: updatedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<bool> remindersEnabled = const Value.absent(),
+                Value<int> defaultLeadMinutes = const Value.absent(),
+                Value<bool> soundAndVibrationEnabled = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+              }) => NotificationPreferencesCompanion.insert(
+                id: id,
+                remindersEnabled: remindersEnabled,
+                defaultLeadMinutes: defaultLeadMinutes,
+                soundAndVibrationEnabled: soundAndVibrationEnabled,
+                updatedAt: updatedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$NotificationPreferencesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $NotificationPreferencesTable,
+      NotificationPreference,
+      $$NotificationPreferencesTableFilterComposer,
+      $$NotificationPreferencesTableOrderingComposer,
+      $$NotificationPreferencesTableAnnotationComposer,
+      $$NotificationPreferencesTableCreateCompanionBuilder,
+      $$NotificationPreferencesTableUpdateCompanionBuilder,
+      (
+        NotificationPreference,
+        BaseReferences<
+          _$AppDatabase,
+          $NotificationPreferencesTable,
+          NotificationPreference
+        >,
+      ),
+      NotificationPreference,
+      PrefetchHooks Function()
+    >;
 typedef $$AiProviderConfigsTableCreateCompanionBuilder =
     AiProviderConfigsCompanion Function({
       required String id,
@@ -18513,6 +19119,11 @@ class $AppDatabaseManager {
       $$ScheduleRemindersTableTableManager(_db, _db.scheduleReminders);
   $$NotificationMappingsTableTableManager get notificationMappings =>
       $$NotificationMappingsTableTableManager(_db, _db.notificationMappings);
+  $$NotificationPreferencesTableTableManager get notificationPreferences =>
+      $$NotificationPreferencesTableTableManager(
+        _db,
+        _db.notificationPreferences,
+      );
   $$AiProviderConfigsTableTableManager get aiProviderConfigs =>
       $$AiProviderConfigsTableTableManager(_db, _db.aiProviderConfigs);
   $$AiConversationsTableTableManager get aiConversations =>

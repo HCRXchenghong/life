@@ -218,6 +218,20 @@ class NotificationMappings extends Table {
   Set<Column<Object>> get primaryKey => {notificationId};
 }
 
+class NotificationPreferences extends Table {
+  IntColumn get id => integer().withDefault(const Constant(1))();
+  BoolColumn get remindersEnabled =>
+      boolean().withDefault(const Constant(true))();
+  IntColumn get defaultLeadMinutes =>
+      integer().withDefault(const Constant(10))();
+  BoolColumn get soundAndVibrationEnabled =>
+      boolean().withDefault(const Constant(true))();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column<Object>> get primaryKey => {id};
+}
+
 class AiProviderConfigs extends Table {
   TextColumn get id => text()();
   TextColumn get name => text().withLength(min: 1, max: 80)();
@@ -312,6 +326,7 @@ class SharePollRefs extends Table {
     ScheduleEvents,
     ScheduleReminders,
     NotificationMappings,
+    NotificationPreferences,
     AiProviderConfigs,
     AiConversations,
     AiRuns,
@@ -327,7 +342,7 @@ class AppDatabase extends _$AppDatabase {
   factory AppDatabase.inMemory() => AppDatabase(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -356,6 +371,9 @@ class AppDatabase extends _$AppDatabase {
       }
       if (from < 4) {
         await migrator.addColumn(hosts, hosts.system);
+      }
+      if (from < 5) {
+        await migrator.createTable(notificationPreferences);
       }
     },
     beforeOpen: (details) async {

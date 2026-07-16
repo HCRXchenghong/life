@@ -12,12 +12,14 @@ import 'src/data/app_session_monitor.dart';
 import 'src/data/operations_repository.dart';
 import 'src/data/schedule_repository.dart';
 import 'src/domain/ai/ai_models.dart';
+import 'src/domain/notifications/notification_settings.dart';
 import 'src/presentation/app_navigation.dart';
 import 'src/presentation/account_security_page.dart';
 import 'src/presentation/assistant_page.dart';
 import 'src/presentation/hosts_page.dart';
 import 'src/presentation/login_page.dart';
 import 'src/presentation/my_page.dart';
+import 'src/presentation/notification_settings_page.dart';
 import 'src/presentation/password_change_page.dart';
 import 'src/presentation/toolbox_page.dart';
 import 'src/presentation/today_schedule_page.dart';
@@ -306,6 +308,21 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
     ),
   );
 
+  Future<void> _openNotificationSettings() async {
+    final runtime = _runtime;
+    if (runtime is! NotificationSettingsSource) {
+      _showPendingPage('通知设置');
+      return;
+    }
+    await _navigatorKey.currentState!.push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => NotificationSettingsPage(
+          source: runtime as NotificationSettingsSource,
+        ),
+      ),
+    );
+  }
+
   Future<void> _changePasswordFromSettings(
     String currentPassword,
     String newPassword,
@@ -363,7 +380,7 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
         username: _session!.username,
         source: runtime as AccountEntitlementSource,
         onOpenAccount: () => unawaited(_openAccountSecurity()),
-        onOpenNotifications: () => _showPendingPage('通知设置'),
+        onOpenNotifications: () => unawaited(_openNotificationSettings()),
         onOpenSync: () => _showPendingPage('数据与同步'),
         onLogout: _logout,
         onDestinationSelected: _selectDestination,
@@ -463,7 +480,8 @@ class DaylinkRuntime
         ScheduleAwareRuntime,
         HostAwareRuntime,
         AssistantSettingsSource,
-        AccountEntitlementSource {
+        AccountEntitlementSource,
+        NotificationSettingsSource {
   DaylinkRuntime._(this.services, this._assistantSettings);
 
   final DaylinkServices services;
@@ -526,6 +544,30 @@ class DaylinkRuntime
   @override
   Future<AiEntitlement> loadAccountEntitlement() =>
       _assistantSettings.loadAccountEntitlement();
+
+  @override
+  Future<NotificationSettingsState> loadNotificationSettings() =>
+      services.loadNotificationSettings();
+
+  @override
+  Future<NotificationSettingsState> setRemindersEnabled(bool enabled) =>
+      services.setRemindersEnabled(enabled);
+
+  @override
+  Future<NotificationSettingsState> setDefaultLeadMinutes(int minutes) =>
+      services.setDefaultLeadMinutes(minutes);
+
+  @override
+  Future<NotificationSettingsState> setSoundAndVibrationEnabled(bool enabled) =>
+      services.setSoundAndVibrationEnabled(enabled);
+
+  @override
+  Future<NotificationSettingsState> requestNotificationPermission() =>
+      services.requestNotificationPermission();
+
+  @override
+  Future<void> openSystemNotificationSettings() =>
+      services.openSystemNotificationSettings();
 
   Future<void> _forceSignOut(String reason) async {
     if (_signedOut) return;

@@ -7,6 +7,7 @@ import '../data/app_database.dart';
 import '../data/artifact_client.dart';
 import '../data/artifact_repository.dart';
 import '../data/operations_repository.dart';
+import '../data/notification_preferences_repository.dart';
 import '../data/schedule_repository.dart';
 import '../data/secret_vault.dart';
 import '../data/share_poll_client.dart';
@@ -14,6 +15,7 @@ import '../data/share_poll_repository.dart';
 import '../domain/ai/agent_codex_transport.dart';
 import '../domain/ai/openai_responses_client.dart';
 import '../domain/ai/tool_protocol.dart';
+import '../domain/notifications/notification_settings.dart';
 import '../platform/native_core_service.dart';
 import '../platform/notification_coordinator.dart';
 import 'artifact_tools.dart';
@@ -28,6 +30,7 @@ class DaylinkServices {
     required this.database,
     required this.nativeCore,
     required this.notifications,
+    required this.notificationPreferences,
     required this.secrets,
     required this.schedules,
     required this.operations,
@@ -39,6 +42,7 @@ class DaylinkServices {
   final AppDatabase database;
   final NativeCoreService nativeCore;
   final NotificationCoordinator notifications;
+  final NotificationPreferencesRepository notificationPreferences;
   final SecretStore secrets;
   final ScheduleRepository schedules;
   final OperationsRepository operations;
@@ -52,9 +56,11 @@ class DaylinkServices {
     final database = AppDatabase.openForAccount(accountId);
     final secrets = SecretVault(accountId: accountId);
     final schedules = ScheduleRepository(database);
+    final notificationPreferences = NotificationPreferencesRepository(database);
     final notifications = NotificationCoordinator(
       accountId: accountId,
       repository: schedules,
+      preferences: notificationPreferences,
     );
     final responses = OpenAiResponsesClient();
     final services = DaylinkServices._(
@@ -62,6 +68,7 @@ class DaylinkServices {
       database: database,
       nativeCore: nativeCore,
       notifications: notifications,
+      notificationPreferences: notificationPreferences,
       secrets: secrets,
       schedules: schedules,
       operations: OperationsRepository(database),
@@ -127,6 +134,7 @@ class DaylinkServices {
     final registry = ToolRegistry(approvals: approvals);
     ScheduleTools(
       repository: schedules,
+      notificationPreferences: notificationPreferences,
       reconcileNotifications: notifications.reconcile,
     ).register(registry);
     if (share != null) {
@@ -176,6 +184,63 @@ class DaylinkServices {
     required Uri apiBaseUri,
     required String mobileToken,
   }) => AiGatewayClient(apiBaseUri: apiBaseUri, mobileToken: mobileToken);
+
+  Future<NotificationSettingsState> loadNotificationSettings() async {
+    final preferences = await notificationPreferences.load();
+    return NotificationSettingsState(
+      remindersEnabled: preferences.remindersEnabled,
+      defaultLeadMinutes: preferences.defaultLeadMinutes,
+      soundAndVibrationEnabled: preferences.soundAndVibrationEnabled,
+      permissionStatus: await notifications.notificationPermissionStatus(),
+    );
+  }
+
+  Future<NotificationSettingsState> setRemindersEnabled(bool enabled) async {
+    var effective = enabled;
+    if (enabled) {
+      effective = await notifications.requestNotificationPermission();
+    }
+    final current = await notificationPreferences.load();
+    await notificationPreferences.save(
+      current.copyWith(remindersEnabled: effective),
+    );
+    await notifications.reconcile();
+    return loadNotificationSettings();
+  }
+
+  Future<NotificationSettingsState> setDefaultLeadMinutes(int minutes) async {
+    final current = await notificationPreferences.load();
+    await notificationPreferences.save(
+      current.copyWith(defaultLeadMinutes: minutes),
+    );
+    return loadNotificationSettings();
+  }
+
+  Future<NotificationSettingsState> setSoundAndVibrationEnabled(
+    bool enabled,
+  ) async {
+    final current = await notificationPreferences.load();
+    await notificationPreferences.save(
+      current.copyWith(soundAndVibrationEnabled: enabled),
+    );
+    await notifications.reconcile();
+    return loadNotificationSettings();
+  }
+
+  Future<NotificationSettingsState> requestNotificationPermission() async {
+    final granted = await notifications.requestNotificationPermission();
+    if (granted) {
+      final current = await notificationPreferences.load();
+      await notificationPreferences.save(
+        current.copyWith(remindersEnabled: true),
+      );
+      await notifications.reconcile();
+    }
+    return loadNotificationSettings();
+  }
+
+  Future<void> openSystemNotificationSettings() =>
+      notifications.openSystemNotificationSettings();
 
   AppSessionMonitor monitorSession({
     required Uri apiBaseUri,
