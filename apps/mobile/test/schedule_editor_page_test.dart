@@ -91,7 +91,13 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('schedule-editor-recurrence')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('每周').last);
+    await tester.ensureVisible(
+      find.byKey(const Key('recurrence-choice-weekly')),
+    );
+    await tester.tap(find.byKey(const Key('recurrence-choice-weekly')));
+    await tester.tap(
+      find.byKey(const Key('schedule-reminder-recurrence-done')),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('schedule-editor-save')));
     await tester.pumpAndSettle();
@@ -145,6 +151,12 @@ void main() {
       duration: const Duration(hours: 2),
       timezoneId: 'Asia/Shanghai',
       source: ScheduleSource.ai,
+      recurrence: RecurrenceRule(
+        frequency: RecurrenceFrequency.weekly,
+        interval: 2,
+        weekdays: const {DateTime.sunday},
+        count: 8,
+      ),
     );
     final reminders = [
       const ReminderModel(
@@ -182,6 +194,9 @@ void main() {
 
     expect(source.savedEvent?.id, event.id);
     expect(source.savedEvent?.source, ScheduleSource.ai);
+    expect(source.savedEvent?.recurrence?.interval, 2);
+    expect(source.savedEvent?.recurrence?.weekdays, {DateTime.sunday});
+    expect(source.savedEvent?.recurrence?.count, 8);
     expect(source.savedReminders.map((item) => item.id), [
       'first-reminder',
       'second-reminder',

@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../domain/schedule/schedule_editor_models.dart';
 import '../domain/schedule/schedule_models.dart';
+import 'schedule_reminder_recurrence_page.dart';
 
 typedef ScheduleIdFactory = String Function();
 
@@ -38,7 +39,7 @@ class _ScheduleEditorPageState extends State<ScheduleEditorPage> {
   late DateTime _startsAt;
   late DateTime _endsAt;
   late bool _allDay;
-  RecurrenceFrequency? _recurrenceFrequency;
+  RecurrenceRule? _recurrence;
   int? _reminderLeadMinutes;
   var _reminderTouched = false;
   var _timezoneId = 'UTC';
@@ -62,7 +63,7 @@ class _ScheduleEditorPageState extends State<ScheduleEditorPage> {
       _startsAt = _wallTime(event.startsAtUtc, event.timezoneId);
       _endsAt = _startsAt.add(event.duration);
     }
-    _recurrenceFrequency = event?.recurrence?.frequency;
+    _recurrence = event?.recurrence;
     if (widget.initialReminders.isNotEmpty) {
       _reminderLeadMinutes = widget.initialReminders.first.offset.inMinutes;
     }
@@ -140,7 +141,7 @@ class _ScheduleEditorPageState extends State<ScheduleEditorPage> {
       duration: duration,
       timezoneId: _timezoneId,
       allDay: _allDay,
-      recurrence: _recurrenceRule(),
+      recurrence: _recurrence,
       status: widget.initialEvent?.status ?? ScheduleStatus.active,
       source: widget.initialEvent?.source ?? ScheduleSource.manual,
     );
@@ -189,20 +190,6 @@ class _ScheduleEditorPageState extends State<ScheduleEditorPage> {
       ),
     ];
   }
-
-  RecurrenceRule? _recurrenceRule() => switch (_recurrenceFrequency) {
-    null => null,
-    RecurrenceFrequency.daily => const RecurrenceRule(
-      frequency: RecurrenceFrequency.daily,
-    ),
-    RecurrenceFrequency.weekly => RecurrenceRule(
-      frequency: RecurrenceFrequency.weekly,
-      weekdays: {_startsAt.weekday},
-    ),
-    RecurrenceFrequency.monthly => const RecurrenceRule(
-      frequency: RecurrenceFrequency.monthly,
-    ),
-  };
 
   Future<void> _pickStart() async {
     final picked = await _pickDateTime(_startsAt);
@@ -262,32 +249,26 @@ class _ScheduleEditorPageState extends State<ScheduleEditorPage> {
     });
   }
 
-  Future<void> _chooseReminder() async {
-    final selection = await showModalBottomSheet<int>(
-      context: context,
-      showDragHandle: true,
-      backgroundColor: Colors.white,
-      builder: (context) => const _ReminderPicker(),
+  Future<void> _chooseReminderAndRecurrence() async {
+    final selection = await Navigator.push<ScheduleReminderRecurrenceSelection>(
+      context,
+      MaterialPageRoute<ScheduleReminderRecurrenceSelection>(
+        builder: (_) => ScheduleReminderRecurrencePage(
+          initialReminderLeadMinutes: _reminderLeadMinutes,
+          initialRecurrence: _recurrence,
+          startsOnWeekday: _startsAt.weekday,
+        ),
+      ),
     );
     if (selection == null || !mounted) return;
     setState(() {
-      _reminderTouched = true;
-      _reminderLeadMinutes = selection < 0 ? null : selection;
-    });
-  }
-
-  Future<void> _chooseRecurrence() async {
-    final selection = await showModalBottomSheet<int>(
-      context: context,
-      showDragHandle: true,
-      backgroundColor: Colors.white,
-      builder: (context) => const _RecurrencePicker(),
-    );
-    if (selection == null || !mounted) return;
-    setState(() {
-      _recurrenceFrequency = selection < 0
-          ? null
-          : RecurrenceFrequency.values[selection];
+      if (selection.reminderChanged) {
+        _reminderTouched = true;
+        _reminderLeadMinutes = selection.reminderLeadMinutes;
+      }
+      if (selection.recurrenceChanged) {
+        _recurrence = selection.recurrence;
+      }
     });
   }
 
@@ -424,15 +405,15 @@ class _ScheduleEditorPageState extends State<ScheduleEditorPage> {
                       label: '提醒',
                       value: _reminderLabel(),
                       showChevron: true,
-                      onTap: _chooseReminder,
+                      onTap: _chooseReminderAndRecurrence,
                     ),
                     const _InnerDivider(),
                     _ValueRow(
                       key: const Key('schedule-editor-recurrence'),
                       label: '重复',
-                      value: _recurrenceLabel(_recurrenceFrequency),
+                      value: _recurrenceLabel(_recurrence),
                       showChevron: true,
-                      onTap: _chooseRecurrence,
+                      onTap: _chooseReminderAndRecurrence,
                     ),
                   ],
                 ),
@@ -684,88 +665,6 @@ class _InnerDivider extends StatelessWidget {
   );
 }
 
-class _ReminderPicker extends StatelessWidget {
-  const _ReminderPicker();
-
-  @override
-  Widget build(BuildContext context) {
-    const options = <(int, String)>[
-      (-1, '不提醒'),
-      (0, '日程开始时'),
-      (5, '提前 5 分钟'),
-      (10, '提前 10 分钟'),
-      (15, '提前 15 分钟'),
-      (30, '提前 30 分钟'),
-      (60, '提前 1 小时'),
-      (1440, '提前 1 天'),
-    ];
-    return SafeArea(
-      top: false,
-      child: ListView(
-        shrinkWrap: true,
-        padding: const EdgeInsets.only(bottom: 12),
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(22, 3, 22, 9),
-            child: Text(
-              '提醒',
-              style: TextStyle(
-                color: _text,
-                fontSize: 19,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          for (final option in options)
-            ListTile(
-              title: Text(option.$2),
-              onTap: () => Navigator.pop(context, option.$1),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RecurrencePicker extends StatelessWidget {
-  const _RecurrencePicker();
-
-  @override
-  Widget build(BuildContext context) {
-    const options = <(int, String)>[
-      (-1, '不重复'),
-      (0, '每天'),
-      (1, '每周'),
-      (2, '每月'),
-    ];
-    return SafeArea(
-      top: false,
-      child: ListView(
-        shrinkWrap: true,
-        padding: const EdgeInsets.only(bottom: 12),
-        children: [
-          const Padding(
-            padding: EdgeInsets.fromLTRB(22, 3, 22, 9),
-            child: Text(
-              '重复',
-              style: TextStyle(
-                color: _text,
-                fontSize: 19,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          for (final option in options)
-            ListTile(
-              title: Text(option.$2),
-              onTap: () => Navigator.pop(context, option.$1),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
 DateTime _nextWholeHour(DateTime now) =>
     DateTime(now.year, now.month, now.day, now.hour + 1);
 
@@ -811,12 +710,15 @@ String _timezoneLabel(String timezoneId) => switch (timezoneId) {
   _ => timezoneId.replaceAll('_', ' '),
 };
 
-String _recurrenceLabel(RecurrenceFrequency? frequency) => switch (frequency) {
-  null => '不重复',
-  RecurrenceFrequency.daily => '每天',
-  RecurrenceFrequency.weekly => '每周',
-  RecurrenceFrequency.monthly => '每月',
-};
+String _recurrenceLabel(RecurrenceRule? recurrence) {
+  if (recurrence == null) return '不重复';
+  final interval = recurrence.interval;
+  return switch (recurrence.frequency) {
+    RecurrenceFrequency.daily => interval == 1 ? '每天' : '每 $interval 天',
+    RecurrenceFrequency.weekly => interval == 1 ? '每周' : '每 $interval 周',
+    RecurrenceFrequency.monthly => interval == 1 ? '每月' : '每 $interval 月',
+  };
+}
 
 String _newId() => const Uuid().v4();
 
