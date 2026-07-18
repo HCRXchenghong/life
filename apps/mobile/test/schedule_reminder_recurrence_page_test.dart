@@ -74,6 +74,8 @@ void main() {
     );
     await tester.tap(find.byKey(const Key('recurrence-choice-custom')));
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('custom-recurrence-dialog')), findsOneWidget);
+    expect(find.text('自定义重复'), findsOneWidget);
     await tester.enterText(
       find.byKey(const Key('custom-recurrence-interval')),
       '2',
@@ -152,6 +154,86 @@ void main() {
 
     expect(result?.reminderLeadMinutes, 2880);
     expect(result?.reminderChanged, isTrue);
+  });
+
+  testWidgets('custom recurrence cancel preserves the original complex rule', (
+    tester,
+  ) async {
+    const recurrence = RecurrenceRule(
+      frequency: RecurrenceFrequency.weekly,
+      interval: 2,
+      weekdays: {DateTime.monday, DateTime.friday},
+      count: 12,
+    );
+    ScheduleReminderRecurrenceSelection? result;
+    await _pumpHarness(
+      tester,
+      initialRecurrence: recurrence,
+      onResult: (value) => result = value,
+    );
+
+    await tester.ensureVisible(
+      find.byKey(const Key('recurrence-choice-custom')),
+    );
+    await tester.tap(find.byKey(const Key('recurrence-choice-custom')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('custom-recurrence-interval')),
+      '4',
+    );
+    await tester.tap(find.byKey(const Key('custom-recurrence-cancel')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('custom-recurrence-dialog')), findsNothing);
+
+    await tester.tap(
+      find.byKey(const Key('schedule-reminder-recurrence-done')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(result?.recurrenceChanged, isFalse);
+    expect(result?.recurrence?.interval, 2);
+    expect(result?.recurrence?.weekdays, recurrence.weekdays);
+    expect(result?.recurrence?.count, 12);
+  });
+
+  testWidgets('custom recurrence validates and converts the selected unit', (
+    tester,
+  ) async {
+    ScheduleReminderRecurrenceSelection? result;
+    await _pumpHarness(tester, onResult: (value) => result = value);
+
+    await tester.ensureVisible(
+      find.byKey(const Key('recurrence-choice-custom')),
+    );
+    await tester.tap(find.byKey(const Key('recurrence-choice-custom')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('custom-recurrence-interval')),
+      '366',
+    );
+    await tester.tap(find.byKey(const Key('custom-recurrence-confirm')));
+    await tester.pump();
+    expect(find.byKey(const Key('custom-recurrence-error')), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const Key('custom-recurrence-interval')),
+      '3',
+    );
+    await tester.tap(find.byKey(const Key('custom-recurrence-frequency')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('月').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('custom-recurrence-confirm')));
+    await tester.pumpAndSettle();
+    expect(find.text('每 3 月'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const Key('schedule-reminder-recurrence-done')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(result?.recurrence?.frequency, RecurrenceFrequency.monthly);
+    expect(result?.recurrence?.interval, 3);
+    expect(result?.recurrenceChanged, isTrue);
   });
 
   testWidgets('completing without changes preserves existing complex rules', (
