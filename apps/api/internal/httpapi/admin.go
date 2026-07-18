@@ -636,6 +636,8 @@ func auditActionLabel(action string) string {
 		"image.generate":              "生成图片",
 		"poll.create":                 "创建时间投票",
 		"poll.finalize":               "确定投票时间",
+		"poster_template.create":      "创建海报模板",
+		"poster_template.update":      "更新海报模板",
 	}
 	if label, ok := labels[action]; ok {
 		return label
@@ -650,6 +652,7 @@ func auditTargetLabel(targetType string) string {
 		"share_poll": "时间投票", "audit_event": "安全审计日志", "app_invitation": "App 邀请",
 		"ai_gateway_token": "远程 Agent 凭证", "ai_plan": "AI 套餐额度",
 		"device_approval": "新设备批准",
+		"poster_template": "海报模板",
 	}
 	if label, ok := labels[targetType]; ok {
 		return label

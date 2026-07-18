@@ -1,5 +1,10 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:daylink_mobile/src/application/friend_schedule_list.dart';
+import 'package:daylink_mobile/src/application/poster_template_renderer.dart';
 import 'package:daylink_mobile/src/domain/share/share_poll_models.dart';
+import 'package:daylink_mobile/src/domain/poster/poster_template_models.dart';
 import 'package:daylink_mobile/src/presentation/friend_schedule_detail_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -52,8 +57,11 @@ void main() {
             onPressed: () => Navigator.push<bool>(
               context,
               MaterialPageRoute<bool>(
-                builder: (_) =>
-                    FriendScheduleDetailPage(pollId: 'trip', source: source),
+                builder: (_) => FriendScheduleDetailPage(
+                  pollId: 'trip',
+                  source: source,
+                  posterRenderer: const _FakePosterRenderer(),
+                ),
               ),
             ),
             child: const Text('打开'),
@@ -67,11 +75,19 @@ void main() {
     await tester.tap(find.byKey(const Key('friend-schedule-invite')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('friend-invite-name')), '小林');
+    await tester.enterText(
+      find.byKey(const Key('friend-invite-salutation')),
+      '小林，这次一起去走走吧！',
+    );
     await tester.tap(find.byKey(const Key('friend-invite-create')));
     await tester.pump();
     await tester.pump(const Duration(seconds: 3));
     expect(source.createdName, '小林');
     expect(find.text('3/50'), findsOneWidget);
+    expect(find.text('小林的邀请海报'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('关闭'));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('friend-schedule-confirm')));
     await tester.pump(const Duration(milliseconds: 300));
@@ -81,6 +97,18 @@ void main() {
     expect(source.confirmCalls, 1);
     expect(find.byKey(const Key('open-details')), findsOneWidget);
   });
+}
+
+class _FakePosterRenderer extends PosterTemplateRenderer {
+  const _FakePosterRenderer();
+
+  @override
+  Future<Uint8List> render({
+    required PosterTemplate template,
+    required PosterRenderData data,
+  }) async => base64Decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  );
 }
 
 class _FakeDetailsSource implements FriendScheduleDetailSource {
@@ -93,6 +121,11 @@ class _FakeDetailsSource implements FriendScheduleDetailSource {
   @override
   Future<FriendPollDetails> loadFriendScheduleDetails(String pollId) async =>
       details;
+
+  @override
+  Future<List<PosterTemplate>> loadPosterTemplates() async => [
+    PosterTemplate.fromJson(_posterTemplateJson()),
+  ];
 
   @override
   Future<FriendPollInvite> createFriendInvite({
@@ -222,3 +255,43 @@ FriendPollInvite _invite(
   createdAtUtc: DateTime.utc(2026, 7, 18),
   updatedAtUtc: DateTime.utc(2026, 7, 18),
 );
+
+Map<String, Object?> _posterTemplateJson() => {
+  'id': 'poster-minimal',
+  'code': 'minimal-blue',
+  'name': '极简蓝白',
+  'status': 'published',
+  'version': 1,
+  'builtIn': true,
+  'schemaHash':
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  'schema': {
+    'schemaVersion': 1,
+    'canvas': {'width': 1080, 'height': 1440, 'backgroundColor': '#FFFFFF'},
+    'layers': [
+      {
+        'type': 'text',
+        'binding': 'salutation',
+        'x': 80,
+        'y': 80,
+        'width': 920,
+        'height': 180,
+        'fontSize': 64,
+        'minFontSize': 32,
+        'maxLines': 2,
+        'fontWeight': 700,
+        'color': '#1F2329',
+        'align': 'start',
+      },
+      {
+        'type': 'qr',
+        'binding': 'inviteUrl',
+        'x': 340,
+        'y': 700,
+        'width': 400,
+        'height': 400,
+        'quietZone': 24,
+      },
+    ],
+  },
+};

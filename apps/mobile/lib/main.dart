@@ -18,6 +18,7 @@ import 'src/domain/schedule/schedule_detail_models.dart';
 import 'src/domain/schedule/schedule_editor_models.dart';
 import 'src/domain/schedule/schedule_models.dart';
 import 'src/domain/share/share_poll_models.dart';
+import 'src/domain/poster/poster_template_models.dart';
 import 'src/domain/sync/data_sync_models.dart';
 import 'src/domain/sync/content_encryption_models.dart';
 import 'src/presentation/app_navigation.dart';
@@ -917,6 +918,10 @@ class DaylinkRuntime
   @override
   Future<FriendPollDetails> loadFriendScheduleDetails(String pollId) =>
       _friendSchedules.loadFriendScheduleDetails(pollId);
+
+  @override
+  Future<List<PosterTemplate>> loadPosterTemplates() =>
+      _friendSchedules.loadPosterTemplates();
 
   @override
   Future<FriendPollInvite> createFriendInvite({

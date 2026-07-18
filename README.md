@@ -27,7 +27,7 @@ docker compose --env-file deploy/.env -f deploy/docker-compose.yml up -d --build
 
 App 账号有两种并行创建方式：管理员原有的“账号 + 初始密码”手动创建流程保持不变；也可以生成带独立邀请码的一次性邀请链接，有效期可选 1 天、1 周或 1 月，成功注册一个账号后立即失效。App 本身只提供登录入口，不提供公开注册。
 
-AI 同时提供“本地 AI”和“SSH Agent”两种执行模式，并按 App 账号合并计量。本地 AI 由 Go 网关调用后台配置的第三方 Responses/Images API；SSH Agent 在用户自己的主机运行隔离 Codex，通过短期账号凭证访问同一网关，永远拿不到上游 API Key。模型目录从第三方 `/models` 自动同步，每个 App 账号独立选择对话模型与 low / medium / high / xhigh 推理强度。Plus、Pro 同时受自然周和自然月真实 token 额度约束，Max 不设用量额度；套餐只能由管理员按周卡、月卡、季度卡或年卡发放、续期、切换和取消。
+AI 同时提供“本地 AI”和“SSH Agent”两种执行模式，并按 App 账号合并计量。本地 AI 由 Go 网关调用后台配置的第三方 Responses/Images API；SSH Agent 在用户自己的主机运行隔离 Codex，通过短期账号凭证访问同一网关，永远拿不到上游 API Key。模型目录从第三方 `/models` 自动同步，每个 App 账号独立选择对话模型与 low / medium / high / xhigh 推理强度。Plus、Pro 只受自然月真实 token 额度约束，Max 不设用量额度；套餐只能由管理员按周卡、月卡、季度卡或年卡发放、续期、切换和取消。
 
 生产环境必须使用 HTTPS。`AUTH_SECRET_MASTER_KEY` 和 `AI_SECRET_MASTER_KEY` 必须分别生成，不得复用。Compose 通过分离的 `MYSQL_*` 变量构造连接配置，随机密码无需手工拼接到 DSN；Secret 只通过部署环境注入，不写入仓库。
 

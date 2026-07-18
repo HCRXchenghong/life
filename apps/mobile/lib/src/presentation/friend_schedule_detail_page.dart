@@ -5,17 +5,22 @@ import 'package:flutter/services.dart';
 import 'package:timezone/timezone.dart' as tz;
 
 import '../application/friend_schedule_list.dart';
+import '../application/poster_template_renderer.dart';
+import '../domain/poster/poster_template_models.dart';
 import '../domain/share/share_poll_models.dart';
+import 'friend_invite_poster_sheet.dart';
 
 class FriendScheduleDetailPage extends StatefulWidget {
   const FriendScheduleDetailPage({
     super.key,
     required this.pollId,
     required this.source,
+    this.posterRenderer = const PosterTemplateRenderer(),
   });
 
   final String pollId;
   final FriendScheduleDetailSource source;
+  final PosterTemplateRenderer posterRenderer;
 
   @override
   State<FriendScheduleDetailPage> createState() =>
@@ -79,19 +84,17 @@ class _FriendScheduleDetailPageState extends State<FriendScheduleDetailPage> {
   Future<void> _inviteFriend() async {
     final details = _details;
     if (_busy || details == null || details.invites.length >= 50) return;
-    final name = await _askFriendName();
-    if (!mounted || name == null) return;
+    final draft = await _askFriendInvite();
+    if (!mounted || draft == null) return;
     setState(() => _busy = true);
     try {
       final invite = await widget.source.createFriendInvite(
         pollId: details.id,
-        displayName: name,
+        displayName: draft.name,
       );
       await _load();
       if (!mounted) return;
-      final copied = await _writeClipboard(invite.inviteUrl);
-      if (!mounted) return;
-      _message(copied ? '已为$name生成专属链接并复制' : '链接已生成，请点列表中的“复制链接”');
+      await _showPoster(invite, salutation: draft.salutation);
     } on FriendScheduleListException catch (error) {
       if (mounted) _message(error.message);
     } on Object {
@@ -101,10 +104,77 @@ class _FriendScheduleDetailPageState extends State<FriendScheduleDetailPage> {
     }
   }
 
-  Future<String?> _askFriendName() async {
-    return showDialog<String>(
+  Future<_FriendInviteDraft?> _askFriendInvite() async {
+    return showDialog<_FriendInviteDraft>(
       context: context,
-      builder: (_) => const _FriendNameDialog(),
+      builder: (_) => const _FriendInviteDialog(),
+    );
+  }
+
+  Future<String?> _askSalutation(FriendPollInvite invite) => showDialog<String>(
+    context: context,
+    builder: (_) => _PosterSalutationDialog(invite: invite),
+  );
+
+  Future<void> _openPoster(FriendPollInvite invite) async {
+    if (_busy) return;
+    final salutation = await _askSalutation(invite);
+    if (!mounted || salutation == null) return;
+    setState(() => _busy = true);
+    try {
+      await _showPoster(invite, salutation: salutation);
+    } on FriendScheduleListException catch (error) {
+      if (mounted) _message(error.message);
+    } on Object {
+      if (mounted) _message('暂时无法生成海报，请稍后重试');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _showPoster(
+    FriendPollInvite invite, {
+    required String salutation,
+  }) async {
+    final details = _details;
+    if (details == null) return;
+    final templates = await widget.source.loadPosterTemplates();
+    if (!mounted) return;
+    if (templates.isEmpty) {
+      throw const FriendScheduleListException('暂无可用的海报模板');
+    }
+    final template = templates.firstWhere(
+      (value) => value.code == 'minimal-blue',
+      orElse: () => templates.first,
+    );
+    final data = PosterRenderData(
+      friendName: invite.displayName,
+      salutation: salutation,
+      activityTitle: details.title,
+      activityDescription: details.description.isEmpty
+          ? '选择你方便的日期和时间'
+          : details.description,
+      dateRange: _posterDateRange(details.ranges, details.timezoneId),
+      deadline: details.closesAtUtc == null
+          ? '邀请开放中'
+          : '截止 ${_deadline(details.closesAtUtc!, details.timezoneId)}',
+      organizerName: '',
+      inviteUrl: invite.inviteUrl,
+    );
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (_) => FriendInvitePosterSheet(
+        template: template,
+        data: data,
+        invite: invite,
+        renderer: widget.posterRenderer,
+      ),
     );
   }
 
@@ -282,6 +352,7 @@ class _FriendScheduleDetailPageState extends State<FriendScheduleDetailPage> {
             busy: _busy,
             onInvite: _inviteFriend,
             onCopy: _copyInvite,
+            onPoster: _openPoster,
             onRevoke: _revokeInvite,
           ),
           const SizedBox(height: 28),
@@ -384,38 +455,83 @@ class _FriendScheduleDetailPageState extends State<FriendScheduleDetailPage> {
   }
 }
 
-class _FriendNameDialog extends StatefulWidget {
-  const _FriendNameDialog();
+class _FriendInviteDraft {
+  const _FriendInviteDraft({required this.name, required this.salutation});
 
-  @override
-  State<_FriendNameDialog> createState() => _FriendNameDialogState();
+  final String name;
+  final String salutation;
 }
 
-class _FriendNameDialogState extends State<_FriendNameDialog> {
-  final _controller = TextEditingController();
+class _FriendInviteDialog extends StatefulWidget {
+  const _FriendInviteDialog();
+
+  @override
+  State<_FriendInviteDialog> createState() => _FriendInviteDialogState();
+}
+
+class _FriendInviteDialogState extends State<_FriendInviteDialog> {
+  final _nameController = TextEditingController();
+  final _salutationController = TextEditingController();
+  var _salutationEdited = false;
 
   @override
   void dispose() {
-    _controller.dispose();
+    _nameController.dispose();
+    _salutationController.dispose();
     super.dispose();
   }
 
   void _submit() {
-    final name = _controller.text.trim();
-    if (name.isNotEmpty) Navigator.pop(context, name);
+    final name = _nameController.text.trim();
+    final salutation = _salutationController.text.trim();
+    if (name.isNotEmpty && salutation.isNotEmpty) {
+      Navigator.pop(
+        context,
+        _FriendInviteDraft(name: name, salutation: salutation),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: const Text('邀请朋友'),
-    content: TextField(
-      key: const Key('friend-invite-name'),
-      controller: _controller,
-      autofocus: true,
-      maxLength: 80,
-      textInputAction: TextInputAction.done,
-      decoration: const InputDecoration(labelText: '朋友姓名', hintText: '例如：小明'),
-      onSubmitted: (_) => _submit(),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextField(
+          key: const Key('friend-invite-name'),
+          controller: _nameController,
+          autofocus: true,
+          maxLength: 80,
+          textInputAction: TextInputAction.next,
+          decoration: const InputDecoration(
+            labelText: '朋友姓名',
+            hintText: '例如：小明',
+          ),
+          onChanged: (value) {
+            if (!_salutationEdited) {
+              final name = value.trim();
+              _salutationController.text = name.isEmpty
+                  ? ''
+                  : '嗨，$name！有空一起出去玩吗？';
+            }
+          },
+        ),
+        TextField(
+          key: const Key('friend-invite-salutation'),
+          controller: _salutationController,
+          maxLength: 100,
+          minLines: 2,
+          maxLines: 3,
+          textInputAction: TextInputAction.done,
+          decoration: const InputDecoration(
+            labelText: '海报称呼',
+            hintText: '会显示在海报上',
+          ),
+          onChanged: (_) => _salutationEdited = true,
+          onSubmitted: (_) => _submit(),
+        ),
+      ],
     ),
     actions: [
       TextButton(
@@ -425,7 +541,67 @@ class _FriendNameDialogState extends State<_FriendNameDialog> {
       FilledButton(
         key: const Key('friend-invite-create'),
         onPressed: _submit,
-        child: const Text('生成并复制'),
+        child: const Text('生成海报'),
+      ),
+    ],
+  );
+}
+
+class _PosterSalutationDialog extends StatefulWidget {
+  const _PosterSalutationDialog({required this.invite});
+
+  final FriendPollInvite invite;
+
+  @override
+  State<_PosterSalutationDialog> createState() =>
+      _PosterSalutationDialogState();
+}
+
+class _PosterSalutationDialogState extends State<_PosterSalutationDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(
+      text: '嗨，${widget.invite.displayName}！有空一起出去玩吗？',
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final value = _controller.text.trim();
+    if (value.isNotEmpty) Navigator.pop(context, value);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text('生成${widget.invite.displayName}的海报'),
+    content: TextField(
+      key: const Key('friend-poster-salutation'),
+      controller: _controller,
+      autofocus: true,
+      maxLength: 100,
+      minLines: 2,
+      maxLines: 3,
+      textInputAction: TextInputAction.done,
+      decoration: const InputDecoration(labelText: '海报称呼'),
+      onSubmitted: (_) => _submit(),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('取消'),
+      ),
+      FilledButton(
+        key: const Key('friend-poster-create'),
+        onPressed: _submit,
+        child: const Text('生成'),
       ),
     ],
   );
@@ -485,6 +661,7 @@ class _InviteCard extends StatelessWidget {
     required this.busy,
     required this.onInvite,
     required this.onCopy,
+    required this.onPoster,
     required this.onRevoke,
   });
 
@@ -492,6 +669,7 @@ class _InviteCard extends StatelessWidget {
   final bool busy;
   final VoidCallback onInvite;
   final ValueChanged<FriendPollInvite> onCopy;
+  final ValueChanged<FriendPollInvite> onPoster;
   final ValueChanged<FriendPollInvite> onRevoke;
 
   @override
@@ -573,6 +751,7 @@ class _InviteCard extends StatelessWidget {
           _InviteRow(
             invite: details.invites[index],
             onCopy: () => onCopy(details.invites[index]),
+            onPoster: () => onPoster(details.invites[index]),
             onRevoke: () => onRevoke(details.invites[index]),
           ),
         ],
@@ -585,11 +764,13 @@ class _InviteRow extends StatelessWidget {
   const _InviteRow({
     required this.invite,
     required this.onCopy,
+    required this.onPoster,
     required this.onRevoke,
   });
 
   final FriendPollInvite invite;
   final VoidCallback onCopy;
+  final VoidCallback onPoster;
   final VoidCallback onRevoke;
 
   @override
@@ -642,15 +823,19 @@ class _InviteRow extends StatelessWidget {
               ],
             ),
           ),
-          TextButton.icon(
+          IconButton(
+            key: Key('friend-invite-poster-${invite.id}'),
+            onPressed: onPoster,
+            icon: const Icon(Icons.image_outlined, size: 20),
+            color: _blue,
+            tooltip: '生成海报',
+          ),
+          IconButton(
             key: Key('friend-invite-copy-${invite.id}'),
             onPressed: onCopy,
-            icon: const Icon(Icons.copy_rounded, size: 16),
-            label: const Text('复制链接'),
-            style: TextButton.styleFrom(
-              foregroundColor: _blue,
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-            ),
+            icon: const Icon(Icons.copy_rounded, size: 19),
+            color: _blue,
+            tooltip: '复制链接',
           ),
         ],
       ),
@@ -797,6 +982,29 @@ String _suggestionDate(FriendTimeSuggestion value, String timezoneId) {
   final weekday = const ['一', '二', '三', '四', '五', '六', '日'][start.weekday - 1];
   return '${start.month}月${start.day}日 周$weekday  '
       '${_two(start.hour)}:${_two(start.minute)}–${_two(end.hour)}:${_two(end.minute)}';
+}
+
+String _posterDateRange(List<SharePollSlot> ranges, String timezoneId) {
+  if (ranges.isEmpty) return '待选日期';
+  final location = tz.getLocation(timezoneId);
+  final starts =
+      ranges
+          .map((range) => tz.TZDateTime.from(range.startsAtUtc, location))
+          .toList()
+        ..sort();
+  final ends =
+      ranges
+          .map((range) => tz.TZDateTime.from(range.endsAtUtc, location))
+          .toList()
+        ..sort();
+  final first = starts.first;
+  final last = ends.last;
+  if (first.year == last.year &&
+      first.month == last.month &&
+      first.day == last.day) {
+    return '${first.month}月${first.day}日 可选时段';
+  }
+  return '${first.month}月${first.day}日—${last.month}月${last.day}日 可选时段';
 }
 
 String _two(int value) => value.toString().padLeft(2, '0');

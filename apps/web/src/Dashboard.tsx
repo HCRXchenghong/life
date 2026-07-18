@@ -29,6 +29,7 @@ export function Dashboard({ username, path, onLogout }: Props) {
         <nav className="admin-overview-nav" aria-label="后台导航">
           <NavLink href="/admin" active={active === "overview"}>概览</NavLink>
           <NavLink href="/admin/accounts" active={active === "accounts"}>App 账号</NavLink>
+          <NavLink href="/admin/posters" active={active === "posters"}>海报模板</NavLink>
           <NavLink href="/admin/audit" active={active === "audit"}>安全审计</NavLink>
           <NavLink href="/admin/settings" active={active === "settings"}>设置</NavLink>
         </nav>
@@ -40,6 +41,7 @@ export function Dashboard({ username, path, onLogout }: Props) {
       </aside>
       {active === "overview" && <Overview />}
       {active === "accounts" && <Accounts />}
+      {active === "posters" && <PosterTemplates />}
       {active === "audit" && <Audit />}
       {active === "settings" && <Settings />}
     </main>
@@ -52,6 +54,7 @@ function NavLink({ href, children, active, className = "" }: { href: string; chi
 
 function section(path: string) {
   if (path.includes("/accounts")) return "accounts";
+  if (path.includes("/posters")) return "posters";
   if (path.includes("/audit")) return "audit";
   if (path.includes("/settings") || path.includes("/ai")) return "settings";
   return "overview";
@@ -247,6 +250,95 @@ function Accounts() {
       {(dialog === "create" || (dialog && typeof dialog === "object" && dialog.type === "password")) && <Dialog title={dialog === "create" ? "创建 App 账号" : `重置 ${dialog.account.username} 的密码`} onClose={closeDialog}><form onSubmit={save}>{dialog === "create" && <label>App 账号<input name="username" minLength={4} maxLength={32} required autoFocus /></label>}<label>密码<input name="password" type="password" minLength={12} maxLength={128} required /></label><label>确认密码<input name="confirmPassword" type="password" minLength={12} maxLength={128} required /></label><footer><button type="button" onClick={closeDialog}>取消</button><button className="admin-accounts-primary">保存</button></footer></form></Dialog>}
       {dialog === "invite" && <Dialog title="链接邀请" onClose={closeDialog}>{!invitation ? <form onSubmit={createInvitation}><label>有效期<select name="validity" defaultValue="week"><option value="day">1 天</option><option value="week">1 周</option><option value="month">1 月</option></select></label><p className="admin-invite-hint">链接只能注册一个账号，成功注册后立即失效。</p><footer><button type="button" onClick={closeDialog}>取消</button><button className="admin-accounts-primary">生成邀请</button></footer></form> : <div className="admin-invite-result"><label>邀请链接<div className="admin-invite-link"><a href={invitation.path} target="_blank" rel="noreferrer">{new URL(invitation.path, window.location.origin).toString()}</a><button type="button" onClick={() => void copyInvitation()}>复制</button></div></label><label>邀请码<code>{invitation.code}</code></label><p>邀请码只显示这一次。成员打开链接后仍需手动输入邀请码，有效期至 {new Date(invitation.expiresAt).toLocaleString("zh-CN")}。</p></div>}</Dialog>}
       {dialog && typeof dialog === "object" && dialog.type === "subscription" && <Dialog title={`${dialog.account.username} 的 AI 套餐`} onClose={closeDialog}><form onSubmit={saveSubscription}><label>套餐<select name="plan" defaultValue={dialog.account.subscription?.plan ?? "plus"}><option value="plus">Plus</option><option value="pro">Pro</option><option value="max">Max（无限额）</option></select></label><label>时长<select name="cardType" defaultValue="month"><option value="week">周卡</option><option value="month">月卡</option><option value="quarter">季度卡</option><option value="year">年卡</option></select></label><p className="admin-invite-hint">同套餐会从当前到期日续期；更换套餐从现在重新计算。只有后台管理员可以发放。</p><footer>{dialog.account.subscription && <button type="button" className="admin-danger-button" onClick={() => void revokeSubscription(dialog.account)}>取消套餐</button>}<button type="button" onClick={closeDialog}>关闭</button><button className="admin-accounts-primary">确认发放</button></footer></form></Dialog>}
+    </Page>
+  );
+}
+
+type PosterTemplate = {
+  id: string;
+  code: string;
+  name: string;
+  status: "draft" | "published" | "disabled";
+  version: number;
+  builtIn: boolean;
+  schemaHash: string;
+  updatedAt: string;
+};
+
+function PosterTemplates() {
+  const [templates, setTemplates] = useState<PosterTemplate[]>([]);
+  const [message, setMessage] = useState("");
+  const [friendName, setFriendName] = useState("小明");
+  const [salutation, setSalutation] = useState("小明，周末一起去走走吧");
+  const [activityTitle, setActivityTitle] = useState("周末出游");
+  const [dateRange, setDateRange] = useState("7月25日—7月26日 可选时段");
+  const [deadline, setDeadline] = useState("截止 7月23日 18:00");
+  const [qr, setQR] = useState("");
+  const load = useCallback(() => api<{ templates: PosterTemplate[] }>("/api/admin/poster-templates").then((value) => setTemplates(value.templates)), []);
+
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    let active = true;
+    void QRCode.toDataURL(`https://link.daylink.local/i/preview-${friendName || "friend"}`, { width: 480, margin: 2, errorCorrectionLevel: "H" })
+      .then((value) => { if (active) setQR(value); });
+    return () => { active = false; };
+  }, [friendName]);
+
+  async function save(event: FormEvent<HTMLFormElement>, template: PosterTemplate) {
+    event.preventDefault();
+    setMessage("");
+    try {
+      const values = Object.fromEntries(new FormData(event.currentTarget));
+      await api(`/api/admin/poster-templates/${encodeURIComponent(template.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name: values.name, status: values.status }),
+      });
+      setMessage("模板设置已保存");
+      await load();
+    } catch (reason) { setMessage(reason instanceof Error ? reason.message : "模板保存失败"); }
+  }
+
+  return (
+    <Page kicker="海报模板" title="邀请海报" subtitle="首款动态模板试点；真实姓名、活动信息和二维码只在 App 本地填充">
+      {message && <p className="admin-accounts-notice">{message}</p>}
+      <div className="admin-poster-layout">
+        <section className="admin-poster-preview-panel">
+          <header><div><h2>动态内容预览</h2><p>以下内容仅用于后台本地预览，不会保存。</p></div><span>1080 × 1440</span></header>
+          <div className="admin-poster-preview" aria-label="极简蓝白海报预览">
+            <div className="admin-poster-arc" />
+            <strong className="admin-poster-brand">Daylink</strong>
+            <h3>{salutation || `${friendName || "朋友"}，一起出发吧`}</h3>
+            <div className="admin-poster-rule" />
+            <h4>{activityTitle || "活动名称"}</h4>
+            <p>选择你方便的日期和时间</p>
+            <b>{dateRange || "待选日期"}</b>
+            <b>{deadline || "截止时间"}</b>
+            {qr && <img src={qr} alt="预览二维码" />}
+            <em>扫码选择时间</em>
+            <small>此邀请仅供{friendName || "这位朋友"}使用</small>
+          </div>
+        </section>
+        <section className="admin-poster-controls">
+          <div className="admin-poster-sample-fields">
+            <h2>模拟动态字段</h2>
+            <label>朋友姓名<input value={friendName} maxLength={80} onChange={(event) => setFriendName(event.target.value)} /></label>
+            <label>个性化称呼<textarea value={salutation} maxLength={160} onChange={(event) => setSalutation(event.target.value)} /></label>
+            <label>活动名称<input value={activityTitle} maxLength={120} onChange={(event) => setActivityTitle(event.target.value)} /></label>
+            <label>可选日期<input value={dateRange} maxLength={80} onChange={(event) => setDateRange(event.target.value)} /></label>
+            <label>截止时间<input value={deadline} maxLength={80} onChange={(event) => setDeadline(event.target.value)} /></label>
+          </div>
+          {templates.length === 0 && <EmptyState title="正在初始化模板" detail="极简蓝白模板将在服务启动后自动发布。" />}
+          {templates.map((template) => (
+            <form className="admin-poster-template-card" key={`${template.id}:${template.version}:${template.status}`} onSubmit={(event) => void save(event, template)}>
+              <header><div><h2>{template.name}</h2><p>{template.builtIn ? "内置模板" : "自定义模板"} · 版本 {template.version}</p></div><span className={`admin-accounts-status ${template.status === "published" ? "active" : "disabled"}`}>{template.status === "published" ? "已发布" : template.status === "draft" ? "草稿" : "已停用"}</span></header>
+              <label>模板名称<input name="name" defaultValue={template.name} minLength={1} maxLength={80} required /></label>
+              <label>状态<select name="status" defaultValue={template.status}><option value="published">发布</option><option value="draft">草稿</option><option value="disabled">停用</option></select></label>
+              <p>模板结构校验值：<code>{template.schemaHash.slice(0, 12)}</code></p>
+              <button className="admin-accounts-primary">保存模板</button>
+            </form>
+          ))}
+        </section>
+      </div>
     </Page>
   );
 }

@@ -92,6 +92,7 @@ func New(cfg config.Config, db *sql.DB, logger *slog.Logger) *Server {
 		}
 	}
 	s.routes()
+	s.ensureBuiltInPosterTemplate()
 	s.reconcileInterruptedAIRuns()
 	return s
 }
@@ -143,6 +144,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/admin/images", s.handleAdminImages)
 	s.mux.HandleFunc("POST /api/admin/images", s.handleAdminImages)
 	s.mux.HandleFunc("GET /api/admin/images/{id}", s.handleAdminImage)
+	s.mux.HandleFunc("GET /api/admin/poster-templates", s.handleAdminPosterTemplates)
+	s.mux.HandleFunc("POST /api/admin/poster-templates", s.handleAdminPosterTemplates)
+	s.mux.HandleFunc("PATCH /api/admin/poster-templates/{id}", s.handleAdminPosterTemplate)
 	s.mux.HandleFunc("POST /api/app/auth/login", s.handleAppLogin)
 	s.mux.HandleFunc("POST /api/app/auth/refresh", s.handleAppRefresh)
 	s.mux.HandleFunc("GET /api/app/auth/session", s.handleAppSession)
@@ -153,6 +157,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /api/app/auth/password", s.handleAppPassword)
 	s.mux.HandleFunc("GET /api/app/ai-settings", s.handleAppAISettings)
 	s.mux.HandleFunc("PUT /api/app/ai-preferences", s.handleAppAIPreferences)
+	s.mux.HandleFunc("GET /api/poster-templates", s.handlePosterTemplates)
 	s.mux.HandleFunc("GET /api/app/ai-entitlement", s.handleAppAIEntitlement)
 	s.mux.HandleFunc("POST /api/app/ai-remote-token", s.handleAppAIRemoteToken)
 	s.mux.HandleFunc("POST /api/assistant/responses", s.handleAssistantResponses)

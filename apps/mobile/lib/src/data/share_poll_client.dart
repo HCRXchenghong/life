@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../domain/poster/poster_template_models.dart';
 import '../domain/share/share_poll_models.dart';
 
 class SharePollClient {
@@ -16,6 +17,25 @@ class SharePollClient {
   final Uri _apiBaseUri;
   final String _mobileToken;
   final http.Client _http;
+
+  Future<List<PosterTemplate>> posterTemplates() async {
+    final json = await _send(
+      'GET',
+      'poster-templates',
+      authenticated: true,
+      expectedStatuses: const {200},
+    );
+    final templates = json['templates'];
+    if (templates is! List<Object?>) {
+      throw const ShareApiException(
+        'invalid_response',
+        'Server returned an invalid poster template list',
+      );
+    }
+    return templates
+        .map((value) => PosterTemplate.fromJson(_map(value, 'template')))
+        .toList(growable: false);
+  }
 
   Future<List<ManagedSharePollSummary>> listManaged() async {
     final json = await _send(

@@ -1599,6 +1599,128 @@ p {
   font-size: 22px;
 }
 
+.admin-poster-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.82fr) minmax(360px, 1.18fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.admin-poster-preview-panel,
+.admin-poster-controls > section,
+.admin-poster-template-card {
+  background: #fff;
+  border: 1px solid #e5e6eb;
+  border-radius: 18px;
+}
+
+.admin-poster-preview-panel,
+.admin-poster-sample-fields,
+.admin-poster-template-card {
+  padding: 20px;
+}
+
+.admin-poster-preview-panel > header,
+.admin-poster-template-card > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.admin-poster-preview-panel h2,
+.admin-poster-template-card h2,
+.admin-poster-sample-fields h2 {
+  margin: 0;
+  color: #1f2329;
+  font-size: 17px;
+}
+
+.admin-poster-preview-panel header p,
+.admin-poster-template-card header p {
+  margin: 5px 0 0;
+  color: #8f959e;
+  font-size: 13px;
+}
+
+.admin-poster-preview-panel header > span {
+  color: #8f959e;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.admin-poster-preview {
+  position: relative;
+  width: min(100%, 360px);
+  aspect-ratio: 3 / 4;
+  margin: 18px auto 0;
+  overflow: hidden;
+  border: 1px solid #eef0f3;
+  background: #fff;
+  box-shadow: 0 12px 34px rgb(31 35 41 / 8%);
+  padding: 7% 9%;
+  box-sizing: border-box;
+  color: #1f2329;
+}
+
+.admin-poster-arc {
+  position: absolute;
+  width: 78%;
+  height: 92%;
+  right: -58%;
+  top: 28%;
+  border: 24px solid #3370ff;
+  border-radius: 50%;
+}
+
+.admin-poster-brand,
+.admin-poster-preview h3,
+.admin-poster-preview h4,
+.admin-poster-preview p,
+.admin-poster-preview b,
+.admin-poster-preview img,
+.admin-poster-preview em,
+.admin-poster-preview small,
+.admin-poster-rule {
+  position: relative;
+  z-index: 1;
+}
+
+.admin-poster-brand { color: #3370ff; font-size: clamp(16px, 2vw, 23px); }
+.admin-poster-preview h3 { width: 75%; margin: 11% 0 8%; font-size: clamp(24px, 4vw, 42px); line-height: 1.12; letter-spacing: -0.04em; }
+.admin-poster-rule { width: 70%; height: 1px; background: #d9dce3; }
+.admin-poster-preview h4 { margin: 7% 0 1%; font-size: clamp(18px, 2.3vw, 27px); }
+.admin-poster-preview p { width: 67%; margin: 0; color: #646a73; font-size: clamp(11px, 1.4vw, 15px); }
+.admin-poster-preview b { display: block; margin-top: 5%; font-size: clamp(12px, 1.55vw, 17px); }
+.admin-poster-preview b + b { margin-top: 1%; color: #646a73; font-size: clamp(10px, 1.25vw, 14px); font-weight: 400; }
+.admin-poster-preview img { display: block; width: 35%; margin-top: 5%; }
+.admin-poster-preview em { display: block; margin-top: 2.5%; color: #3370ff; font-size: clamp(12px, 1.4vw, 16px); font-style: normal; font-weight: 700; }
+.admin-poster-preview small { display: block; margin-top: 3%; color: #646a73; font-size: clamp(10px, 1.15vw, 13px); }
+
+.admin-poster-controls {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-poster-sample-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.admin-poster-sample-fields h2 { grid-column: 1 / -1; }
+.admin-poster-sample-fields label,
+.admin-poster-template-card > label { display: grid; gap: 7px; color: #646a73; font-size: 13px; }
+.admin-poster-sample-fields input,
+.admin-poster-sample-fields textarea,
+.admin-poster-template-card input,
+.admin-poster-template-card select { width: 100%; border: 1px solid #dcdfe5; border-radius: 10px; background: #fff; padding: 10px 12px; color: #1f2329; font: inherit; box-sizing: border-box; }
+.admin-poster-sample-fields textarea { min-height: 76px; resize: vertical; }
+.admin-poster-template-card { display: grid; grid-template-columns: 1fr 160px; gap: 16px; }
+.admin-poster-template-card > header { grid-column: 1 / -1; }
+.admin-poster-template-card > p { grid-column: 1 / -1; margin: 0; color: #8f959e; font-size: 12px; }
+.admin-poster-template-card > button { grid-column: 1 / -1; justify-self: end; }
+
 /* Responsive */
 
 @media (max-width: 900px) {
@@ -1618,6 +1740,14 @@ p {
 }
 
 @media (max-width: 720px) {
+  .admin-poster-layout { grid-template-columns: 1fr; }
+  .admin-poster-sample-fields,
+  .admin-poster-template-card { grid-template-columns: 1fr; }
+  .admin-poster-sample-fields h2,
+  .admin-poster-template-card > header,
+  .admin-poster-template-card > p,
+  .admin-poster-template-card > button { grid-column: 1; }
+
   .admin-auth-shell {
     padding: 20px;
   }

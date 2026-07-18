@@ -48,3 +48,12 @@ test("keeps each friend poll link private and supports multiple time blocks", as
   assert.match(selection, /mergeBlocks/);
   assert.doesNotMatch(selection, /participants|其他朋友/);
 });
+
+test("manages a dynamic poster template without storing friend preview data", async () => {
+  const dashboard = await readFile(new URL("../src/Dashboard.tsx", import.meta.url), "utf8");
+  assert.match(dashboard, /\/api\/admin\/poster-templates/);
+  assert.match(dashboard, /极简蓝白海报预览/);
+  assert.match(dashboard, /真实姓名、活动信息和二维码只在 App 本地填充/);
+  assert.match(dashboard, /以下内容仅用于后台本地预览，不会保存/);
+  assert.match(dashboard, /preview-\$\{friendName/);
+});

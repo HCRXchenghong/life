@@ -2,6 +2,7 @@ import 'package:uuid/uuid.dart';
 
 import '../data/app_session_monitor.dart';
 import '../data/share_poll_client.dart';
+import '../domain/poster/poster_template_models.dart';
 import '../domain/schedule/recurrence_engine.dart';
 import '../domain/schedule/schedule_models.dart';
 import '../domain/share/share_poll_models.dart';
@@ -25,6 +26,8 @@ abstract interface class FriendScheduleCreationSource
 abstract interface class FriendScheduleDetailSource
     implements FriendScheduleCreationSource {
   Future<FriendPollDetails> loadFriendScheduleDetails(String pollId);
+
+  Future<List<PosterTemplate>> loadPosterTemplates();
 
   Future<FriendPollInvite> createFriendInvite({
     required String pollId,
@@ -166,6 +169,12 @@ class DaylinkFriendSchedules implements FriendScheduleDetailSource {
         (client) => client.managedDetails(pollId),
         fallbackMessage: '暂时无法加载活动详情，请稍后重试',
       );
+
+  @override
+  Future<List<PosterTemplate>> loadPosterTemplates() => _withClient(
+    (client) => client.posterTemplates(),
+    fallbackMessage: '暂时无法加载海报模板，请稍后重试',
+  );
 
   @override
   Future<FriendPollInvite> createFriendInvite({
