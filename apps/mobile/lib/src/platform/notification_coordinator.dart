@@ -61,6 +61,7 @@ class NotificationCoordinator {
   final FlutterLocalNotificationsPlugin _plugin;
   final RecurrenceEngine _recurrence;
   bool _initialized = false;
+  String? _timezoneIdentifier;
 
   Future<void> initialize({
     void Function(NotificationResponse response)? onForegroundAction,
@@ -68,6 +69,7 @@ class NotificationCoordinator {
     if (_initialized) return;
     tz_data.initializeTimeZones();
     final timezoneInfo = await FlutterTimezone.getLocalTimezone();
+    _timezoneIdentifier = timezoneInfo.identifier;
     tz.setLocalLocation(tz.getLocation(timezoneInfo.identifier));
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     final ios = DarwinInitializationSettings(
@@ -90,6 +92,11 @@ class NotificationCoordinator {
       onDidReceiveBackgroundNotificationResponse: daylinkNotificationBackground,
     );
     _initialized = true;
+  }
+
+  Future<String> localTimezoneIdentifier() async {
+    if (!_initialized) await initialize();
+    return _timezoneIdentifier ?? 'UTC';
   }
 
   Future<bool> requestNotificationPermission() async {

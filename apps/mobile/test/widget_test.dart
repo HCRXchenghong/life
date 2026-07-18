@@ -9,6 +9,7 @@ import 'package:daylink_mobile/src/data/operations_repository.dart';
 import 'package:daylink_mobile/src/data/schedule_repository.dart';
 import 'package:daylink_mobile/src/domain/operations/operations_models.dart';
 import 'package:daylink_mobile/src/domain/notifications/notification_settings.dart';
+import 'package:daylink_mobile/src/domain/schedule/schedule_editor_models.dart';
 import 'package:daylink_mobile/src/domain/schedule/schedule_models.dart';
 import 'package:daylink_mobile/src/domain/sync/data_sync_models.dart';
 import 'package:daylink_mobile/src/domain/sync/content_encryption_models.dart';
@@ -196,6 +197,14 @@ void main() {
     expect(find.text('助手'), findsOneWidget);
     expect(find.text('主机'), findsOneWidget);
     expect(find.text('我的'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('today-create')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('schedule-editor-title')), findsOneWidget);
+    expect(find.text('新建日程'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('schedule-editor-back')));
+    await tester.pumpAndSettle();
+    expect(find.text('今天'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('nav-toolbox')));
     await tester.pumpAndSettle();
@@ -552,7 +561,8 @@ class _FakeScheduleRuntime
         NotificationSettingsSource,
         DataSyncSource,
         ContentEncryptionSource,
-        TrustedDeviceApprovalSource {
+        TrustedDeviceApprovalSource,
+        ScheduleEditorSource {
   _FakeScheduleRuntime({
     ContentEncryptionSetupStatus encryptionStatus =
         ContentEncryptionSetupStatus.notConfigured,
@@ -571,6 +581,24 @@ class _FakeScheduleRuntime
 
   @override
   HostListSource get hosts => _hosts;
+
+  @override
+  Future<ScheduleEditorDefaults> loadScheduleEditorDefaults() async =>
+      const ScheduleEditorDefaults(
+        timezoneId: 'Asia/Shanghai',
+        defaultReminderLeadMinutes: 10,
+      );
+
+  @override
+  Future<ScheduleSaveResult> saveScheduleEvent({
+    required ScheduleEventModel event,
+    required List<ReminderModel> reminders,
+  }) async => ScheduleSaveResult(
+    eventId: event.id,
+    reminderDelivery: reminders.isEmpty
+        ? ScheduleReminderDelivery.none
+        : ScheduleReminderDelivery.scheduled,
+  );
 
   @override
   Future<AiEntitlement> loadAccountEntitlement() async => AiEntitlement(

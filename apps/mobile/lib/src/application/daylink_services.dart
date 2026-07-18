@@ -28,6 +28,7 @@ import 'artifact_tools.dart';
 import 'content_encryption_coordinator.dart';
 import 'data_sync_coordinator.dart';
 import 'remote_operation_tools.dart';
+import 'schedule_editor_coordinator.dart';
 import 'schedule_tools.dart';
 import 'share_poll_coordinator.dart';
 import 'share_poll_tools.dart';
@@ -43,6 +44,7 @@ class DaylinkServices {
     required this.contentEncryption,
     required this.secrets,
     required this.schedules,
+    required this.scheduleEditor,
     required this.operations,
     required this.aiProviders,
     required this.responses,
@@ -57,6 +59,7 @@ class DaylinkServices {
   final ContentEncryptionCoordinator contentEncryption;
   final SecretStore secrets;
   final ScheduleRepository schedules;
+  final ScheduleEditorCoordinator scheduleEditor;
   final OperationsRepository operations;
   final AiProviderRepository aiProviders;
   final OpenAiResponsesClient responses;
@@ -104,6 +107,18 @@ class DaylinkServices {
       contentEncryption: contentEncryption,
       secrets: secrets,
       schedules: schedules,
+      scheduleEditor: ScheduleEditorCoordinator(
+        repository: schedules,
+        notificationPreferences: notificationPreferences,
+        localTimezoneId: notifications.localTimezoneIdentifier,
+        ensureNotificationPermission: () async {
+          final status = await notifications.notificationPermissionStatus();
+          if (status == NotificationPermissionStatus.authorized) return true;
+          return notifications.requestNotificationPermission();
+        },
+        reconcileNotifications: () async =>
+            (await notifications.reconcile()).capability,
+      ),
       operations: OperationsRepository(database),
       aiProviders: AiProviderRepository(database, secrets),
       responses: responses,

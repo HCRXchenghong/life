@@ -13,6 +13,8 @@ import 'src/data/operations_repository.dart';
 import 'src/data/schedule_repository.dart';
 import 'src/domain/ai/ai_models.dart';
 import 'src/domain/notifications/notification_settings.dart';
+import 'src/domain/schedule/schedule_editor_models.dart';
+import 'src/domain/schedule/schedule_models.dart';
 import 'src/domain/sync/data_sync_models.dart';
 import 'src/domain/sync/content_encryption_models.dart';
 import 'src/presentation/app_navigation.dart';
@@ -31,6 +33,7 @@ import 'src/presentation/password_change_page.dart';
 import 'src/presentation/recovery_key_page.dart';
 import 'src/presentation/recovery_key_management_page.dart';
 import 'src/presentation/recovery_unlock_page.dart';
+import 'src/presentation/schedule_editor_page.dart';
 import 'src/presentation/toolbox_page.dart';
 import 'src/presentation/trusted_device_approval_page.dart';
 import 'src/presentation/trusted_devices_page.dart';
@@ -351,6 +354,34 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _openScheduleEditor() async {
+    final runtime = _runtime;
+    if (runtime is! ScheduleEditorSource) {
+      _showPendingPage('新建日程');
+      return;
+    }
+    final result = await _navigatorKey.currentState!.push<ScheduleSaveResult>(
+      MaterialPageRoute<ScheduleSaveResult>(
+        builder: (_) => ScheduleEditorPage(
+          source: runtime as ScheduleEditorSource,
+          onOpenAssistant: _openAssistantFromScheduleEditor,
+        ),
+      ),
+    );
+    if (result == null) return;
+    _showMessage(switch (result.reminderDelivery) {
+      ScheduleReminderDelivery.none => '日程已保存',
+      ScheduleReminderDelivery.scheduled => '日程已保存，系统提醒已安排',
+      ScheduleReminderDelivery.permissionDenied => '日程已保存；请在通知设置中开启系统提醒',
+      ScheduleReminderDelivery.deferred => '日程已保存；系统提醒将在稍后重试',
+    });
+  }
+
+  void _openAssistantFromScheduleEditor() {
+    _navigatorKey.currentState?.pop();
+    _selectDestination(AppDestination.assistant);
+  }
+
   Future<void> _openEndToEndEncryption() async {
     final runtime = _runtime;
     if (runtime is! ContentEncryptionSource) {
@@ -590,8 +621,8 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
       }
       return TodaySchedulePage(
         source: scheduleRuntime.schedules,
-        onCreateEvent: () => _showPendingPage('新建日程'),
-        onOpenAssistant: () => _showPendingPage('助手'),
+        onCreateEvent: () => unawaited(_openScheduleEditor()),
+        onOpenAssistant: () => _selectDestination(AppDestination.assistant),
         onDestinationSelected: _selectDestination,
       );
     }
@@ -655,7 +686,8 @@ class DaylinkRuntime
         DataSyncSource,
         ContentEncryptionSource,
         TrustedDeviceApprovalSource,
-        DeviceApprovalRecoverySource {
+        DeviceApprovalRecoverySource,
+        ScheduleEditorSource {
   DaylinkRuntime._(this.services, this._assistantSettings);
 
   final DaylinkServices services;
@@ -723,6 +755,19 @@ class DaylinkRuntime
   @override
   Future<AiEntitlement> loadAccountEntitlement() =>
       _assistantSettings.loadAccountEntitlement();
+
+  @override
+  Future<ScheduleEditorDefaults> loadScheduleEditorDefaults() =>
+      services.scheduleEditor.loadScheduleEditorDefaults();
+
+  @override
+  Future<ScheduleSaveResult> saveScheduleEvent({
+    required ScheduleEventModel event,
+    required List<ReminderModel> reminders,
+  }) => services.scheduleEditor.saveScheduleEvent(
+    event: event,
+    reminders: reminders,
+  );
 
   @override
   Future<NotificationSettingsState> loadNotificationSettings() =>
