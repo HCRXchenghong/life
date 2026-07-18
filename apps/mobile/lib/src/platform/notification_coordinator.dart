@@ -143,6 +143,14 @@ class NotificationCoordinator {
         false;
   }
 
+  Future<void> cancelEventNotifications(String eventId) async {
+    final mappings = await _repository.notificationMappingsForEvent(eventId);
+    for (final mapping in mappings) {
+      await _plugin.cancel(id: mapping.notificationId);
+      await _repository.deleteNotificationMapping(mapping.notificationId);
+    }
+  }
+
   Future<ReconcileResult> reconcile({DateTime? nowUtc}) async {
     if (!_initialized) await initialize();
     final now = (nowUtc ?? DateTime.now()).toUtc();

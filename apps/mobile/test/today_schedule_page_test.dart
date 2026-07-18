@@ -48,6 +48,7 @@ void main() {
       ],
     );
     addTearDown(source.close);
+    String? openedEventId;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -55,6 +56,7 @@ void main() {
           source: source,
           clock: () => DateTime(2026, 7, 16, 8),
           onCreateEvent: () {},
+          onOpenEvent: (eventId) => openedEventId = eventId,
           onOpenAssistant: () {},
           onDestinationSelected: (_) {},
         ),
@@ -77,6 +79,9 @@ void main() {
     expect(find.text('助手'), findsOneWidget);
     expect(find.text('主机'), findsOneWidget);
     expect(find.text('我的'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('today-event-meeting')));
+    expect(openedEventId, 'meeting');
 
     source.events.removeWhere((event) => event.id == 'meeting');
     source.emit();
@@ -104,6 +109,7 @@ void main() {
           source: source,
           clock: () => DateTime(2026, 7, 16, 8),
           onCreateEvent: () => createCalls++,
+          onOpenEvent: (_) {},
           onOpenAssistant: () => assistantCalls++,
           onDestinationSelected: destinations.add,
         ),

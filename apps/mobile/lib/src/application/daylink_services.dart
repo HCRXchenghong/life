@@ -116,6 +116,7 @@ class DaylinkServices {
           if (status == NotificationPermissionStatus.authorized) return true;
           return notifications.requestNotificationPermission();
         },
+        cancelEventNotifications: notifications.cancelEventNotifications,
         reconcileNotifications: () async =>
             (await notifications.reconcile()).capability,
       ),

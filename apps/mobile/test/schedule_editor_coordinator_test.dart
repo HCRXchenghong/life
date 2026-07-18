@@ -28,6 +28,7 @@ void main() {
       notificationPreferences: preferences,
       localTimezoneId: () async => 'Asia/Shanghai',
       ensureNotificationPermission: () async => true,
+      cancelEventNotifications: (_) async {},
       reconcileNotifications: () async => ReminderCapability.exact,
     );
 
@@ -45,6 +46,7 @@ void main() {
         notificationPreferences: preferences,
         localTimezoneId: () async => 'Asia/Shanghai',
         ensureNotificationPermission: () async => false,
+        cancelEventNotifications: (_) async {},
         reconcileNotifications: () async => ReminderCapability.denied,
       );
       final event = _event('denied-event');
@@ -81,6 +83,7 @@ void main() {
       notificationPreferences: preferences,
       localTimezoneId: () async => 'Asia/Shanghai',
       ensureNotificationPermission: () async => true,
+      cancelEventNotifications: (_) async {},
       reconcileNotifications: () async {
         await repository.upsertNotificationMapping(
           NotificationMappingDraft(
@@ -112,6 +115,7 @@ void main() {
         notificationPreferences: preferences,
         localTimezoneId: () async => 'Asia/Shanghai',
         ensureNotificationPermission: () async => true,
+        cancelEventNotifications: (_) async {},
         reconcileNotifications: () async => throw StateError('interrupted'),
       );
       final event = _event('deferred-event');
@@ -130,6 +134,84 @@ void main() {
       expect(await repository.eventById(event.id), isNotNull);
     },
   );
+
+  test('loads the event detail with its account-scoped reminders', () async {
+    final event = _event('detail-event');
+    final reminder = ReminderModel(
+      id: 'detail-reminder',
+      eventId: event.id,
+      offset: const Duration(minutes: 10),
+    );
+    await repository.saveEvent(event, [reminder]);
+    final coordinator = ScheduleEditorCoordinator(
+      repository: repository,
+      notificationPreferences: preferences,
+      localTimezoneId: () async => 'Asia/Shanghai',
+      ensureNotificationPermission: () async => true,
+      cancelEventNotifications: (_) async {},
+      reconcileNotifications: () async => ReminderCapability.exact,
+    );
+
+    final detail = await coordinator.loadScheduleDetail(event.id);
+
+    expect(detail?.event.title, '项目复盘');
+    expect(detail?.reminders.single.id, reminder.id);
+    expect(await coordinator.loadScheduleDetail('missing'), isNull);
+  });
+
+  test('changes status before cancelling and reconciling reminders', () async {
+    final event = _event('complete-event');
+    await repository.saveEvent(event, const []);
+    final calls = <String>[];
+    final coordinator = ScheduleEditorCoordinator(
+      repository: repository,
+      notificationPreferences: preferences,
+      localTimezoneId: () async => 'Asia/Shanghai',
+      ensureNotificationPermission: () async => true,
+      cancelEventNotifications: (eventId) async => calls.add('cancel:$eventId'),
+      reconcileNotifications: () async {
+        calls.add('reconcile');
+        return ReminderCapability.exact;
+      },
+    );
+
+    final result = await coordinator.setScheduleStatus(
+      eventId: event.id,
+      status: ScheduleStatus.completed,
+    );
+
+    expect(result.status, ScheduleStatus.completed);
+    expect(result.remindersCancelled, isTrue);
+    expect(calls, ['cancel:${event.id}', 'reconcile']);
+    expect(
+      (await repository.eventById(event.id))?.status,
+      ScheduleStatus.completed,
+    );
+  });
+
+  test('keeps changed status when native cancellation fails', () async {
+    final event = _event('cancel-failure-event');
+    await repository.saveEvent(event, const []);
+    final coordinator = ScheduleEditorCoordinator(
+      repository: repository,
+      notificationPreferences: preferences,
+      localTimezoneId: () async => 'Asia/Shanghai',
+      ensureNotificationPermission: () async => true,
+      cancelEventNotifications: (_) async => throw StateError('unavailable'),
+      reconcileNotifications: () async => ReminderCapability.exact,
+    );
+
+    final result = await coordinator.setScheduleStatus(
+      eventId: event.id,
+      status: ScheduleStatus.cancelled,
+    );
+
+    expect(result.remindersCancelled, isFalse);
+    expect(
+      (await repository.eventById(event.id))?.status,
+      ScheduleStatus.cancelled,
+    );
+  });
 }
 
 ScheduleEventModel _event(String id) => ScheduleEventModel(

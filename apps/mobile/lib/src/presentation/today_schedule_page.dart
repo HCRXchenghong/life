@@ -13,6 +13,7 @@ class TodaySchedulePage extends StatefulWidget {
     super.key,
     required this.source,
     required this.onCreateEvent,
+    required this.onOpenEvent,
     required this.onOpenAssistant,
     required this.onDestinationSelected,
     this.clock = DateTime.now,
@@ -21,6 +22,7 @@ class TodaySchedulePage extends StatefulWidget {
 
   final ScheduleEventSource source;
   final VoidCallback onCreateEvent;
+  final ValueChanged<String> onOpenEvent;
   final VoidCallback onOpenAssistant;
   final ValueChanged<AppDestination> onDestinationSelected;
   final DateTime Function() clock;
@@ -138,7 +140,10 @@ class _TodaySchedulePageState extends State<TodaySchedulePage> {
                             ? const _EmptySchedule()
                             : SingleChildScrollView(
                                 physics: const BouncingScrollPhysics(),
-                                child: _Timeline(items: occurrences),
+                                child: _Timeline(
+                                  items: occurrences,
+                                  onOpenEvent: widget.onOpenEvent,
+                                ),
                               ),
                       ),
                     ],
@@ -318,109 +323,126 @@ class _SectionHeader extends StatelessWidget {
 }
 
 class _Timeline extends StatelessWidget {
-  const _Timeline({required this.items});
+  const _Timeline({required this.items, required this.onOpenEvent});
 
   final List<_TodayOccurrence> items;
+  final ValueChanged<String> onOpenEvent;
 
   @override
   Widget build(BuildContext context) => Column(
     children: [
       for (var index = 0; index < items.length; index++)
-        _TimelineRow(item: items[index], isLast: index == items.length - 1),
+        _TimelineRow(
+          item: items[index],
+          isLast: index == items.length - 1,
+          onOpen: () => onOpenEvent(items[index].event.id),
+        ),
     ],
   );
 }
 
 class _TimelineRow extends StatelessWidget {
-  const _TimelineRow({required this.item, required this.isLast});
+  const _TimelineRow({
+    required this.item,
+    required this.isLast,
+    required this.onOpen,
+  });
 
   final _TodayOccurrence item;
   final bool isLast;
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
     final localStart = item.occurrence.startsAtUtc.toLocal();
-    return SizedBox(
+    return InkWell(
       key: Key('today-event-${item.event.id}'),
-      height: 107,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            width: 21,
-            child: Column(
-              children: [
-                const SizedBox(height: 8),
-                Container(
-                  width: 9,
-                  height: 9,
-                  decoration: BoxDecoration(
-                    color: _sourceColor(item.event.source),
-                    shape: BoxShape.circle,
+      onTap: onOpen,
+      borderRadius: BorderRadius.circular(10),
+      child: SizedBox(
+        height: 107,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              width: 21,
+              child: Column(
+                children: [
+                  const SizedBox(height: 8),
+                  Container(
+                    width: 9,
+                    height: 9,
+                    decoration: BoxDecoration(
+                      color: _sourceColor(item.event.source),
+                      shape: BoxShape.circle,
+                    ),
                   ),
-                ),
-                if (!isLast)
-                  Expanded(
-                    child: Container(width: 1, color: const Color(0xFFE5E7EB)),
-                  ),
-              ],
-            ),
-          ),
-          SizedBox(
-            width: 65,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 1),
-              child: Text(
-                item.event.allDay ? '全天' : _formatTime(localStart),
-                style: const TextStyle(
-                  color: Color(0xFF1F2329),
-                  fontSize: 16,
-                  height: 1.35,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.only(top: 0),
-              decoration: isLast
-                  ? null
-                  : const BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(color: Color(0xFFEDEFF2)),
+                  if (!isLast)
+                    Expanded(
+                      child: Container(
+                        width: 1,
+                        color: const Color(0xFFE5E7EB),
                       ),
                     ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    item.event.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF1F2329),
-                      fontSize: 17,
-                      height: 1.3,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 9),
-                  Text(
-                    item.subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Color(0xFF8F959E),
-                      fontSize: 14,
-                      height: 1.3,
-                    ),
-                  ),
                 ],
               ),
             ),
-          ),
-        ],
+            SizedBox(
+              width: 65,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 1),
+                child: Text(
+                  item.event.allDay ? '全天' : _formatTime(localStart),
+                  style: const TextStyle(
+                    color: Color(0xFF1F2329),
+                    fontSize: 16,
+                    height: 1.35,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.only(top: 0),
+                decoration: isLast
+                    ? null
+                    : const BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(color: Color(0xFFEDEFF2)),
+                        ),
+                      ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.event.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF1F2329),
+                        fontSize: 17,
+                        height: 1.3,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 9),
+                    Text(
+                      item.subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF8F959E),
+                        fontSize: 14,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

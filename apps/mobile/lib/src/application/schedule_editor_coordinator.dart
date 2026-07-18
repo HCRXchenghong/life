@@ -1,20 +1,24 @@
 import '../data/notification_preferences_repository.dart';
 import '../data/schedule_repository.dart';
+import '../domain/schedule/schedule_detail_models.dart';
 import '../domain/schedule/schedule_editor_models.dart';
 import '../domain/schedule/schedule_models.dart';
 
-class ScheduleEditorCoordinator implements ScheduleEditorSource {
+class ScheduleEditorCoordinator
+    implements ScheduleEditorSource, ScheduleDetailSource {
   factory ScheduleEditorCoordinator({
     required ScheduleRepository repository,
     required NotificationPreferencesRepository notificationPreferences,
     required Future<String> Function() localTimezoneId,
     required Future<bool> Function() ensureNotificationPermission,
+    required Future<void> Function(String eventId) cancelEventNotifications,
     required Future<ReminderCapability> Function() reconcileNotifications,
   }) => ScheduleEditorCoordinator._(
     repository,
     notificationPreferences,
     localTimezoneId,
     ensureNotificationPermission,
+    cancelEventNotifications,
     reconcileNotifications,
   );
 
@@ -23,6 +27,7 @@ class ScheduleEditorCoordinator implements ScheduleEditorSource {
     this._notificationPreferences,
     this._localTimezoneId,
     this._ensureNotificationPermission,
+    this._cancelEventNotifications,
     this._reconcileNotifications,
   );
 
@@ -30,7 +35,19 @@ class ScheduleEditorCoordinator implements ScheduleEditorSource {
   final NotificationPreferencesRepository _notificationPreferences;
   final Future<String> Function() _localTimezoneId;
   final Future<bool> Function() _ensureNotificationPermission;
+  final Future<void> Function(String eventId) _cancelEventNotifications;
   final Future<ReminderCapability> Function() _reconcileNotifications;
+
+  @override
+  Future<ScheduleDetailData?> loadScheduleDetail(String eventId) async {
+    final event = await _repository.eventById(eventId);
+    if (event == null) return null;
+    final reminders = await _repository.remindersForEvents([eventId]);
+    return ScheduleDetailData(
+      event: event,
+      reminders: List.unmodifiable(reminders),
+    );
+  }
 
   @override
   Future<ScheduleEditorDefaults> loadScheduleEditorDefaults() async {
@@ -85,6 +102,34 @@ class ScheduleEditorCoordinator implements ScheduleEditorSource {
         reminderDelivery: ScheduleReminderDelivery.deferred,
       );
     }
+  }
+
+  @override
+  Future<ScheduleStatusChangeResult> setScheduleStatus({
+    required String eventId,
+    required ScheduleStatus status,
+  }) async {
+    if (status == ScheduleStatus.active) {
+      throw ArgumentError.value(status, 'status', 'Unsupported status change');
+    }
+    final event = await _repository.eventById(eventId);
+    if (event == null) throw const ScheduleDetailException('日程不存在或已被删除');
+    if (event.status != status) await _repository.setStatus(eventId, status);
+
+    var remindersCancelled = false;
+    try {
+      await _cancelEventNotifications(eventId);
+      remindersCancelled = true;
+      await _reconcileNotifications();
+    } on Object {
+      // The durable event state remains authoritative. App reconciliation
+      // retries notification cleanup without reviving the event.
+    }
+    return ScheduleStatusChangeResult(
+      eventId: eventId,
+      status: status,
+      remindersCancelled: remindersCancelled,
+    );
   }
 }
 

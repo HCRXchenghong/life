@@ -13,6 +13,7 @@ import 'src/data/operations_repository.dart';
 import 'src/data/schedule_repository.dart';
 import 'src/domain/ai/ai_models.dart';
 import 'src/domain/notifications/notification_settings.dart';
+import 'src/domain/schedule/schedule_detail_models.dart';
 import 'src/domain/schedule/schedule_editor_models.dart';
 import 'src/domain/schedule/schedule_models.dart';
 import 'src/domain/sync/data_sync_models.dart';
@@ -33,6 +34,7 @@ import 'src/presentation/password_change_page.dart';
 import 'src/presentation/recovery_key_page.dart';
 import 'src/presentation/recovery_key_management_page.dart';
 import 'src/presentation/recovery_unlock_page.dart';
+import 'src/presentation/schedule_detail_page.dart';
 import 'src/presentation/schedule_editor_page.dart';
 import 'src/presentation/toolbox_page.dart';
 import 'src/presentation/trusted_device_approval_page.dart';
@@ -354,27 +356,70 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _openScheduleEditor() async {
+  Future<ScheduleSaveResult?> _pushScheduleEditor({
+    ScheduleEventModel? initialEvent,
+    List<ReminderModel> initialReminders = const [],
+  }) async {
     final runtime = _runtime;
     if (runtime is! ScheduleEditorSource) {
       _showPendingPage('新建日程');
-      return;
+      return null;
     }
     final result = await _navigatorKey.currentState!.push<ScheduleSaveResult>(
       MaterialPageRoute<ScheduleSaveResult>(
         builder: (_) => ScheduleEditorPage(
           source: runtime as ScheduleEditorSource,
           onOpenAssistant: _openAssistantFromScheduleEditor,
+          initialEvent: initialEvent,
+          initialReminders: initialReminders,
         ),
       ),
     );
-    if (result == null) return;
+    if (result == null) return null;
     _showMessage(switch (result.reminderDelivery) {
       ScheduleReminderDelivery.none => '日程已保存',
       ScheduleReminderDelivery.scheduled => '日程已保存，系统提醒已安排',
       ScheduleReminderDelivery.permissionDenied => '日程已保存；请在通知设置中开启系统提醒',
       ScheduleReminderDelivery.deferred => '日程已保存；系统提醒将在稍后重试',
     });
+    return result;
+  }
+
+  Future<void> _openScheduleEditor() async {
+    await _pushScheduleEditor();
+  }
+
+  Future<bool> _editSchedule(
+    ScheduleEventModel event,
+    List<ReminderModel> reminders,
+  ) async =>
+      await _pushScheduleEditor(
+        initialEvent: event,
+        initialReminders: reminders,
+      ) !=
+      null;
+
+  Future<void> _openScheduleDetail(String eventId) async {
+    final runtime = _runtime;
+    if (runtime is! ScheduleDetailSource) {
+      _showPendingPage('日程详情');
+      return;
+    }
+    final result = await _navigatorKey.currentState!
+        .push<ScheduleStatusChangeResult>(
+          MaterialPageRoute<ScheduleStatusChangeResult>(
+            builder: (_) => ScheduleDetailPage(
+              eventId: eventId,
+              source: runtime as ScheduleDetailSource,
+              onEdit: _editSchedule,
+            ),
+          ),
+        );
+    if (result == null) return;
+    final action = result.status == ScheduleStatus.completed ? '已完成' : '已取消';
+    _showMessage(
+      result.remindersCancelled ? '日程$action，系统提醒已移除' : '日程$action；系统提醒将在稍后清理',
+    );
   }
 
   void _openAssistantFromScheduleEditor() {
@@ -622,6 +667,7 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
       return TodaySchedulePage(
         source: scheduleRuntime.schedules,
         onCreateEvent: () => unawaited(_openScheduleEditor()),
+        onOpenEvent: (eventId) => unawaited(_openScheduleDetail(eventId)),
         onOpenAssistant: () => _selectDestination(AppDestination.assistant),
         onDestinationSelected: _selectDestination,
       );
@@ -687,7 +733,8 @@ class DaylinkRuntime
         ContentEncryptionSource,
         TrustedDeviceApprovalSource,
         DeviceApprovalRecoverySource,
-        ScheduleEditorSource {
+        ScheduleEditorSource,
+        ScheduleDetailSource {
   DaylinkRuntime._(this.services, this._assistantSettings);
 
   final DaylinkServices services;
@@ -767,6 +814,19 @@ class DaylinkRuntime
   }) => services.scheduleEditor.saveScheduleEvent(
     event: event,
     reminders: reminders,
+  );
+
+  @override
+  Future<ScheduleDetailData?> loadScheduleDetail(String eventId) =>
+      services.scheduleEditor.loadScheduleDetail(eventId);
+
+  @override
+  Future<ScheduleStatusChangeResult> setScheduleStatus({
+    required String eventId,
+    required ScheduleStatus status,
+  }) => services.scheduleEditor.setScheduleStatus(
+    eventId: eventId,
+    status: status,
   );
 
   @override
