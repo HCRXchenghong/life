@@ -356,6 +356,7 @@ Future<int?> _showCustomReminderDialog(
   int? initialMinutes,
 ) => showDialog<int>(
   context: context,
+  barrierColor: const Color(0x52000000),
   builder: (_) => _CustomReminderDialog(initialMinutes: initialMinutes ?? 30),
 );
 
@@ -405,51 +406,160 @@ class _CustomReminderDialogState extends State<_CustomReminderDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: const Text('自定义提醒'),
-    content: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) => Dialog(
+    key: const Key('custom-reminder-dialog'),
+    insetPadding: const EdgeInsets.symmetric(horizontal: 32),
+    backgroundColor: Colors.white,
+    surfaceTintColor: Colors.transparent,
+    elevation: 10,
+    shadowColor: const Color(0x26000000),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    clipBehavior: Clip.antiAlias,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          child: TextField(
-            key: const Key('custom-reminder-amount'),
-            controller: _controller,
-            autofocus: true,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: InputDecoration(
-              labelText: '提前',
-              errorText: _error,
-              border: const OutlineInputBorder(),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(22, 22, 22, 0),
+          child: Text(
+            '自定义提醒',
+            style: TextStyle(
+              color: _text,
+              fontSize: 19,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ),
-        const SizedBox(width: 12),
-        DropdownButton<int>(
-          key: const Key('custom-reminder-unit'),
-          value: _unitMinutes,
-          items: const [
-            DropdownMenuItem(value: 1, child: Text('分钟')),
-            DropdownMenuItem(value: 60, child: Text('小时')),
-            DropdownMenuItem(value: 1440, child: Text('天')),
-          ],
-          onChanged: (value) {
-            if (value != null) setState(() => _unitMinutes = value);
-          },
+        Padding(
+          padding: EdgeInsets.fromLTRB(22, 23, 22, _error == null ? 24 : 13),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Row(
+                children: [
+                  const Text(
+                    '提前',
+                    style: TextStyle(color: _text, fontSize: 16),
+                  ),
+                  const Spacer(),
+                  SizedBox(
+                    width: 66,
+                    height: 48,
+                    child: TextField(
+                      key: const Key('custom-reminder-amount'),
+                      controller: _controller,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: _text, fontSize: 16),
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: const Color(0xFFF2F3F5),
+                        contentPadding: EdgeInsets.zero,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide.none,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: _divider),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: _blue),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Container(
+                    width: 92,
+                    height: 48,
+                    padding: const EdgeInsets.only(left: 14, right: 9),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF2F3F5),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: _divider),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<int>(
+                        key: const Key('custom-reminder-unit'),
+                        value: _unitMinutes,
+                        isExpanded: true,
+                        icon: const Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          color: _muted,
+                          size: 21,
+                        ),
+                        style: const TextStyle(color: _text, fontSize: 16),
+                        items: const [
+                          DropdownMenuItem(value: 1, child: Text('分钟')),
+                          DropdownMenuItem(value: 60, child: Text('小时')),
+                          DropdownMenuItem(value: 1440, child: Text('天')),
+                        ],
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() => _unitMinutes = value);
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _error!,
+                  key: const Key('custom-reminder-error'),
+                  style: const TextStyle(
+                    color: Color(0xFFFF4D4F),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const Divider(height: 1, thickness: 1, color: _divider),
+        SizedBox(
+          height: 56,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: TextButton(
+                  key: const Key('custom-reminder-cancel'),
+                  onPressed: () => Navigator.pop(context),
+                  style: TextButton.styleFrom(
+                    foregroundColor: _muted,
+                    shape: const RoundedRectangleBorder(),
+                    textStyle: const TextStyle(fontSize: 16),
+                  ),
+                  child: const Text('取消'),
+                ),
+              ),
+              const VerticalDivider(width: 1, thickness: 1, color: _divider),
+              Expanded(
+                child: TextButton(
+                  key: const Key('custom-reminder-confirm'),
+                  onPressed: _confirm,
+                  style: TextButton.styleFrom(
+                    foregroundColor: _blue,
+                    shape: const RoundedRectangleBorder(),
+                    textStyle: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  child: const Text('确定'),
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('取消'),
-      ),
-      TextButton(
-        key: const Key('custom-reminder-confirm'),
-        onPressed: _confirm,
-        child: const Text('确定'),
-      ),
-    ],
   );
 }
 

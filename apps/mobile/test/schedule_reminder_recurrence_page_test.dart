@@ -56,6 +56,11 @@ void main() {
 
     await tester.tap(find.byKey(const Key('reminder-choice-custom')));
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('custom-reminder-dialog')), findsOneWidget);
+    expect(find.text('自定义提醒'), findsOneWidget);
+    expect(find.text('提前'), findsOneWidget);
+    expect(find.text('取消'), findsOneWidget);
+    expect(find.text('确定'), findsOneWidget);
     await tester.enterText(
       find.byKey(const Key('custom-reminder-amount')),
       '45',
@@ -86,6 +91,67 @@ void main() {
     expect(result?.recurrence?.frequency, RecurrenceFrequency.weekly);
     expect(result?.recurrence?.interval, 2);
     expect(result?.recurrence?.weekdays, {DateTime.saturday});
+  });
+
+  testWidgets('custom reminder cancel preserves the original selection', (
+    tester,
+  ) async {
+    ScheduleReminderRecurrenceSelection? result;
+    await _pumpHarness(tester, onResult: (value) => result = value);
+
+    await tester.tap(find.byKey(const Key('reminder-choice-custom')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('custom-reminder-amount')),
+      '45',
+    );
+    await tester.tap(find.byKey(const Key('custom-reminder-cancel')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('custom-reminder-dialog')), findsNothing);
+
+    await tester.tap(
+      find.byKey(const Key('schedule-reminder-recurrence-done')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(result?.reminderLeadMinutes, 10);
+    expect(result?.reminderChanged, isFalse);
+  });
+
+  testWidgets('custom reminder validates and converts the selected unit', (
+    tester,
+  ) async {
+    ScheduleReminderRecurrenceSelection? result;
+    await _pumpHarness(tester, onResult: (value) => result = value);
+
+    await tester.tap(find.byKey(const Key('reminder-choice-custom')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('custom-reminder-amount')),
+      '366',
+    );
+    await tester.tap(find.byKey(const Key('custom-reminder-unit')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('天').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('custom-reminder-confirm')));
+    await tester.pump();
+    expect(find.byKey(const Key('custom-reminder-error')), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const Key('custom-reminder-amount')),
+      '2',
+    );
+    await tester.tap(find.byKey(const Key('custom-reminder-confirm')));
+    await tester.pumpAndSettle();
+    expect(find.text('提前 2 天'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const Key('schedule-reminder-recurrence-done')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(result?.reminderLeadMinutes, 2880);
+    expect(result?.reminderChanged, isTrue);
   });
 
   testWidgets('completing without changes preserves existing complex rules', (
