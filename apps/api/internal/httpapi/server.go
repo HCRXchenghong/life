@@ -169,6 +169,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/sync/changes", s.handleSyncChanges)
 	s.mux.HandleFunc("GET /api/sync/key-envelope", s.handleContentKeyEnvelope)
 	s.mux.HandleFunc("PUT /api/sync/key-envelope", s.handleContentKeyEnvelope)
+	s.mux.HandleFunc("POST /api/sync/key-envelope/rotations", s.handleRecoveryKeyRotation)
+	s.mux.HandleFunc("POST /api/sync/key-envelope/rotations/{id}/commit", s.handleRecoveryKeyRotationCommit)
 	s.mux.HandleFunc("GET /api/sync/device-approvals", s.handleDeviceApprovals)
 	s.mux.HandleFunc("POST /api/sync/device-approvals", s.handleDeviceApprovals)
 	s.mux.HandleFunc("GET /api/sync/device-approvals/{id}", s.handleDeviceApprovalStatus)

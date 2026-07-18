@@ -66,7 +66,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => 357177388;
+  int get rustContentHash => -1459452129;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -165,6 +165,13 @@ abstract class RustLibApi extends BaseApi {
     required List<int> requesterPublicKey,
   });
 
+  Future<void> crateApiMobileCommitRecoveryKeyRotation({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String rotationId,
+  });
+
   Future<bool> crateApiMobileCompleteDeviceApproval({
     required String vaultPath,
     required String accountId,
@@ -215,6 +222,13 @@ abstract class RustLibApi extends BaseApi {
     required List<int> deviceVaultKey,
   });
 
+  Future<void> crateApiMobileDiscardRecoveryKeyRotation({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String rotationId,
+  });
+
   Future<Uint8List> crateApiMobileGenerateDeviceVaultKey();
 
   Future<void> crateApiMobileInitApp();
@@ -230,6 +244,13 @@ abstract class RustLibApi extends BaseApi {
     required String vaultPath,
     required String accountId,
     required List<int> deviceVaultKey,
+  });
+
+  Future<BridgeRecoveryKeyRotation> crateApiMobilePrepareRecoveryKeyRotation({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required BigInt expectedRevision,
   });
 
   Future<BridgeHostKey> crateApiMobileProbeHostKeyMobile({
@@ -933,6 +954,45 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> crateApiMobileCommitRecoveryKeyRotation({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String rotationId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(vaultPath, serializer);
+          sse_encode_String(accountId, serializer);
+          sse_encode_list_prim_u_8_loose(deviceVaultKey, serializer);
+          sse_encode_String(rotationId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 17,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiMobileCommitRecoveryKeyRotationConstMeta,
+        argValues: [vaultPath, accountId, deviceVaultKey, rotationId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMobileCommitRecoveryKeyRotationConstMeta =>
+      const TaskConstMeta(
+        debugName: "commit_recovery_key_rotation",
+        argNames: ["vaultPath", "accountId", "deviceVaultKey", "rotationId"],
+      );
+
+  @override
   Future<bool> crateApiMobileCompleteDeviceApproval({
     required String vaultPath,
     required String accountId,
@@ -964,7 +1024,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 18,
             port: port_,
           );
         },
@@ -1025,7 +1085,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 19,
             port: port_,
           );
         },
@@ -1055,7 +1115,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 20,
             port: port_,
           );
         },
@@ -1094,7 +1154,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 21,
             port: port_,
           );
         },
@@ -1143,7 +1203,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 22,
             port: port_,
           );
         },
@@ -1182,7 +1242,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 22,
+            funcId: 23,
             port: port_,
           );
         },
@@ -1219,7 +1279,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 24,
             port: port_,
           );
         },
@@ -1241,6 +1301,45 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> crateApiMobileDiscardRecoveryKeyRotation({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String rotationId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(vaultPath, serializer);
+          sse_encode_String(accountId, serializer);
+          sse_encode_list_prim_u_8_loose(deviceVaultKey, serializer);
+          sse_encode_String(rotationId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 25,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiMobileDiscardRecoveryKeyRotationConstMeta,
+        argValues: [vaultPath, accountId, deviceVaultKey, rotationId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMobileDiscardRecoveryKeyRotationConstMeta =>
+      const TaskConstMeta(
+        debugName: "discard_recovery_key_rotation",
+        argNames: ["vaultPath", "accountId", "deviceVaultKey", "rotationId"],
+      );
+
+  @override
   Future<Uint8List> crateApiMobileGenerateDeviceVaultKey() {
     return handler.executeNormal(
       NormalTask(
@@ -1249,7 +1348,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 24,
+            funcId: 26,
             port: port_,
           );
         },
@@ -1276,7 +1375,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 25,
+            funcId: 27,
             port: port_,
           );
         },
@@ -1310,7 +1409,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 26,
+            funcId: 28,
             port: port_,
           );
         },
@@ -1348,7 +1447,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 27,
+            funcId: 29,
             port: port_,
           );
         },
@@ -1371,6 +1470,50 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<BridgeRecoveryKeyRotation> crateApiMobilePrepareRecoveryKeyRotation({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required BigInt expectedRevision,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(vaultPath, serializer);
+          sse_encode_String(accountId, serializer);
+          sse_encode_list_prim_u_8_loose(deviceVaultKey, serializer);
+          sse_encode_u_64(expectedRevision, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 30,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bridge_recovery_key_rotation,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiMobilePrepareRecoveryKeyRotationConstMeta,
+        argValues: [vaultPath, accountId, deviceVaultKey, expectedRevision],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMobilePrepareRecoveryKeyRotationConstMeta =>
+      const TaskConstMeta(
+        debugName: "prepare_recovery_key_rotation",
+        argNames: [
+          "vaultPath",
+          "accountId",
+          "deviceVaultKey",
+          "expectedRevision",
+        ],
+      );
+
+  @override
   Future<BridgeHostKey> crateApiMobileProbeHostKeyMobile({
     required String host,
     required int port,
@@ -1386,7 +1529,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 28,
+            funcId: 31,
             port: port_,
           );
         },
@@ -1433,7 +1576,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 29,
+            funcId: 32,
             port: port_,
           );
         },
@@ -1780,6 +1923,26 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     return BridgeHostKey(
       algorithm: dco_decode_String(arr[0]),
       fingerprintSha256: dco_decode_String(arr[1]),
+    );
+  }
+
+  @protected
+  BridgeRecoveryKeyRotation dco_decode_bridge_recovery_key_rotation(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 8)
+      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
+    return BridgeRecoveryKeyRotation(
+      rotationId: dco_decode_String(arr[0]),
+      expectedRevision: dco_decode_u_64(arr[1]),
+      deviceId: dco_decode_String(arr[2]),
+      keyVersion: dco_decode_u_32(arr[3]),
+      recoveryKey: dco_decode_list_prim_u_8_strict(arr[4]),
+      recoverySalt: dco_decode_list_prim_u_8_strict(arr[5]),
+      recoveryNonce: dco_decode_list_prim_u_8_strict(arr[6]),
+      recoveryCiphertext: dco_decode_list_prim_u_8_strict(arr[7]),
     );
   }
 
@@ -2227,6 +2390,31 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  BridgeRecoveryKeyRotation sse_decode_bridge_recovery_key_rotation(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_rotationId = sse_decode_String(deserializer);
+    var var_expectedRevision = sse_decode_u_64(deserializer);
+    var var_deviceId = sse_decode_String(deserializer);
+    var var_keyVersion = sse_decode_u_32(deserializer);
+    var var_recoveryKey = sse_decode_list_prim_u_8_strict(deserializer);
+    var var_recoverySalt = sse_decode_list_prim_u_8_strict(deserializer);
+    var var_recoveryNonce = sse_decode_list_prim_u_8_strict(deserializer);
+    var var_recoveryCiphertext = sse_decode_list_prim_u_8_strict(deserializer);
+    return BridgeRecoveryKeyRotation(
+      rotationId: var_rotationId,
+      expectedRevision: var_expectedRevision,
+      deviceId: var_deviceId,
+      keyVersion: var_keyVersion,
+      recoveryKey: var_recoveryKey,
+      recoverySalt: var_recoverySalt,
+      recoveryNonce: var_recoveryNonce,
+      recoveryCiphertext: var_recoveryCiphertext,
+    );
+  }
+
+  @protected
   BridgeTerminalEvent sse_decode_bridge_terminal_event(
     SseDeserializer deserializer,
   ) {
@@ -2663,6 +2851,22 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_String(self.algorithm, serializer);
     sse_encode_String(self.fingerprintSha256, serializer);
+  }
+
+  @protected
+  void sse_encode_bridge_recovery_key_rotation(
+    BridgeRecoveryKeyRotation self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.rotationId, serializer);
+    sse_encode_u_64(self.expectedRevision, serializer);
+    sse_encode_String(self.deviceId, serializer);
+    sse_encode_u_32(self.keyVersion, serializer);
+    sse_encode_list_prim_u_8_strict(self.recoveryKey, serializer);
+    sse_encode_list_prim_u_8_strict(self.recoverySalt, serializer);
+    sse_encode_list_prim_u_8_strict(self.recoveryNonce, serializer);
+    sse_encode_list_prim_u_8_strict(self.recoveryCiphertext, serializer);
   }
 
   @protected

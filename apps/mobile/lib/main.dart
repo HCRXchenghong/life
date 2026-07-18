@@ -28,6 +28,7 @@ import 'src/presentation/my_page.dart';
 import 'src/presentation/notification_settings_page.dart';
 import 'src/presentation/password_change_page.dart';
 import 'src/presentation/recovery_key_page.dart';
+import 'src/presentation/recovery_key_management_page.dart';
 import 'src/presentation/recovery_unlock_page.dart';
 import 'src/presentation/toolbox_page.dart';
 import 'src/presentation/trusted_device_approval_page.dart';
@@ -367,6 +368,8 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
               : null,
           onOpenDeviceApproval: _openTrustedDeviceApproval,
           onOpenTrustedDevices: () => unawaited(_openTrustedDevices()),
+          onOpenRecoveryKeyManagement: () =>
+              unawaited(_openRecoveryKeyManagement()),
         ),
       ),
     );
@@ -389,6 +392,35 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
         builder: (_) => RecoveryKeyPage(
           source: runtime as ContentEncryptionSource,
           draft: draft,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openRecoveryKeyManagement() async {
+    final runtime = _runtime;
+    if (runtime is! ContentEncryptionSource) return;
+    await _navigatorKey.currentState!.push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => RecoveryKeyManagementPage(
+          source: runtime as ContentEncryptionSource,
+          onRotationReady: _openRecoveryKeyRotation,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openRecoveryKeyRotation(RecoveryKeyRotationDraft draft) async {
+    final runtime = _runtime;
+    if (runtime is! ContentEncryptionSource) return;
+    final source = runtime as ContentEncryptionSource;
+    await _navigatorKey.currentState!.push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => RecoveryKeyPage(
+          source: source,
+          draft: draft.recoveryKey,
+          onAcknowledgeSaved: () =>
+              source.acknowledgeRecoveryKeyRotationSaved(draft.rotationId),
         ),
       ),
     );
@@ -727,6 +759,14 @@ class DaylinkRuntime
   @override
   Future<void> acknowledgeRecoveryKeySaved() =>
       services.acknowledgeRecoveryKeySaved();
+
+  @override
+  Future<RecoveryKeyRotationDraft> prepareRecoveryKeyRotation() =>
+      services.prepareRecoveryKeyRotation();
+
+  @override
+  Future<void> acknowledgeRecoveryKeyRotationSaved(String rotationId) =>
+      services.acknowledgeRecoveryKeyRotationSaved(rotationId);
 
   @override
   Future<void> restoreWithRecoveryKey(String encodedKey) =>

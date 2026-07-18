@@ -1,6 +1,11 @@
 import '../rust/api/mobile.dart' as rust;
 
-enum LocalContentKeyStatus { missing, pendingRecoveryConfirmation, ready }
+enum LocalContentKeyStatus {
+  missing,
+  pendingRecoveryConfirmation,
+  pendingRecoveryRotation,
+  ready,
+}
 
 class LocalContentKeyInitialization {
   const LocalContentKeyInitialization({
@@ -12,6 +17,28 @@ class LocalContentKeyInitialization {
     required this.recoveryCiphertext,
   });
 
+  final String deviceId;
+  final int keyVersion;
+  final List<int> recoveryKey;
+  final List<int> recoverySalt;
+  final List<int> recoveryNonce;
+  final List<int> recoveryCiphertext;
+}
+
+class LocalRecoveryKeyRotation {
+  const LocalRecoveryKeyRotation({
+    required this.rotationId,
+    required this.expectedRevision,
+    required this.deviceId,
+    required this.keyVersion,
+    required this.recoveryKey,
+    required this.recoverySalt,
+    required this.recoveryNonce,
+    required this.recoveryCiphertext,
+  });
+
+  final String rotationId;
+  final int expectedRevision;
   final String deviceId;
   final int keyVersion;
   final List<int> recoveryKey;
@@ -71,6 +98,27 @@ abstract interface class ContentKeyVault {
     required String vaultPath,
     required String accountId,
     required List<int> deviceVaultKey,
+  });
+
+  Future<LocalRecoveryKeyRotation> prepareRecoveryKeyRotation({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required int expectedRevision,
+  });
+
+  Future<void> commitRecoveryKeyRotation({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String rotationId,
+  });
+
+  Future<void> discardRecoveryKeyRotation({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String rotationId,
   });
 
   Future<void> discardPending({
@@ -159,6 +207,8 @@ class NativeContentKeyVault implements ContentKeyVault {
     rust.BridgeContentKeyStatus.missing => LocalContentKeyStatus.missing,
     rust.BridgeContentKeyStatus.pendingRecoveryConfirmation =>
       LocalContentKeyStatus.pendingRecoveryConfirmation,
+    rust.BridgeContentKeyStatus.pendingRecoveryRotation =>
+      LocalContentKeyStatus.pendingRecoveryRotation,
     rust.BridgeContentKeyStatus.ready => LocalContentKeyStatus.ready,
   };
 
@@ -192,6 +242,57 @@ class NativeContentKeyVault implements ContentKeyVault {
     vaultPath: vaultPath,
     accountId: accountId,
     deviceVaultKey: deviceVaultKey,
+  );
+
+  @override
+  Future<LocalRecoveryKeyRotation> prepareRecoveryKeyRotation({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required int expectedRevision,
+  }) async {
+    final result = await rust.prepareRecoveryKeyRotation(
+      vaultPath: vaultPath,
+      accountId: accountId,
+      deviceVaultKey: deviceVaultKey,
+      expectedRevision: BigInt.from(expectedRevision),
+    );
+    return LocalRecoveryKeyRotation(
+      rotationId: result.rotationId,
+      expectedRevision: result.expectedRevision.toInt(),
+      deviceId: result.deviceId,
+      keyVersion: result.keyVersion,
+      recoveryKey: result.recoveryKey,
+      recoverySalt: result.recoverySalt,
+      recoveryNonce: result.recoveryNonce,
+      recoveryCiphertext: result.recoveryCiphertext,
+    );
+  }
+
+  @override
+  Future<void> commitRecoveryKeyRotation({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String rotationId,
+  }) => rust.commitRecoveryKeyRotation(
+    vaultPath: vaultPath,
+    accountId: accountId,
+    deviceVaultKey: deviceVaultKey,
+    rotationId: rotationId,
+  );
+
+  @override
+  Future<void> discardRecoveryKeyRotation({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String rotationId,
+  }) => rust.discardRecoveryKeyRotation(
+    vaultPath: vaultPath,
+    accountId: accountId,
+    deviceVaultKey: deviceVaultKey,
+    rotationId: rotationId,
   );
 
   @override

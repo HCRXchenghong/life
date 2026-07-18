@@ -15,6 +15,8 @@ import (
 
 var syncNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{1,63}$`)
 
+const recoveryKeyRotationTTL = 24 * time.Hour
+
 type syncMutation struct {
 	OperationID      string    `json:"operationId"`
 	DeviceID         string    `json:"deviceId"`
@@ -36,14 +38,27 @@ type contentKeyEnvelopeInput struct {
 	CreatorDeviceID string `json:"creatorDeviceId"`
 }
 
+type contentKeyEnvelopeRotationInput struct {
+	RotationID       string                  `json:"rotationId"`
+	ExpectedRevision int64                   `json:"expectedRevision"`
+	Envelope         contentKeyEnvelopeInput `json:"envelope"`
+}
+
 type decodedContentKeyEnvelope struct {
-	KeyVersion      int
-	Algorithm       string
-	KDF             string
-	Salt            []byte
-	Nonce           []byte
-	Ciphertext      []byte
-	CreatorDeviceID string
+	EnvelopeRevision int64
+	KeyVersion       int
+	Algorithm        string
+	KDF              string
+	Salt             []byte
+	Nonce            []byte
+	Ciphertext       []byte
+	CreatorDeviceID  string
+}
+
+type decodedRecoveryKeyRotation struct {
+	RotationID       string
+	ExpectedRevision int64
+	Envelope         decodedContentKeyEnvelope
 }
 
 func (s *Server) handleContentKeyEnvelope(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +134,8 @@ func (s *Server) getContentKeyEnvelope(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"exists": true, "keyVersion": envelope.KeyVersion, "algorithm": envelope.Algorithm,
+		"exists": true, "envelopeRevision": envelope.EnvelopeRevision,
+		"keyVersion": envelope.KeyVersion, "algorithm": envelope.Algorithm,
 		"kdf": envelope.KDF, "salt": base64.StdEncoding.EncodeToString(envelope.Salt),
 		"nonce":           base64.StdEncoding.EncodeToString(envelope.Nonce),
 		"ciphertext":      base64.StdEncoding.EncodeToString(envelope.Ciphertext),
@@ -129,11 +145,190 @@ func (s *Server) getContentKeyEnvelope(w http.ResponseWriter, r *http.Request, i
 
 func (s *Server) loadContentKeyEnvelope(r *http.Request, accountID string) (decodedContentKeyEnvelope, error) {
 	var envelope decodedContentKeyEnvelope
-	err := s.db.QueryRowContext(r.Context(), `SELECT key_version, algorithm, kdf, salt, nonce, ciphertext, creator_device_id
+	err := s.db.QueryRowContext(r.Context(), `SELECT envelope_revision, key_version, algorithm, kdf, salt, nonce, ciphertext, creator_device_id
 		FROM content_key_envelopes WHERE account_id = ? LIMIT 1`, accountID).Scan(
-		&envelope.KeyVersion, &envelope.Algorithm, &envelope.KDF, &envelope.Salt, &envelope.Nonce,
+		&envelope.EnvelopeRevision, &envelope.KeyVersion, &envelope.Algorithm, &envelope.KDF, &envelope.Salt, &envelope.Nonce,
 		&envelope.Ciphertext, &envelope.CreatorDeviceID)
 	return envelope, err
+}
+
+func (s *Server) handleRecoveryKeyRotation(w http.ResponseWriter, r *http.Request) {
+	identity, ok := s.requireApp(w, r)
+	if !ok {
+		return
+	}
+	if !identity.E2EETrusted {
+		writeError(w, http.StatusForbidden, "trusted_device_required", "只有受信设备可以重新生成恢复密钥")
+		return
+	}
+	var input contentKeyEnvelopeRotationInput
+	if err := decodeJSON(r, &input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "恢复密钥轮换请求无效")
+		return
+	}
+	rotation, err := decodeRecoveryKeyRotation(input)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "恢复密钥轮换请求无效")
+		return
+	}
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "暂时无法开始恢复密钥轮换")
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	var currentRevision int64
+	if err = tx.QueryRowContext(r.Context(), `SELECT envelope_revision FROM content_key_envelopes
+		WHERE account_id = ? FOR UPDATE`, identity.AccountID).Scan(&currentRevision); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusConflict, "key_envelope_missing", "该账号尚未开启端到端加密")
+		} else {
+			writeError(w, http.StatusServiceUnavailable, "database_unavailable", "暂时无法开始恢复密钥轮换")
+		}
+		return
+	}
+	if currentRevision != rotation.ExpectedRevision {
+		writeError(w, http.StatusConflict, "rotation_stale", "恢复密钥已在其他设备更新")
+		return
+	}
+	if _, err = tx.ExecContext(r.Context(), `DELETE FROM content_key_envelope_rotations
+		WHERE account_id = ? AND expires_at <= UTC_TIMESTAMP(6)`, identity.AccountID); err != nil {
+		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "暂时无法开始恢复密钥轮换")
+		return
+	}
+	var existingID string
+	var existingExpected int64
+	var existing decodedContentKeyEnvelope
+	var existingExpiry time.Time
+	err = tx.QueryRowContext(r.Context(), `SELECT rotation_id, expected_revision, key_version,
+		algorithm, kdf, salt, nonce, ciphertext, creator_device_id, expires_at
+		FROM content_key_envelope_rotations WHERE account_id = ? FOR UPDATE`, identity.AccountID).Scan(
+		&existingID, &existingExpected, &existing.KeyVersion, &existing.Algorithm, &existing.KDF,
+		&existing.Salt, &existing.Nonce, &existing.Ciphertext, &existing.CreatorDeviceID, &existingExpiry)
+	if err == nil {
+		if existingID == rotation.RotationID && existingExpected == rotation.ExpectedRevision && sameContentKeyEnvelope(existing, rotation.Envelope) {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"rotationId": existingID, "expectedRevision": existingExpected,
+				"expiresAt": existingExpiry, "created": false,
+			})
+			return
+		}
+		writeError(w, http.StatusConflict, "rotation_in_progress", "另一台受信设备正在更新恢复密钥")
+		return
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "暂时无法开始恢复密钥轮换")
+		return
+	}
+	expiresAt := time.Now().UTC().Add(recoveryKeyRotationTTL)
+	result, err := tx.ExecContext(r.Context(), `INSERT INTO content_key_envelope_rotations
+		(account_id, rotation_id, expected_revision, key_version, algorithm, kdf, salt, nonce,
+		ciphertext, creator_device_id, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		identity.AccountID, rotation.RotationID, rotation.ExpectedRevision, rotation.Envelope.KeyVersion,
+		rotation.Envelope.Algorithm, rotation.Envelope.KDF, rotation.Envelope.Salt, rotation.Envelope.Nonce,
+		rotation.Envelope.Ciphertext, rotation.Envelope.CreatorDeviceID, expiresAt)
+	if err != nil {
+		writeError(w, http.StatusConflict, "rotation_in_progress", "另一台受信设备正在更新恢复密钥")
+		return
+	}
+	rows, rowsErr := result.RowsAffected()
+	if rowsErr != nil || rows != 1 || tx.Commit() != nil {
+		writeError(w, http.StatusInternalServerError, "rotation_failed", "恢复密钥轮换创建失败")
+		return
+	}
+	s.audit(r.Context(), "app:"+identity.AccountID, "app.e2ee.recovery.rotate.begin", "recovery_key_rotation", rotation.RotationID, "allowed", "high")
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"rotationId": rotation.RotationID, "expectedRevision": rotation.ExpectedRevision,
+		"expiresAt": expiresAt, "created": true,
+	})
+}
+
+func decodeRecoveryKeyRotation(input contentKeyEnvelopeRotationInput) (decodedRecoveryKeyRotation, error) {
+	rotationID := strings.ToLower(strings.TrimSpace(input.RotationID))
+	if !validUUIDLike(rotationID) || input.ExpectedRevision < 1 {
+		return decodedRecoveryKeyRotation{}, errors.New("invalid recovery key rotation metadata")
+	}
+	envelope, err := decodeContentKeyEnvelope(input.Envelope)
+	if err != nil {
+		return decodedRecoveryKeyRotation{}, err
+	}
+	return decodedRecoveryKeyRotation{
+		RotationID: rotationID, ExpectedRevision: input.ExpectedRevision, Envelope: envelope,
+	}, nil
+}
+
+func (s *Server) handleRecoveryKeyRotationCommit(w http.ResponseWriter, r *http.Request) {
+	identity, ok := s.requireApp(w, r)
+	if !ok {
+		return
+	}
+	if !identity.E2EETrusted {
+		writeError(w, http.StatusForbidden, "trusted_device_required", "只有受信设备可以启用新的恢复密钥")
+		return
+	}
+	rotationID := strings.ToLower(strings.TrimSpace(r.PathValue("id")))
+	if !validUUIDLike(rotationID) {
+		writeError(w, http.StatusBadRequest, "invalid_request", "恢复密钥轮换标识无效")
+		return
+	}
+	tx, err := s.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "暂时无法启用新的恢复密钥")
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	var currentRevision int64
+	if err = tx.QueryRowContext(r.Context(), `SELECT envelope_revision FROM content_key_envelopes
+		WHERE account_id = ? FOR UPDATE`, identity.AccountID).Scan(&currentRevision); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusConflict, "key_envelope_missing", "该账号尚未开启端到端加密")
+		} else {
+			writeError(w, http.StatusServiceUnavailable, "database_unavailable", "暂时无法启用新的恢复密钥")
+		}
+		return
+	}
+	var expectedRevision int64
+	var envelope decodedContentKeyEnvelope
+	err = tx.QueryRowContext(r.Context(), `SELECT expected_revision, key_version, algorithm, kdf,
+		salt, nonce, ciphertext, creator_device_id FROM content_key_envelope_rotations
+		WHERE account_id = ? AND rotation_id = ? AND expires_at > UTC_TIMESTAMP(6) FOR UPDATE`,
+		identity.AccountID, rotationID).Scan(&expectedRevision, &envelope.KeyVersion, &envelope.Algorithm,
+		&envelope.KDF, &envelope.Salt, &envelope.Nonce, &envelope.Ciphertext, &envelope.CreatorDeviceID)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusConflict, "rotation_missing", "恢复密钥轮换已失效或已完成")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "暂时无法启用新的恢复密钥")
+		return
+	}
+	if expectedRevision != currentRevision {
+		writeError(w, http.StatusConflict, "rotation_stale", "恢复密钥已在其他设备更新")
+		return
+	}
+	result, err := tx.ExecContext(r.Context(), `UPDATE content_key_envelopes SET
+		envelope_revision = envelope_revision + 1, key_version = ?, algorithm = ?, kdf = ?, salt = ?,
+		nonce = ?, ciphertext = ?, creator_device_id = ? WHERE account_id = ? AND envelope_revision = ?`,
+		envelope.KeyVersion, envelope.Algorithm, envelope.KDF, envelope.Salt, envelope.Nonce,
+		envelope.Ciphertext, envelope.CreatorDeviceID, identity.AccountID, expectedRevision)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "rotation_failed", "新的恢复密钥启用失败")
+		return
+	}
+	rows, rowsErr := result.RowsAffected()
+	if rowsErr != nil || rows != 1 {
+		writeError(w, http.StatusConflict, "rotation_stale", "恢复密钥已在其他设备更新")
+		return
+	}
+	if _, err = tx.ExecContext(r.Context(), `DELETE FROM content_key_envelope_rotations
+		WHERE account_id = ? AND rotation_id = ?`, identity.AccountID, rotationID); err != nil || tx.Commit() != nil {
+		writeError(w, http.StatusInternalServerError, "rotation_failed", "新的恢复密钥启用失败")
+		return
+	}
+	s.audit(r.Context(), "app:"+identity.AccountID, "app.e2ee.recovery.rotate.commit", "recovery_key_rotation", rotationID, "allowed", "high")
+	writeJSON(w, http.StatusOK, map[string]any{
+		"rotationId": rotationID, "envelopeRevision": expectedRevision + 1, "committed": true,
+	})
 }
 
 func decodeContentKeyEnvelope(input contentKeyEnvelopeInput) (decodedContentKeyEnvelope, error) {

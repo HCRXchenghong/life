@@ -97,6 +97,7 @@ void main() {
       status: ContentEncryptionSetupStatus.enabled,
     );
     var trustedDevicesOpened = false;
+    var recoveryKeyOpened = false;
     await tester.pumpWidget(
       MaterialApp(
         home: EndToEndEncryptionPage(
@@ -104,6 +105,7 @@ void main() {
           onRecoveryKeyReady: (_) async {},
           onOpenUnlock: () async {},
           onOpenTrustedDevices: () => trustedDevicesOpened = true,
+          onOpenRecoveryKeyManagement: () => recoveryKeyOpened = true,
         ),
       ),
     );
@@ -119,6 +121,9 @@ void main() {
     expect(find.text('受信'), findsOneWidget);
     expect(find.text('加密保护在此设备上正常工作'), findsOneWidget);
     expect(find.byKey(const Key('e2ee-enable')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('e2ee-recovery-key-row')));
+    expect(recoveryKeyOpened, isTrue);
 
     await tester.ensureVisible(find.byKey(const Key('e2ee-current-device')));
     await tester.tap(find.byKey(const Key('e2ee-current-device')));
@@ -182,6 +187,16 @@ class _FakeContentEncryptionSource implements ContentEncryptionSource {
     );
     return RecoveryKeyDraft.fromBytes(List<int>.generate(32, (index) => index));
   }
+
+  @override
+  Future<RecoveryKeyRotationDraft> prepareRecoveryKeyRotation() async =>
+      RecoveryKeyRotationDraft(
+        rotationId: '9b276a3e-b141-4d91-8dbf-0f217b62b071',
+        recoveryKey: RecoveryKeyDraft.fromBytes(List<int>.filled(32, 2)),
+      );
+
+  @override
+  Future<void> acknowledgeRecoveryKeyRotationSaved(String rotationId) async {}
 
   @override
   Future<void> restoreWithRecoveryKey(String encodedKey) async {

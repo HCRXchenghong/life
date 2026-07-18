@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.12.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 357177388;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1459452129;
 
 // Section: executor
 
@@ -943,6 +943,47 @@ fn wire__crate__api__mobile__approve_device_request_impl(
         },
     )
 }
+fn wire__crate__api__mobile__commit_recovery_key_rotation_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "commit_recovery_key_rotation",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_vault_path = <String>::sse_decode(&mut deserializer);
+            let api_account_id = <String>::sse_decode(&mut deserializer);
+            let api_device_vault_key = <Vec<u8>>::sse_decode(&mut deserializer);
+            let api_rotation_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::mobile::commit_recovery_key_rotation(
+                        api_vault_path,
+                        api_account_id,
+                        api_device_vault_key,
+                        api_rotation_id,
+                    )?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__mobile__complete_device_approval_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -1231,6 +1272,47 @@ fn wire__crate__api__mobile__discard_pending_content_key_impl(
         },
     )
 }
+fn wire__crate__api__mobile__discard_recovery_key_rotation_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "discard_recovery_key_rotation",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_vault_path = <String>::sse_decode(&mut deserializer);
+            let api_account_id = <String>::sse_decode(&mut deserializer);
+            let api_device_vault_key = <Vec<u8>>::sse_decode(&mut deserializer);
+            let api_rotation_id = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::mobile::discard_recovery_key_rotation(
+                        api_vault_path,
+                        api_account_id,
+                        api_device_vault_key,
+                        api_rotation_id,
+                    )?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__mobile__generate_device_vault_key_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -1368,6 +1450,47 @@ fn wire__crate__api__mobile__load_device_approval_request_impl(
                         api_vault_path,
                         api_account_id,
                         api_device_vault_key,
+                    )?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__mobile__prepare_recovery_key_rotation_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "prepare_recovery_key_rotation",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_vault_path = <String>::sse_decode(&mut deserializer);
+            let api_account_id = <String>::sse_decode(&mut deserializer);
+            let api_device_vault_key = <Vec<u8>>::sse_decode(&mut deserializer);
+            let api_expected_revision = <u64>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::mobile::prepare_recovery_key_rotation(
+                        api_vault_path,
+                        api_account_id,
+                        api_device_vault_key,
+                        api_expected_revision,
                     )?;
                     Ok(output_ok)
                 })())
@@ -1681,7 +1804,8 @@ impl SseDecode for crate::api::mobile::BridgeContentKeyStatus {
         return match inner {
             0 => crate::api::mobile::BridgeContentKeyStatus::Missing,
             1 => crate::api::mobile::BridgeContentKeyStatus::PendingRecoveryConfirmation,
-            2 => crate::api::mobile::BridgeContentKeyStatus::Ready,
+            2 => crate::api::mobile::BridgeContentKeyStatus::PendingRecoveryRotation,
+            3 => crate::api::mobile::BridgeContentKeyStatus::Ready,
             _ => unreachable!("Invalid variant for BridgeContentKeyStatus: {}", inner),
         };
     }
@@ -1731,6 +1855,30 @@ impl SseDecode for crate::api::mobile::BridgeHostKey {
         return crate::api::mobile::BridgeHostKey {
             algorithm: var_algorithm,
             fingerprint_sha256: var_fingerprintSha256,
+        };
+    }
+}
+
+impl SseDecode for crate::api::mobile::BridgeRecoveryKeyRotation {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_rotationId = <String>::sse_decode(deserializer);
+        let mut var_expectedRevision = <u64>::sse_decode(deserializer);
+        let mut var_deviceId = <String>::sse_decode(deserializer);
+        let mut var_keyVersion = <u32>::sse_decode(deserializer);
+        let mut var_recoveryKey = <Vec<u8>>::sse_decode(deserializer);
+        let mut var_recoverySalt = <Vec<u8>>::sse_decode(deserializer);
+        let mut var_recoveryNonce = <Vec<u8>>::sse_decode(deserializer);
+        let mut var_recoveryCiphertext = <Vec<u8>>::sse_decode(deserializer);
+        return crate::api::mobile::BridgeRecoveryKeyRotation {
+            rotation_id: var_rotationId,
+            expected_revision: var_expectedRevision,
+            device_id: var_deviceId,
+            key_version: var_keyVersion,
+            recovery_key: var_recoveryKey,
+            recovery_salt: var_recoverySalt,
+            recovery_nonce: var_recoveryNonce,
+            recovery_ciphertext: var_recoveryCiphertext,
         };
     }
 }
@@ -1953,58 +2101,76 @@ fn pde_ffi_dispatcher_primary_impl(
         16 => {
             wire__crate__api__mobile__approve_device_request_impl(port, ptr, rust_vec_len, data_len)
         }
-        17 => wire__crate__api__mobile__complete_device_approval_impl(
+        17 => wire__crate__api__mobile__commit_recovery_key_rotation_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        18 => wire__crate__api__mobile__content_key_status_impl(port, ptr, rust_vec_len, data_len),
-        19 => wire__crate__api__mobile__core_api_version_impl(port, ptr, rust_vec_len, data_len),
-        20 => wire__crate__api__mobile__create_device_approval_request_impl(
+        18 => wire__crate__api__mobile__complete_device_approval_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        21 => wire__crate__api__mobile__device_approval_verification_code_impl(
+        19 => wire__crate__api__mobile__content_key_status_impl(port, ptr, rust_vec_len, data_len),
+        20 => wire__crate__api__mobile__core_api_version_impl(port, ptr, rust_vec_len, data_len),
+        21 => wire__crate__api__mobile__create_device_approval_request_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        22 => wire__crate__api__mobile__discard_device_approval_request_impl(
+        22 => wire__crate__api__mobile__device_approval_verification_code_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        23 => wire__crate__api__mobile__discard_pending_content_key_impl(
+        23 => wire__crate__api__mobile__discard_device_approval_request_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        24 => wire__crate__api__mobile__generate_device_vault_key_impl(
+        24 => wire__crate__api__mobile__discard_pending_content_key_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        25 => wire__crate__api__mobile__init_app_impl(port, ptr, rust_vec_len, data_len),
-        26 => {
+        25 => wire__crate__api__mobile__discard_recovery_key_rotation_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        26 => wire__crate__api__mobile__generate_device_vault_key_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        27 => wire__crate__api__mobile__init_app_impl(port, ptr, rust_vec_len, data_len),
+        28 => {
             wire__crate__api__mobile__initialize_content_key_impl(port, ptr, rust_vec_len, data_len)
         }
-        27 => wire__crate__api__mobile__load_device_approval_request_impl(
+        29 => wire__crate__api__mobile__load_device_approval_request_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        28 => {
+        30 => wire__crate__api__mobile__prepare_recovery_key_rotation_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        31 => {
             wire__crate__api__mobile__probe_host_key_mobile_impl(port, ptr, rust_vec_len, data_len)
         }
-        29 => wire__crate__api__mobile__restore_content_key_impl(port, ptr, rust_vec_len, data_len),
+        32 => wire__crate__api__mobile__restore_content_key_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -2216,7 +2382,8 @@ impl flutter_rust_bridge::IntoDart for crate::api::mobile::BridgeContentKeyStatu
         match self {
             Self::Missing => 0.into_dart(),
             Self::PendingRecoveryConfirmation => 1.into_dart(),
-            Self::Ready => 2.into_dart(),
+            Self::PendingRecoveryRotation => 2.into_dart(),
+            Self::Ready => 3.into_dart(),
             _ => unreachable!(),
         }
     }
@@ -2298,6 +2465,33 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::mobile::BridgeHostKey>
     for crate::api::mobile::BridgeHostKey
 {
     fn into_into_dart(self) -> crate::api::mobile::BridgeHostKey {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::mobile::BridgeRecoveryKeyRotation {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.rotation_id.into_into_dart().into_dart(),
+            self.expected_revision.into_into_dart().into_dart(),
+            self.device_id.into_into_dart().into_dart(),
+            self.key_version.into_into_dart().into_dart(),
+            self.recovery_key.into_into_dart().into_dart(),
+            self.recovery_salt.into_into_dart().into_dart(),
+            self.recovery_nonce.into_into_dart().into_dart(),
+            self.recovery_ciphertext.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::mobile::BridgeRecoveryKeyRotation
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::mobile::BridgeRecoveryKeyRotation>
+    for crate::api::mobile::BridgeRecoveryKeyRotation
+{
+    fn into_into_dart(self) -> crate::api::mobile::BridgeRecoveryKeyRotation {
         self
     }
 }
@@ -2488,7 +2682,8 @@ impl SseEncode for crate::api::mobile::BridgeContentKeyStatus {
             match self {
                 crate::api::mobile::BridgeContentKeyStatus::Missing => 0,
                 crate::api::mobile::BridgeContentKeyStatus::PendingRecoveryConfirmation => 1,
-                crate::api::mobile::BridgeContentKeyStatus::Ready => 2,
+                crate::api::mobile::BridgeContentKeyStatus::PendingRecoveryRotation => 2,
+                crate::api::mobile::BridgeContentKeyStatus::Ready => 3,
                 _ => {
                     unimplemented!("");
                 }
@@ -2525,6 +2720,20 @@ impl SseEncode for crate::api::mobile::BridgeHostKey {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <String>::sse_encode(self.algorithm, serializer);
         <String>::sse_encode(self.fingerprint_sha256, serializer);
+    }
+}
+
+impl SseEncode for crate::api::mobile::BridgeRecoveryKeyRotation {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <String>::sse_encode(self.rotation_id, serializer);
+        <u64>::sse_encode(self.expected_revision, serializer);
+        <String>::sse_encode(self.device_id, serializer);
+        <u32>::sse_encode(self.key_version, serializer);
+        <Vec<u8>>::sse_encode(self.recovery_key, serializer);
+        <Vec<u8>>::sse_encode(self.recovery_salt, serializer);
+        <Vec<u8>>::sse_encode(self.recovery_nonce, serializer);
+        <Vec<u8>>::sse_encode(self.recovery_ciphertext, serializer);
     }
 }
 

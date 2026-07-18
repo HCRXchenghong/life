@@ -248,5 +248,15 @@ class _FakeContentEncryptionSource implements ContentEncryptionSource {
   Future<RecoveryKeyDraft> prepareContentEncryption() async => _draft();
 
   @override
+  Future<RecoveryKeyRotationDraft> prepareRecoveryKeyRotation() async =>
+      RecoveryKeyRotationDraft(
+        rotationId: '9b276a3e-b141-4d91-8dbf-0f217b62b071',
+        recoveryKey: _draft(),
+      );
+
+  @override
+  Future<void> acknowledgeRecoveryKeyRotationSaved(String rotationId) async {}
+
+  @override
   Future<void> restoreWithRecoveryKey(String encodedKey) async {}
 }

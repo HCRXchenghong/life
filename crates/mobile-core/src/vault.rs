@@ -35,11 +35,24 @@ static VAULT_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 pub enum ContentKeyStatus {
     Missing,
     PendingRecoveryConfirmation,
+    PendingRecoveryRotation,
     Ready,
 }
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct ContentKeyInitialization {
+    pub device_id: String,
+    pub key_version: u32,
+    pub recovery_key: Vec<u8>,
+    pub recovery_salt: Vec<u8>,
+    pub recovery_nonce: Vec<u8>,
+    pub recovery_ciphertext: Vec<u8>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct RecoveryKeyRotation {
+    pub rotation_id: String,
+    pub expected_revision: u64,
     pub device_id: String,
     pub key_version: u32,
     pub recovery_key: Vec<u8>,
@@ -106,6 +119,22 @@ impl fmt::Debug for ContentKeyInitialization {
     }
 }
 
+impl fmt::Debug for RecoveryKeyRotation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RecoveryKeyRotation")
+            .field("rotation_id", &self.rotation_id)
+            .field("expected_revision", &self.expected_revision)
+            .field("device_id", &self.device_id)
+            .field("key_version", &self.key_version)
+            .field("recovery_key", &"<redacted>")
+            .field("recovery_salt_bytes", &self.recovery_salt.len())
+            .field("recovery_nonce_bytes", &self.recovery_nonce.len())
+            .field("recovery_ciphertext_bytes", &self.recovery_ciphertext.len())
+            .finish()
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 struct VaultPlaintext {
     format_version: u32,
@@ -141,6 +170,24 @@ struct ContentKeyRecord {
     recovery_nonce: Vec<u8>,
     recovery_ciphertext: Vec<u8>,
     pending_recovery_key: Option<Vec<u8>>,
+    #[serde(default)]
+    pending_recovery_rotation: Option<PendingRecoveryRotationRecord>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct PendingRecoveryRotationRecord {
+    rotation_id: String,
+    expected_revision: u64,
+    recovery_key: Vec<u8>,
+    recovery_salt: Vec<u8>,
+    recovery_nonce: Vec<u8>,
+    recovery_ciphertext: Vec<u8>,
+}
+
+impl Drop for PendingRecoveryRotationRecord {
+    fn drop(&mut self) {
+        self.recovery_key.zeroize();
+    }
 }
 
 impl Drop for ContentKeyRecord {
@@ -173,6 +220,9 @@ pub fn content_key_status(
             None => ContentKeyStatus::Missing,
             Some(ref record) if record.pending_recovery_key.is_some() => {
                 ContentKeyStatus::PendingRecoveryConfirmation
+            }
+            Some(ref record) if record.pending_recovery_rotation.is_some() => {
+                ContentKeyStatus::PendingRecoveryRotation
             }
             Some(_) => ContentKeyStatus::Ready,
         })
@@ -227,6 +277,7 @@ pub fn initialize_content_key(
             recovery_nonce: recovery_nonce.clone(),
             recovery_ciphertext: recovery_ciphertext.clone(),
             pending_recovery_key: Some(recovery_key.clone()),
+            pending_recovery_rotation: None,
         });
         write_vault(&path, &account_id, device_vault_key, &vault)?;
         Ok(ContentKeyInitialization {
@@ -259,6 +310,137 @@ pub fn acknowledge_recovery_key_saved(
             .take()
             .ok_or_else(|| "recovery key is already acknowledged".to_owned())?;
         pending.zeroize();
+        write_vault(&path, &account_id, device_vault_key, &vault)
+    })
+}
+
+pub fn prepare_recovery_key_rotation(
+    vault_path: &str,
+    account_id: &str,
+    device_vault_key: &[u8],
+    expected_revision: u64,
+) -> Result<RecoveryKeyRotation, String> {
+    with_vault_lock(|| {
+        if expected_revision == 0 || expected_revision == u64::MAX {
+            return Err("recovery key envelope revision is invalid".to_owned());
+        }
+        let account_id = canonical_account_id(account_id)?;
+        let path = validated_vault_path(vault_path)?;
+        let mut vault = read_vault(&path, &account_id, device_vault_key)?
+            .ok_or_else(|| "content key is not initialized".to_owned())?;
+        let device_id = vault.device_id.clone();
+        let record = vault
+            .content_key
+            .as_mut()
+            .ok_or_else(|| "content key is not initialized".to_owned())?;
+        if record.pending_recovery_key.is_some() {
+            return Err("initial recovery key must be confirmed first".to_owned());
+        }
+        if let Some(pending) = record.pending_recovery_rotation.as_ref() {
+            return Ok(rotation_from_pending(
+                &device_id,
+                record.key_version,
+                pending,
+            ));
+        }
+
+        let mut recovery_key = vec![0_u8; KEY_BYTES];
+        let mut recovery_salt = vec![0_u8; RECOVERY_SALT_BYTES];
+        let mut recovery_nonce = vec![0_u8; RECOVERY_NONCE_BYTES];
+        getrandom::fill(&mut recovery_key)
+            .map_err(|_| "secure random generation failed".to_owned())?;
+        getrandom::fill(&mut recovery_salt)
+            .map_err(|_| "secure random generation failed".to_owned())?;
+        getrandom::fill(&mut recovery_nonce)
+            .map_err(|_| "secure random generation failed".to_owned())?;
+        let recovery_ciphertext = wrap_content_key(
+            &account_id,
+            record.key_version,
+            &record.cmk,
+            &recovery_key,
+            &recovery_salt,
+            &recovery_nonce,
+        )?;
+        let rotation_id = Uuid::new_v4().to_string();
+        record.pending_recovery_rotation = Some(PendingRecoveryRotationRecord {
+            rotation_id: rotation_id.clone(),
+            expected_revision,
+            recovery_key: recovery_key.clone(),
+            recovery_salt: recovery_salt.clone(),
+            recovery_nonce: recovery_nonce.clone(),
+            recovery_ciphertext: recovery_ciphertext.clone(),
+        });
+        let key_version = record.key_version;
+        write_vault(&path, &account_id, device_vault_key, &vault)?;
+        Ok(RecoveryKeyRotation {
+            rotation_id,
+            expected_revision,
+            device_id,
+            key_version,
+            recovery_key,
+            recovery_salt,
+            recovery_nonce,
+            recovery_ciphertext,
+        })
+    })
+}
+
+pub fn commit_recovery_key_rotation(
+    vault_path: &str,
+    account_id: &str,
+    device_vault_key: &[u8],
+    rotation_id: &str,
+) -> Result<(), String> {
+    with_vault_lock(|| {
+        let account_id = canonical_account_id(account_id)?;
+        let rotation_id = canonical_rotation_id(rotation_id)?;
+        let path = validated_vault_path(vault_path)?;
+        let mut vault = read_vault(&path, &account_id, device_vault_key)?
+            .ok_or_else(|| "content key is not initialized".to_owned())?;
+        let record = vault
+            .content_key
+            .as_mut()
+            .ok_or_else(|| "content key is not initialized".to_owned())?;
+        let pending = record
+            .pending_recovery_rotation
+            .as_ref()
+            .ok_or_else(|| "recovery key rotation is not pending".to_owned())?;
+        if pending.rotation_id != rotation_id {
+            return Err("recovery key rotation ID does not match".to_owned());
+        }
+        record.recovery_salt.clone_from(&pending.recovery_salt);
+        record.recovery_nonce.clone_from(&pending.recovery_nonce);
+        record
+            .recovery_ciphertext
+            .clone_from(&pending.recovery_ciphertext);
+        record.pending_recovery_rotation.take();
+        write_vault(&path, &account_id, device_vault_key, &vault)
+    })
+}
+
+pub fn discard_recovery_key_rotation(
+    vault_path: &str,
+    account_id: &str,
+    device_vault_key: &[u8],
+    rotation_id: &str,
+) -> Result<(), String> {
+    with_vault_lock(|| {
+        let account_id = canonical_account_id(account_id)?;
+        let rotation_id = canonical_rotation_id(rotation_id)?;
+        let path = validated_vault_path(vault_path)?;
+        let Some(mut vault) = read_vault(&path, &account_id, device_vault_key)? else {
+            return Ok(());
+        };
+        let Some(record) = vault.content_key.as_mut() else {
+            return Ok(());
+        };
+        let Some(pending) = record.pending_recovery_rotation.as_ref() else {
+            return Ok(());
+        };
+        if pending.rotation_id != rotation_id {
+            return Err("recovery key rotation ID does not match".to_owned());
+        }
+        record.pending_recovery_rotation.take();
         write_vault(&path, &account_id, device_vault_key, &vault)
     })
 }
@@ -355,6 +537,7 @@ pub fn restore_content_key(
             recovery_nonce: recovery_nonce.to_vec(),
             recovery_ciphertext: recovery_ciphertext.to_vec(),
             pending_recovery_key: None,
+            pending_recovery_rotation: None,
         });
         write_vault(&path, &account_id, device_vault_key, &vault)?;
         Ok(true)
@@ -543,7 +726,9 @@ pub fn approve_device_request(
         let record = vault
             .content_key
             .as_ref()
-            .filter(|record| record.pending_recovery_key.is_none())
+            .filter(|record| {
+                record.pending_recovery_key.is_none() && record.pending_recovery_rotation.is_none()
+            })
             .ok_or_else(|| "content key is not ready".to_owned())?;
 
         let mut private_key = Zeroizing::new([0_u8; KEY_BYTES]);
@@ -692,6 +877,7 @@ pub fn complete_device_approval(
             recovery_nonce: recovery_nonce.to_vec(),
             recovery_ciphertext: recovery_ciphertext.to_vec(),
             pending_recovery_key: None,
+            pending_recovery_rotation: None,
         });
         write_vault(&path, &account_id, device_vault_key, &vault)?;
         Ok(true)
@@ -775,6 +961,16 @@ fn canonical_request_id(value: &str) -> Result<String, String> {
     Ok(canonical)
 }
 
+fn canonical_rotation_id(value: &str) -> Result<String, String> {
+    let parsed =
+        Uuid::parse_str(value).map_err(|_| "recovery key rotation ID is invalid".to_owned())?;
+    let canonical = parsed.hyphenated().to_string();
+    if value.to_ascii_lowercase() != canonical {
+        return Err("recovery key rotation ID is not canonical".to_owned());
+    }
+    Ok(canonical)
+}
+
 fn unix_time_ms() -> Result<u64, String> {
     let elapsed = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -802,6 +998,23 @@ fn initialization_from_pending(
         recovery_nonce: record.recovery_nonce.clone(),
         recovery_ciphertext: record.recovery_ciphertext.clone(),
     })
+}
+
+fn rotation_from_pending(
+    device_id: &str,
+    key_version: u32,
+    pending: &PendingRecoveryRotationRecord,
+) -> RecoveryKeyRotation {
+    RecoveryKeyRotation {
+        rotation_id: pending.rotation_id.clone(),
+        expected_revision: pending.expected_revision,
+        device_id: device_id.to_owned(),
+        key_version,
+        recovery_key: pending.recovery_key.clone(),
+        recovery_salt: pending.recovery_salt.clone(),
+        recovery_nonce: pending.recovery_nonce.clone(),
+        recovery_ciphertext: pending.recovery_ciphertext.clone(),
+    }
 }
 
 fn wrap_content_key(
@@ -1031,6 +1244,19 @@ fn validate_record(record: Option<&ContentKeyRecord>) -> Result<(), String> {
             .pending_recovery_key
             .as_ref()
             .is_some_and(|key| key.len() != KEY_BYTES)
+        || record.pending_recovery_key.is_some() && record.pending_recovery_rotation.is_some()
+        || record
+            .pending_recovery_rotation
+            .as_ref()
+            .is_some_and(|pending| {
+                Uuid::parse_str(&pending.rotation_id).is_err()
+                    || pending.expected_revision == 0
+                    || pending.expected_revision == u64::MAX
+                    || pending.recovery_key.len() != KEY_BYTES
+                    || pending.recovery_salt.len() != RECOVERY_SALT_BYTES
+                    || pending.recovery_nonce.len() != RECOVERY_NONCE_BYTES
+                    || pending.recovery_ciphertext.len() != KEY_BYTES + 16
+            })
     {
         return Err("vault content key record is invalid".to_owned());
     }
@@ -1206,6 +1432,92 @@ mod tests {
         assert!(
             discard_pending_content_key(path.to_str().expect("path"), account, &device_key)
                 .is_err()
+        );
+        let _ = fs::remove_dir_all(path.parent().expect("parent"));
+    }
+
+    #[test]
+    fn recovery_key_rotation_is_resumable_and_keeps_the_same_content_key() {
+        let path = test_path("rotate-recovery-key");
+        let account = "8f2e0a0d-574b-4e53-bf82-1ec9c9bc2521";
+        let device_key = generate_device_vault_key().expect("device key");
+        let initialized =
+            initialize_content_key(path.to_str().expect("path"), account, &device_key)
+                .expect("initialize");
+        acknowledge_recovery_key_saved(path.to_str().expect("path"), account, &device_key)
+            .expect("acknowledge initial key");
+
+        let first =
+            prepare_recovery_key_rotation(path.to_str().expect("path"), account, &device_key, 1)
+                .expect("prepare rotation");
+        let resumed =
+            prepare_recovery_key_rotation(path.to_str().expect("path"), account, &device_key, 2)
+                .expect("resume after ambiguous commit");
+        assert_eq!(first, resumed);
+        assert_eq!(
+            content_key_status(path.to_str().expect("path"), account, &device_key)
+                .expect("pending status"),
+            ContentKeyStatus::PendingRecoveryRotation
+        );
+        assert!(format!("{first:?}").contains("<redacted>"));
+        let encrypted_vault = fs::read(&path).expect("read encrypted vault");
+        assert!(
+            !encrypted_vault
+                .windows(first.recovery_key.len())
+                .any(|part| part == first.recovery_key)
+        );
+
+        let mut old_cmk = unwrap_content_key(
+            account,
+            initialized.key_version,
+            &initialized.recovery_key,
+            &initialized.recovery_salt,
+            &initialized.recovery_nonce,
+            &initialized.recovery_ciphertext,
+        )
+        .expect("unwrap old envelope")
+        .expect("old key matches");
+        let mut new_cmk = unwrap_content_key(
+            account,
+            first.key_version,
+            &first.recovery_key,
+            &first.recovery_salt,
+            &first.recovery_nonce,
+            &first.recovery_ciphertext,
+        )
+        .expect("unwrap new envelope")
+        .expect("new key matches");
+        assert!(constant_time_bytes_equal(&old_cmk, &new_cmk));
+        old_cmk.zeroize();
+        new_cmk.zeroize();
+
+        commit_recovery_key_rotation(
+            path.to_str().expect("path"),
+            account,
+            &device_key,
+            &first.rotation_id,
+        )
+        .expect("commit local rotation");
+        assert_eq!(
+            content_key_status(path.to_str().expect("path"), account, &device_key)
+                .expect("ready status"),
+            ContentKeyStatus::Ready
+        );
+
+        let discarded =
+            prepare_recovery_key_rotation(path.to_str().expect("path"), account, &device_key, 2)
+                .expect("prepare second rotation");
+        discard_recovery_key_rotation(
+            path.to_str().expect("path"),
+            account,
+            &device_key,
+            &discarded.rotation_id,
+        )
+        .expect("discard second rotation");
+        assert_eq!(
+            content_key_status(path.to_str().expect("path"), account, &device_key)
+                .expect("ready after discard"),
+            ContentKeyStatus::Ready
         );
         let _ = fs::remove_dir_all(path.parent().expect("parent"));
     }

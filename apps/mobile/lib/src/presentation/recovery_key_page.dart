@@ -10,11 +10,13 @@ class RecoveryKeyPage extends StatefulWidget {
     super.key,
     required this.source,
     required this.draft,
+    this.onAcknowledgeSaved,
     this.clipboardClearDelay = const Duration(minutes: 2),
   });
 
   final ContentEncryptionSource source;
   final RecoveryKeyDraft draft;
+  final Future<void> Function()? onAcknowledgeSaved;
   final Duration clipboardClearDelay;
 
   @override
@@ -88,7 +90,12 @@ class _RecoveryKeyPageState extends State<RecoveryKeyPage>
     if (confirmed != true || !mounted) return;
     setState(() => _busy = true);
     try {
-      await widget.source.acknowledgeRecoveryKeySaved();
+      final acknowledge = widget.onAcknowledgeSaved;
+      if (acknowledge == null) {
+        await widget.source.acknowledgeRecoveryKeySaved();
+      } else {
+        await acknowledge();
+      }
       _clipboardTimer?.cancel();
       unawaited(_clearClipboardIfMatching());
       if (mounted) Navigator.pop(context, true);

@@ -50,12 +50,30 @@ class RecoveryKeyDraft {
   String toString() => 'RecoveryKeyDraft(<redacted>)';
 }
 
+class RecoveryKeyRotationDraft {
+  const RecoveryKeyRotationDraft({
+    required this.rotationId,
+    required this.recoveryKey,
+  });
+
+  final String rotationId;
+  final RecoveryKeyDraft recoveryKey;
+
+  @override
+  String toString() =>
+      'RecoveryKeyRotationDraft(rotationId: $rotationId, recoveryKey: <redacted>)';
+}
+
 abstract interface class ContentEncryptionSource {
   Future<ContentEncryptionState> loadContentEncryptionState();
 
   Future<RecoveryKeyDraft> prepareContentEncryption();
 
   Future<void> acknowledgeRecoveryKeySaved();
+
+  Future<RecoveryKeyRotationDraft> prepareRecoveryKeyRotation();
+
+  Future<void> acknowledgeRecoveryKeyRotationSaved(String rotationId);
 
   Future<void> restoreWithRecoveryKey(String encodedKey);
 }

@@ -9,7 +9,7 @@ import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'mobile.freezed.dart';
 
 // These functions are ignored because they are not marked as `pub`: `bounded_timeout`, `validate_host_and_port`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `assert_fields_are_eq`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `eq`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `from`, `from`, `from`
 
 Future<String> coreApiVersion() =>
     RustLib.instance.api.crateApiMobileCoreApiVersion();
@@ -45,6 +45,42 @@ Future<void> acknowledgeRecoveryKeySaved({
   vaultPath: vaultPath,
   accountId: accountId,
   deviceVaultKey: deviceVaultKey,
+);
+
+Future<BridgeRecoveryKeyRotation> prepareRecoveryKeyRotation({
+  required String vaultPath,
+  required String accountId,
+  required List<int> deviceVaultKey,
+  required BigInt expectedRevision,
+}) => RustLib.instance.api.crateApiMobilePrepareRecoveryKeyRotation(
+  vaultPath: vaultPath,
+  accountId: accountId,
+  deviceVaultKey: deviceVaultKey,
+  expectedRevision: expectedRevision,
+);
+
+Future<void> commitRecoveryKeyRotation({
+  required String vaultPath,
+  required String accountId,
+  required List<int> deviceVaultKey,
+  required String rotationId,
+}) => RustLib.instance.api.crateApiMobileCommitRecoveryKeyRotation(
+  vaultPath: vaultPath,
+  accountId: accountId,
+  deviceVaultKey: deviceVaultKey,
+  rotationId: rotationId,
+);
+
+Future<void> discardRecoveryKeyRotation({
+  required String vaultPath,
+  required String accountId,
+  required List<int> deviceVaultKey,
+  required String rotationId,
+}) => RustLib.instance.api.crateApiMobileDiscardRecoveryKeyRotation(
+  vaultPath: vaultPath,
+  accountId: accountId,
+  deviceVaultKey: deviceVaultKey,
+  rotationId: rotationId,
 );
 
 Future<void> discardPendingContentKey({
@@ -373,7 +409,12 @@ class BridgeContentKeyInitialization {
           recoveryCiphertext == other.recoveryCiphertext;
 }
 
-enum BridgeContentKeyStatus { missing, pendingRecoveryConfirmation, ready }
+enum BridgeContentKeyStatus {
+  missing,
+  pendingRecoveryConfirmation,
+  pendingRecoveryRotation,
+  ready,
+}
 
 class BridgeDeviceApprovalPackage {
   final Uint8List approverPublicKey;
@@ -464,6 +505,53 @@ class BridgeHostKey {
           runtimeType == other.runtimeType &&
           algorithm == other.algorithm &&
           fingerprintSha256 == other.fingerprintSha256;
+}
+
+class BridgeRecoveryKeyRotation {
+  final String rotationId;
+  final BigInt expectedRevision;
+  final String deviceId;
+  final int keyVersion;
+  final Uint8List recoveryKey;
+  final Uint8List recoverySalt;
+  final Uint8List recoveryNonce;
+  final Uint8List recoveryCiphertext;
+
+  const BridgeRecoveryKeyRotation({
+    required this.rotationId,
+    required this.expectedRevision,
+    required this.deviceId,
+    required this.keyVersion,
+    required this.recoveryKey,
+    required this.recoverySalt,
+    required this.recoveryNonce,
+    required this.recoveryCiphertext,
+  });
+
+  @override
+  int get hashCode =>
+      rotationId.hashCode ^
+      expectedRevision.hashCode ^
+      deviceId.hashCode ^
+      keyVersion.hashCode ^
+      recoveryKey.hashCode ^
+      recoverySalt.hashCode ^
+      recoveryNonce.hashCode ^
+      recoveryCiphertext.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is BridgeRecoveryKeyRotation &&
+          runtimeType == other.runtimeType &&
+          rotationId == other.rotationId &&
+          expectedRevision == other.expectedRevision &&
+          deviceId == other.deviceId &&
+          keyVersion == other.keyVersion &&
+          recoveryKey == other.recoveryKey &&
+          recoverySalt == other.recoverySalt &&
+          recoveryNonce == other.recoveryNonce &&
+          recoveryCiphertext == other.recoveryCiphertext;
 }
 
 @freezed

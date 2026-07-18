@@ -296,6 +296,12 @@ class DaylinkServices {
   Future<void> acknowledgeRecoveryKeySaved() =>
       contentEncryption.acknowledgeRecoveryKeySaved();
 
+  Future<RecoveryKeyRotationDraft> prepareRecoveryKeyRotation() =>
+      contentEncryption.prepareRecoveryKeyRotation();
+
+  Future<void> acknowledgeRecoveryKeyRotationSaved(String rotationId) =>
+      contentEncryption.acknowledgeRecoveryKeyRotationSaved(rotationId);
+
   Future<void> restoreWithRecoveryKey(String encodedKey) =>
       contentEncryption.restoreWithRecoveryKey(encodedKey);
 

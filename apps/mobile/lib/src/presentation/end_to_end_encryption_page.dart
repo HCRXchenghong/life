@@ -22,6 +22,7 @@ class EndToEndEncryptionPage extends StatefulWidget {
     this.approvalSource,
     this.onOpenDeviceApproval,
     this.onOpenTrustedDevices,
+    this.onOpenRecoveryKeyManagement,
   });
 
   final ContentEncryptionSource source;
@@ -31,6 +32,7 @@ class EndToEndEncryptionPage extends StatefulWidget {
   final TrustedDeviceApprovalSource? approvalSource;
   final DeviceApprovalOpenCallback? onOpenDeviceApproval;
   final VoidCallback? onOpenTrustedDevices;
+  final VoidCallback? onOpenRecoveryKeyManagement;
 
   @override
   State<EndToEndEncryptionPage> createState() => _EndToEndEncryptionPageState();
@@ -181,6 +183,7 @@ class _EndToEndEncryptionPageState extends State<EndToEndEncryptionPage> {
                 pendingApproval: _pendingApproval != null,
                 onOpenApproval: _primaryAction,
                 onOpenTrustedDevices: widget.onOpenTrustedDevices,
+                onOpenRecoveryKeyManagement: widget.onOpenRecoveryKeyManagement,
               )
             : _EncryptionSetupBody(
                 loading: _loading,
@@ -199,12 +202,14 @@ class _EnabledEncryptionBody extends StatelessWidget {
     required this.pendingApproval,
     required this.onOpenApproval,
     this.onOpenTrustedDevices,
+    this.onOpenRecoveryKeyManagement,
   });
 
   final bool busy;
   final bool pendingApproval;
   final VoidCallback onOpenApproval;
   final VoidCallback? onOpenTrustedDevices;
+  final VoidCallback? onOpenRecoveryKeyManagement;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -247,9 +252,9 @@ class _EnabledEncryptionBody extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: _cardBorder),
                 ),
-                child: const Column(
+                child: Column(
                   children: [
-                    _KeyRow(
+                    const _KeyRow(
                       title: '内容主密钥',
                       subtitle: '仅保存在受信设备中',
                       value: '已保护',
@@ -260,10 +265,12 @@ class _EnabledEncryptionBody extends StatelessWidget {
                       child: Divider(height: 1, thickness: 1, color: _divider),
                     ),
                     _KeyRow(
+                      key: const Key('e2ee-recovery-key-row'),
                       title: '恢复密钥',
                       subtitle: '用于在新设备恢复内容',
                       value: '已保存',
                       showChevron: true,
+                      onTap: onOpenRecoveryKeyManagement,
                     ),
                   ],
                 ),
@@ -529,52 +536,58 @@ class _KeyRow extends StatelessWidget {
     required this.subtitle,
     required this.value,
     this.showChevron = false,
+    this.onTap,
+    super.key,
   });
 
   final String title;
   final String subtitle;
   final String value;
   final bool showChevron;
+  final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    height: 82,
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 15),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: _text,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w400,
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    child: SizedBox(
+      height: 82,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 15),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: _text,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w400,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    color: _muted,
-                    fontSize: 13,
-                    height: 1.25,
+                  const SizedBox(height: 5),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: _muted,
+                      fontSize: 13,
+                      height: 1.25,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Text(value, style: const TextStyle(color: _muted, fontSize: 14)),
-          if (showChevron) ...[
-            const SizedBox(width: 8),
-            const Icon(Icons.chevron_right_rounded, color: _muted, size: 23),
+            const SizedBox(width: 12),
+            Text(value, style: const TextStyle(color: _muted, fontSize: 14)),
+            if (showChevron) ...[
+              const SizedBox(width: 8),
+              const Icon(Icons.chevron_right_rounded, color: _muted, size: 23),
+            ],
           ],
-        ],
+        ),
       ),
     ),
   );

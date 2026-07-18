@@ -36,11 +36,24 @@ pub fn core_api_version() -> String {
 pub enum BridgeContentKeyStatus {
     Missing,
     PendingRecoveryConfirmation,
+    PendingRecoveryRotation,
     Ready,
 }
 
 #[derive(Clone)]
 pub struct BridgeContentKeyInitialization {
+    pub device_id: String,
+    pub key_version: u32,
+    pub recovery_key: Vec<u8>,
+    pub recovery_salt: Vec<u8>,
+    pub recovery_nonce: Vec<u8>,
+    pub recovery_ciphertext: Vec<u8>,
+}
+
+#[derive(Clone)]
+pub struct BridgeRecoveryKeyRotation {
+    pub rotation_id: String,
+    pub expected_revision: u64,
     pub device_id: String,
     pub key_version: u32,
     pub recovery_key: Vec<u8>,
@@ -107,6 +120,22 @@ impl fmt::Debug for BridgeContentKeyInitialization {
     }
 }
 
+impl fmt::Debug for BridgeRecoveryKeyRotation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("BridgeRecoveryKeyRotation")
+            .field("rotation_id", &self.rotation_id)
+            .field("expected_revision", &self.expected_revision)
+            .field("device_id", &self.device_id)
+            .field("key_version", &self.key_version)
+            .field("recovery_key", &"<redacted>")
+            .field("recovery_salt_bytes", &self.recovery_salt.len())
+            .field("recovery_nonce_bytes", &self.recovery_nonce.len())
+            .field("recovery_ciphertext_bytes", &self.recovery_ciphertext.len())
+            .finish()
+    }
+}
+
 pub fn generate_device_vault_key() -> Result<Vec<u8>, String> {
     vault::generate_device_vault_key()
 }
@@ -122,6 +151,9 @@ pub fn content_key_status(
             vault::ContentKeyStatus::Missing => BridgeContentKeyStatus::Missing,
             vault::ContentKeyStatus::PendingRecoveryConfirmation => {
                 BridgeContentKeyStatus::PendingRecoveryConfirmation
+            }
+            vault::ContentKeyStatus::PendingRecoveryRotation => {
+                BridgeContentKeyStatus::PendingRecoveryRotation
             }
             vault::ContentKeyStatus::Ready => BridgeContentKeyStatus::Ready,
         },
@@ -153,6 +185,67 @@ pub fn acknowledge_recovery_key_saved(
     device_vault_key: Vec<u8>,
 ) -> Result<(), String> {
     vault::acknowledge_recovery_key_saved(&vault_path, &account_id, &device_vault_key)
+}
+
+#[allow(clippy::needless_pass_by_value)]
+pub fn prepare_recovery_key_rotation(
+    vault_path: String,
+    account_id: String,
+    mut device_vault_key: Vec<u8>,
+    expected_revision: u64,
+) -> Result<BridgeRecoveryKeyRotation, String> {
+    let result = vault::prepare_recovery_key_rotation(
+        &vault_path,
+        &account_id,
+        &device_vault_key,
+        expected_revision,
+    )
+    .map(|rotation| BridgeRecoveryKeyRotation {
+        rotation_id: rotation.rotation_id,
+        expected_revision: rotation.expected_revision,
+        device_id: rotation.device_id,
+        key_version: rotation.key_version,
+        recovery_key: rotation.recovery_key,
+        recovery_salt: rotation.recovery_salt,
+        recovery_nonce: rotation.recovery_nonce,
+        recovery_ciphertext: rotation.recovery_ciphertext,
+    });
+    device_vault_key.zeroize();
+    result
+}
+
+#[allow(clippy::needless_pass_by_value)]
+pub fn commit_recovery_key_rotation(
+    vault_path: String,
+    account_id: String,
+    mut device_vault_key: Vec<u8>,
+    rotation_id: String,
+) -> Result<(), String> {
+    let result = vault::commit_recovery_key_rotation(
+        &vault_path,
+        &account_id,
+        &device_vault_key,
+        &rotation_id,
+    );
+    device_vault_key.zeroize();
+    result
+}
+
+#[allow(clippy::needless_pass_by_value)]
+pub fn discard_recovery_key_rotation(
+    vault_path: String,
+    account_id: String,
+    mut device_vault_key: Vec<u8>,
+    rotation_id: String,
+) -> Result<(), String> {
+    let result = vault::discard_recovery_key_rotation(
+        &vault_path,
+        &account_id,
+        &device_vault_key,
+        &rotation_id,
+    );
+    device_vault_key.zeroize();
+    result
 }
 
 #[allow(clippy::needless_pass_by_value)] // FRB owns and transfers these values across the FFI boundary.

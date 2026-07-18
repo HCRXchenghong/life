@@ -163,6 +163,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   BridgeHostKey dco_decode_bridge_host_key(dynamic raw);
 
   @protected
+  BridgeRecoveryKeyRotation dco_decode_bridge_recovery_key_rotation(
+    dynamic raw,
+  );
+
+  @protected
   BridgeTerminalEvent dco_decode_bridge_terminal_event(dynamic raw);
 
   @protected
@@ -344,6 +349,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   BridgeHostKey sse_decode_bridge_host_key(SseDeserializer deserializer);
+
+  @protected
+  BridgeRecoveryKeyRotation sse_decode_bridge_recovery_key_rotation(
+    SseDeserializer deserializer,
+  );
 
   @protected
   BridgeTerminalEvent sse_decode_bridge_terminal_event(
@@ -553,6 +563,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_bridge_host_key(BridgeHostKey self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_bridge_recovery_key_rotation(
+    BridgeRecoveryKeyRotation self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_bridge_terminal_event(

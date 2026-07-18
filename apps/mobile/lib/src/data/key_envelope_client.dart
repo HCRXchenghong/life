@@ -8,6 +8,7 @@ const _envelopeTimeout = Duration(seconds: 20);
 
 class KeyEnvelope {
   const KeyEnvelope({
+    this.envelopeRevision = 1,
     required this.keyVersion,
     required this.algorithm,
     required this.kdf,
@@ -17,6 +18,7 @@ class KeyEnvelope {
     required this.creatorDeviceId,
   });
 
+  final int envelopeRevision;
   final int keyVersion;
   final String algorithm;
   final String kdf;
@@ -26,6 +28,7 @@ class KeyEnvelope {
   final String creatorDeviceId;
 
   bool sameAs(KeyEnvelope other) =>
+      envelopeRevision == other.envelopeRevision &&
       keyVersion == other.keyVersion &&
       algorithm == other.algorithm &&
       kdf == other.kdf &&
@@ -66,6 +69,18 @@ abstract interface class KeyEnvelopeTransport {
   Future<void> store({
     required String accessToken,
     required KeyEnvelope envelope,
+  });
+
+  Future<void> beginRecoveryKeyRotation({
+    required String accessToken,
+    required String rotationId,
+    required int expectedRevision,
+    required KeyEnvelope envelope,
+  });
+
+  Future<void> commitRecoveryKeyRotation({
+    required String accessToken,
+    required String rotationId,
   });
 
   void close();
@@ -115,6 +130,56 @@ class KeyEnvelopeClient implements KeyEnvelopeTransport {
       throw const KeyEnvelopeClientException('该账号已存在其他内容密钥', conflict: true);
     }
     await _decodeResponse(response, expectedStatuses: const {200, 201});
+  }
+
+  @override
+  Future<void> beginRecoveryKeyRotation({
+    required String accessToken,
+    required String rotationId,
+    required int expectedRevision,
+    required KeyEnvelope envelope,
+  }) async {
+    final response = await _send(
+      http.Request('POST', _baseUri.resolve('sync/key-envelope/rotations'))
+        ..headers['Authorization'] = _bearer(accessToken)
+        ..headers['Content-Type'] = 'application/json; charset=utf-8'
+        ..body = jsonEncode({
+          'rotationId': rotationId,
+          'expectedRevision': expectedRevision,
+          'envelope': envelope.toJson(),
+        }),
+    );
+    if (response.statusCode == 409) {
+      await _readBounded(response.stream);
+      throw const KeyEnvelopeClientException(
+        '恢复密钥已在其他设备更新或正在更新',
+        conflict: true,
+      );
+    }
+    await _decodeResponse(response, expectedStatuses: const {200, 201});
+  }
+
+  @override
+  Future<void> commitRecoveryKeyRotation({
+    required String accessToken,
+    required String rotationId,
+  }) async {
+    final response = await _send(
+      http.Request(
+        'POST',
+        _baseUri.resolve(
+          'sync/key-envelope/rotations/${Uri.encodeComponent(rotationId)}/commit',
+        ),
+      )..headers['Authorization'] = _bearer(accessToken),
+    );
+    if (response.statusCode == 409) {
+      await _readBounded(response.stream);
+      throw const KeyEnvelopeClientException(
+        '恢复密钥轮换已完成、过期或发生冲突',
+        conflict: true,
+      );
+    }
+    await _decodeResponse(response, expectedStatuses: const {200});
   }
 
   Future<http.StreamedResponse> _send(http.Request request) async {
@@ -178,11 +243,15 @@ Future<List<int>> _readBounded(Stream<List<int>> stream) async {
 }
 
 KeyEnvelope _parseEnvelope(Map<String, Object?> value) {
+  final envelopeRevision = value['envelopeRevision'];
   final version = value['keyVersion'];
   final algorithm = value['algorithm'];
   final kdf = value['kdf'];
   final deviceId = value['creatorDeviceId'];
-  if (version != 1 ||
+  if (envelopeRevision is! int ||
+      envelopeRevision < 1 ||
+      envelopeRevision > 0x7FFFFFFFFFFFFFFF ||
+      version != 1 ||
       algorithm != 'aes-256-gcm' ||
       kdf != 'hkdf-sha256' ||
       deviceId is! String ||
@@ -190,6 +259,7 @@ KeyEnvelope _parseEnvelope(Map<String, Object?> value) {
     throw const FormatException('Invalid envelope metadata');
   }
   return KeyEnvelope(
+    envelopeRevision: envelopeRevision,
     keyVersion: version as int,
     algorithm: algorithm as String,
     kdf: kdf as String,

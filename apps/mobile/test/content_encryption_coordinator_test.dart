@@ -103,6 +103,54 @@ void main() {
     coordinator.close();
   });
 
+  test(
+    'keeps the old envelope active until the new key is confirmed',
+    () async {
+      final vault = _FakeVault()..localStatus = LocalContentKeyStatus.ready;
+      final transport = _FakeEnvelopeTransport()..envelope = _envelope();
+      final coordinator = _coordinator(vault: vault, transport: transport);
+
+      final draft = await coordinator.prepareRecoveryKeyRotation();
+
+      expect(draft.rotationId, '56ad19d3-04ec-4380-b56d-1c82663a5ddd');
+      expect(draft.toString(), contains('recoveryKey: <redacted>'));
+      expect(transport.beginRotationCalls, 1);
+      expect(transport.envelope!.envelopeRevision, 1);
+      expect(transport.pendingRotation!.envelopeRevision, 2);
+      expect(vault.localStatus, LocalContentKeyStatus.pendingRecoveryRotation);
+      expect(vault.lastReturnedRecoveryKey, everyElement(0));
+      expect(
+        (await coordinator.loadContentEncryptionState()).status,
+        ContentEncryptionSetupStatus.enabled,
+      );
+
+      await coordinator.acknowledgeRecoveryKeyRotationSaved(draft.rotationId);
+
+      expect(transport.commitRotationCalls, 1);
+      expect(transport.envelope!.envelopeRevision, 2);
+      expect(transport.envelope!.ciphertext, everyElement(7));
+      expect(vault.rotationCommitCalls, 1);
+      expect(vault.localStatus, LocalContentKeyStatus.ready);
+      coordinator.close();
+    },
+  );
+
+  test('reconciles a server commit whose response was lost', () async {
+    final vault = _FakeVault()..localStatus = LocalContentKeyStatus.ready;
+    final transport = _FakeEnvelopeTransport()..envelope = _envelope();
+    final coordinator = _coordinator(vault: vault, transport: transport);
+    final draft = await coordinator.prepareRecoveryKeyRotation();
+    transport.envelope = transport.pendingRotation;
+    transport.pendingRotation = null;
+
+    await coordinator.acknowledgeRecoveryKeyRotationSaved(draft.rotationId);
+
+    expect(transport.commitRotationCalls, 0);
+    expect(vault.rotationCommitCalls, 1);
+    expect(vault.localStatus, LocalContentKeyStatus.ready);
+    coordinator.close();
+  });
+
   test('decodes, restores, and zeroes the recovery key locally', () async {
     final vault = _FakeVault();
     final transport = _FakeEnvelopeTransport()..envelope = _envelope();
@@ -350,6 +398,10 @@ class _FakeVault implements ContentKeyVault {
   var packageCode = '482 731';
   var approveCalls = 0;
   LocalDeviceApprovalRequestKey? pendingRequest;
+  var rotationCommitCalls = 0;
+  var rotationDiscardCalls = 0;
+  int? rotationExpectedRevision;
+  List<int>? lastReturnedRecoveryKey;
 
   @override
   Future<void> acknowledgeRecoveryKeySaved({
@@ -358,6 +410,53 @@ class _FakeVault implements ContentKeyVault {
     required List<int> deviceVaultKey,
   }) async {
     localStatus = LocalContentKeyStatus.ready;
+  }
+
+  @override
+  Future<LocalRecoveryKeyRotation> prepareRecoveryKeyRotation({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required int expectedRevision,
+  }) async {
+    localStatus = LocalContentKeyStatus.pendingRecoveryRotation;
+    rotationExpectedRevision ??= expectedRevision;
+    final recoveryKey = List<int>.filled(32, 9);
+    lastReturnedRecoveryKey = recoveryKey;
+    return LocalRecoveryKeyRotation(
+      rotationId: '56ad19d3-04ec-4380-b56d-1c82663a5ddd',
+      expectedRevision: rotationExpectedRevision!,
+      deviceId: '9b276a3e-b141-4d91-8dbf-0f217b62b071',
+      keyVersion: 1,
+      recoveryKey: recoveryKey,
+      recoverySalt: List<int>.filled(32, 5),
+      recoveryNonce: List<int>.filled(12, 6),
+      recoveryCiphertext: List<int>.filled(48, 7),
+    );
+  }
+
+  @override
+  Future<void> commitRecoveryKeyRotation({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String rotationId,
+  }) async {
+    rotationCommitCalls++;
+    localStatus = LocalContentKeyStatus.ready;
+    rotationExpectedRevision = null;
+  }
+
+  @override
+  Future<void> discardRecoveryKeyRotation({
+    required String vaultPath,
+    required String accountId,
+    required List<int> deviceVaultKey,
+    required String rotationId,
+  }) async {
+    rotationDiscardCalls++;
+    localStatus = LocalContentKeyStatus.ready;
+    rotationExpectedRevision = null;
   }
 
   @override
@@ -499,6 +598,9 @@ class _FakeEnvelopeTransport implements KeyEnvelopeTransport {
   var loadCalls = 0;
   var conflictOnStore = false;
   var rejectNextLoad = false;
+  KeyEnvelope? pendingRotation;
+  var beginRotationCalls = 0;
+  var commitRotationCalls = 0;
 
   @override
   void close() {}
@@ -524,6 +626,27 @@ class _FakeEnvelopeTransport implements KeyEnvelopeTransport {
       throw const KeyEnvelopeClientException('conflict', conflict: true);
     }
     this.envelope = envelope;
+  }
+
+  @override
+  Future<void> beginRecoveryKeyRotation({
+    required String accessToken,
+    required String rotationId,
+    required int expectedRevision,
+    required KeyEnvelope envelope,
+  }) async {
+    beginRotationCalls++;
+    pendingRotation = envelope;
+  }
+
+  @override
+  Future<void> commitRecoveryKeyRotation({
+    required String accessToken,
+    required String rotationId,
+  }) async {
+    commitRotationCalls++;
+    envelope = pendingRotation;
+    pendingRotation = null;
   }
 }
 

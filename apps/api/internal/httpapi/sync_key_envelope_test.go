@@ -62,3 +62,28 @@ func TestSameContentKeyEnvelopeRejectsAnySubstitution(t *testing.T) {
 		t.Fatal("changed ciphertext must not be treated as idempotent")
 	}
 }
+
+func TestDecodeRecoveryKeyRotationRequiresBoundedCanonicalMetadata(t *testing.T) {
+	input := contentKeyEnvelopeRotationInput{
+		RotationID:       "56ad19d3-04ec-4380-b56d-1c82663a5ddd",
+		ExpectedRevision: 1,
+		Envelope:         validContentKeyEnvelopeInput(),
+	}
+	rotation, err := decodeRecoveryKeyRotation(input)
+	if err != nil || rotation.ExpectedRevision != 1 || rotation.Envelope.KeyVersion != 1 {
+		t.Fatalf("expected valid rotation, got %#v, %v", rotation, err)
+	}
+
+	invalidIDs := []string{"", "../rotation", "56ad19d3-04ec-4380-b56d-1c82663a5dd"}
+	for _, id := range invalidIDs {
+		candidate := input
+		candidate.RotationID = id
+		if _, err := decodeRecoveryKeyRotation(candidate); err == nil {
+			t.Fatalf("expected rotation ID %q to be rejected", id)
+		}
+	}
+	input.ExpectedRevision = 0
+	if _, err := decodeRecoveryKeyRotation(input); err == nil {
+		t.Fatal("expected zero revision to be rejected")
+	}
+}

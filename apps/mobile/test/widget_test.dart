@@ -689,6 +689,16 @@ class _FakeScheduleRuntime
   }
 
   @override
+  Future<RecoveryKeyRotationDraft> prepareRecoveryKeyRotation() async =>
+      RecoveryKeyRotationDraft(
+        rotationId: '9b276a3e-b141-4d91-8dbf-0f217b62b071',
+        recoveryKey: RecoveryKeyDraft.fromBytes(List<int>.filled(32, 2)),
+      );
+
+  @override
+  Future<void> acknowledgeRecoveryKeyRotationSaved(String rotationId) async {}
+
+  @override
   Future<void> restoreWithRecoveryKey(String encodedKey) async {
     _contentEncryptionState = const ContentEncryptionState(
       status: ContentEncryptionSetupStatus.enabled,

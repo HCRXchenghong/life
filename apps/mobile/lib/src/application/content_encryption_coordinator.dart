@@ -91,6 +91,8 @@ class ContentEncryptionCoordinator
   final SessionRefreshCallback _refreshAccessToken;
   Future<List<int>>? _deviceKeyFuture;
   Future<RecoveryKeyDraft>? _activePreparation;
+  Future<RecoveryKeyRotationDraft>? _activeRotationPreparation;
+  Future<void>? _activeRotationCommit;
   Future<void>? _activeRestoration;
   Future<void>? _activeDeviceApproval;
   Future<DeviceApprovalWaitingSession>? _activeDeviceRecoveryStart;
@@ -101,7 +103,8 @@ class ContentEncryptionCoordinator
   Future<ContentEncryptionState> loadContentEncryptionState() async {
     _ensureOpen();
     final local = await _localStatus();
-    if (local == LocalContentKeyStatus.ready) {
+    if (local == LocalContentKeyStatus.ready ||
+        local == LocalContentKeyStatus.pendingRecoveryRotation) {
       return const ContentEncryptionState(
         status: ContentEncryptionSetupStatus.enabled,
       );
@@ -240,6 +243,173 @@ class ContentEncryptionCoordinator
       deviceVaultKey: deviceKey,
     );
   }
+
+  @override
+  Future<RecoveryKeyRotationDraft> prepareRecoveryKeyRotation() {
+    _ensureOpen();
+    final active = _activeRotationPreparation;
+    if (active != null) return active;
+    final operation = _prepareRecoveryKeyRotation().whenComplete(
+      () => _activeRotationPreparation = null,
+    );
+    _activeRotationPreparation = operation;
+    return operation;
+  }
+
+  Future<RecoveryKeyRotationDraft> _prepareRecoveryKeyRotation() async {
+    final deviceKey = await _deviceKey();
+    final local = await _vault.status(
+      vaultPath: _vaultPath,
+      accountId: _accountId,
+      deviceVaultKey: deviceKey,
+    );
+    if (local != LocalContentKeyStatus.ready &&
+        local != LocalContentKeyStatus.pendingRecoveryRotation) {
+      throw const ContentEncryptionException('此设备没有可轮换的内容密钥');
+    }
+    final remote = await _authenticated(
+      (token) => _client.load(accessToken: token),
+    );
+    if (remote == null) {
+      throw const ContentEncryptionException('该账号没有可更新的恢复密钥信封');
+    }
+    late LocalRecoveryKeyRotation rotation;
+    try {
+      rotation = await _vault.prepareRecoveryKeyRotation(
+        vaultPath: _vaultPath,
+        accountId: _accountId,
+        deviceVaultKey: deviceKey,
+        expectedRevision: remote.envelopeRevision,
+      );
+    } on Object {
+      throw const ContentEncryptionException('无法在此设备安全生成恢复密钥，请重试');
+    }
+    try {
+      final candidate = _rotationEnvelope(rotation);
+      if (!remote.sameAs(candidate)) {
+        if (remote.envelopeRevision != rotation.expectedRevision) {
+          await _discardRotation(deviceKey, rotation.rotationId);
+          throw const ContentEncryptionException('恢复密钥已在其他设备更新，请重试');
+        }
+        try {
+          await _authenticated(
+            (token) => _client.beginRecoveryKeyRotation(
+              accessToken: token,
+              rotationId: rotation.rotationId,
+              expectedRevision: rotation.expectedRevision,
+              envelope: candidate,
+            ),
+          );
+        } on KeyEnvelopeClientException catch (error) {
+          if (!error.conflict) throw ContentEncryptionException(error.message);
+          final winner = await _authenticated(
+            (token) => _client.load(accessToken: token),
+          );
+          if (winner == null || !winner.sameAs(candidate)) {
+            await _discardRotation(deviceKey, rotation.rotationId);
+            throw ContentEncryptionException(error.message);
+          }
+        }
+      }
+      return RecoveryKeyRotationDraft(
+        rotationId: rotation.rotationId,
+        recoveryKey: RecoveryKeyDraft.fromBytes(rotation.recoveryKey),
+      );
+    } finally {
+      rotation.recoveryKey.fillRange(0, rotation.recoveryKey.length, 0);
+    }
+  }
+
+  @override
+  Future<void> acknowledgeRecoveryKeyRotationSaved(String rotationId) {
+    _ensureOpen();
+    final active = _activeRotationCommit;
+    if (active != null) return active;
+    final operation = _acknowledgeRecoveryKeyRotationSaved(
+      rotationId,
+    ).whenComplete(() => _activeRotationCommit = null);
+    _activeRotationCommit = operation;
+    return operation;
+  }
+
+  Future<void> _acknowledgeRecoveryKeyRotationSaved(String rotationId) async {
+    final deviceKey = await _deviceKey();
+    final remote = await _authenticated(
+      (token) => _client.load(accessToken: token),
+    );
+    if (remote == null) {
+      throw const ContentEncryptionException('该账号没有可更新的恢复密钥信封');
+    }
+    late LocalRecoveryKeyRotation rotation;
+    try {
+      rotation = await _vault.prepareRecoveryKeyRotation(
+        vaultPath: _vaultPath,
+        accountId: _accountId,
+        deviceVaultKey: deviceKey,
+        expectedRevision: remote.envelopeRevision,
+      );
+    } on Object {
+      throw const ContentEncryptionException('恢复密钥的本地安全状态已失效');
+    }
+    try {
+      if (rotation.rotationId != rotationId) {
+        throw const ContentEncryptionException('恢复密钥轮换请求不匹配');
+      }
+      final candidate = _rotationEnvelope(rotation);
+      if (!remote.sameAs(candidate)) {
+        if (remote.envelopeRevision != rotation.expectedRevision) {
+          throw const ContentEncryptionException('恢复密钥已在其他设备更新');
+        }
+        try {
+          await _authenticated(
+            (token) => _client.commitRecoveryKeyRotation(
+              accessToken: token,
+              rotationId: rotation.rotationId,
+            ),
+          );
+        } on KeyEnvelopeClientException catch (error) {
+          final winner = await _authenticated(
+            (token) => _client.load(accessToken: token),
+          );
+          if (winner == null || !winner.sameAs(candidate)) {
+            throw ContentEncryptionException(error.message);
+          }
+        }
+      }
+      try {
+        await _vault.commitRecoveryKeyRotation(
+          vaultPath: _vaultPath,
+          accountId: _accountId,
+          deviceVaultKey: deviceKey,
+          rotationId: rotation.rotationId,
+        );
+      } on Object {
+        throw const ContentEncryptionException('新恢复密钥已启用，但本地确认尚未完成，请勿删除并重试');
+      }
+    } finally {
+      rotation.recoveryKey.fillRange(0, rotation.recoveryKey.length, 0);
+    }
+  }
+
+  KeyEnvelope _rotationEnvelope(LocalRecoveryKeyRotation rotation) =>
+      KeyEnvelope(
+        envelopeRevision: rotation.expectedRevision + 1,
+        keyVersion: rotation.keyVersion,
+        algorithm: 'aes-256-gcm',
+        kdf: 'hkdf-sha256',
+        salt: Uint8List.fromList(rotation.recoverySalt),
+        nonce: Uint8List.fromList(rotation.recoveryNonce),
+        ciphertext: Uint8List.fromList(rotation.recoveryCiphertext),
+        creatorDeviceId: rotation.deviceId,
+      );
+
+  Future<void> _discardRotation(List<int> deviceKey, String rotationId) =>
+      _vault.discardRecoveryKeyRotation(
+        vaultPath: _vaultPath,
+        accountId: _accountId,
+        deviceVaultKey: deviceKey,
+        rotationId: rotationId,
+      );
 
   @override
   Future<void> restoreWithRecoveryKey(String encodedKey) {
