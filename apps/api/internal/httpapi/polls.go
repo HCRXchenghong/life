@@ -23,9 +23,14 @@ func (s *Server) handlePolls(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodGet {
-		rows, err := s.db.QueryContext(r.Context(), `SELECT id, title, timezone, status, closes_at,
-        selected_slot_id, version, created_at, updated_at FROM share_polls WHERE account_id = ?
-        ORDER BY created_at DESC LIMIT 100`, identity.AccountID)
+		rows, err := s.db.QueryContext(r.Context(), `SELECT p.id, p.title, p.timezone, p.status, p.closes_at,
+        p.version, p.created_at, p.updated_at,
+        (SELECT COUNT(*) FROM share_slots slot_count WHERE slot_count.poll_id = p.id),
+        (SELECT COUNT(*) FROM share_participants participant_count WHERE participant_count.poll_id = p.id),
+        selected.id, selected.label, selected.starts_at, selected.ends_at
+        FROM share_polls p
+        LEFT JOIN share_slots selected ON selected.id = p.selected_slot_id AND selected.poll_id = p.id
+        WHERE p.account_id = ? ORDER BY p.created_at DESC LIMIT 100`, identity.AccountID)
 		if err != nil {
 			writeError(w, http.StatusServiceUnavailable, "database_unavailable", "数据库暂时不可用")
 			return
@@ -34,17 +39,24 @@ func (s *Server) handlePolls(w http.ResponseWriter, r *http.Request) {
 		polls := make([]map[string]any, 0)
 		for rows.Next() {
 			var id, title, timezone, status string
-			var closes sql.NullTime
-			var selected sql.NullString
-			var version int64
+			var closes, selectedStarts, selectedEnds sql.NullTime
+			var selectedID, selectedLabel sql.NullString
+			var version, candidateCount, participantCount int64
 			var created, updated time.Time
-			if err := rows.Scan(&id, &title, &timezone, &status, &closes, &selected, &version, &created, &updated); err != nil {
+			if err := rows.Scan(&id, &title, &timezone, &status, &closes, &version, &created, &updated,
+				&candidateCount, &participantCount, &selectedID, &selectedLabel, &selectedStarts, &selectedEnds); err != nil {
 				writeError(w, http.StatusServiceUnavailable, "database_unavailable", "数据库暂时不可用")
 				return
 			}
+			var selectedSlot any
+			if selectedID.Valid && selectedStarts.Valid && selectedEnds.Valid {
+				selectedSlot = map[string]any{"id": selectedID.String, "label": selectedLabel.String,
+					"startsAt": selectedStarts.Time, "endsAt": selectedEnds.Time}
+			}
 			polls = append(polls, map[string]any{"id": id, "title": title, "timezone": timezone,
-				"status": status, "closesAt": nullableTime(closes), "selectedSlotId": nullableString(selected),
-				"version": version, "createdAt": created, "updatedAt": updated})
+				"status": status, "closesAt": nullableTime(closes), "selectedSlot": selectedSlot,
+				"version": version, "candidateCount": candidateCount, "participantCount": participantCount,
+				"createdAt": created, "updatedAt": updated})
 		}
 		if rows.Err() != nil {
 			writeError(w, http.StatusServiceUnavailable, "database_unavailable", "数据库暂时不可用")

@@ -139,6 +139,56 @@ class SharePollSummary {
       );
 }
 
+class ManagedSharePollSummary {
+  const ManagedSharePollSummary({
+    required this.id,
+    required this.title,
+    required this.timezoneId,
+    required this.status,
+    required this.version,
+    required this.candidateCount,
+    required this.participantCount,
+    required this.createdAtUtc,
+    required this.updatedAtUtc,
+    this.closesAtUtc,
+    this.selectedSlot,
+  });
+
+  final String id;
+  final String title;
+  final String timezoneId;
+  final SharePollStatus status;
+  final int version;
+  final int candidateCount;
+  final int participantCount;
+  final DateTime createdAtUtc;
+  final DateTime updatedAtUtc;
+  final DateTime? closesAtUtc;
+  final SharePollSlot? selectedSlot;
+
+  factory ManagedSharePollSummary.fromJson(
+    Map<String, Object?> json,
+  ) => ManagedSharePollSummary(
+    id: _requiredString(json, 'id'),
+    title: _requiredString(json, 'title'),
+    timezoneId: _requiredString(json, 'timezone'),
+    status: SharePollStatus.values.byName(_requiredString(json, 'status')),
+    version: _requiredInt(json, 'version'),
+    candidateCount: _requiredInt(json, 'candidateCount'),
+    participantCount: _requiredInt(json, 'participantCount'),
+    createdAtUtc: DateTime.parse(_requiredString(json, 'createdAt')).toUtc(),
+    updatedAtUtc: DateTime.parse(_requiredString(json, 'updatedAt')).toUtc(),
+    closesAtUtc: json['closesAt'] == null
+        ? null
+        : DateTime.parse(json['closesAt']! as String).toUtc(),
+    selectedSlot: json['selectedSlot'] == null
+        ? null
+        : SharePollSlot.fromJson(
+            _objectMap(json['selectedSlot'], 'selectedSlot'),
+          ),
+  );
+}
+
 class SharePollParticipant {
   const SharePollParticipant({required this.id, required this.displayName});
 

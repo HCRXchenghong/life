@@ -17,6 +17,25 @@ class SharePollClient {
   final String _mobileToken;
   final http.Client _http;
 
+  Future<List<ManagedSharePollSummary>> listManaged() async {
+    final json = await _send(
+      'GET',
+      'polls',
+      authenticated: true,
+      expectedStatuses: const {200},
+    );
+    final polls = json['polls'];
+    if (polls is! List<Object?>) {
+      throw const ShareApiException(
+        'invalid_response',
+        'Server returned an invalid poll list',
+      );
+    }
+    return polls
+        .map((value) => ManagedSharePollSummary.fromJson(_map(value, 'poll')))
+        .toList(growable: false);
+  }
+
   Future<CreatedSharePoll> create(CreateSharePollDraft draft) async {
     draft.validate();
     final json = await _send(

@@ -250,6 +250,17 @@ async function main() {
     body: { displayName: "Blackbox", votes },
   });
   invariant(result.response.status === 201 && result.payload?.editToken, "public poll vote failed");
+  result = await request("/api/polls", { bearer: tokensA.accessToken });
+  const managedPoll = result.payload?.polls?.find((poll) => poll.title === "Blackbox poll");
+  invariant(
+    result.response.status === 200 && managedPoll?.candidateCount === 2 && managedPoll?.participantCount === 1,
+    "managed poll list counts failed",
+  );
+  result = await request("/api/polls", { bearer: tokensB.accessToken });
+  invariant(
+    result.response.status === 200 && !result.payload?.polls?.some((poll) => poll.title === "Blackbox poll"),
+    "managed poll list crossed account boundary",
+  );
 
   result = await request("/api/app/auth/refresh", { method: "POST", body: { refreshToken: tokensA.refreshToken } });
   invariant(result.response.status === 200 && result.payload?.tokens?.accessToken, "refresh rotation failed");

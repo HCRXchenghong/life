@@ -121,6 +121,60 @@ void main() {
     );
   });
 
+  test(
+    'managed poll list is authenticated and parses aggregate counts',
+    () async {
+      final client = SharePollClient(
+        apiBaseUri: Uri.parse('https://daylink.example/api/'),
+        mobileToken: 'account-access-token',
+        httpClient: MockClient((request) async {
+          expect(request.method, 'GET');
+          expect(request.url.path, '/api/polls');
+          expect(
+            request.headers['authorization'],
+            'Bearer account-access-token',
+          );
+          return http.Response(
+            jsonEncode({
+              'polls': [
+                {
+                  'id': 'poll-managed',
+                  'title': '生日聚会',
+                  'timezone': 'Asia/Shanghai',
+                  'status': 'closed',
+                  'closesAt': '2026-07-25T14:00:00Z',
+                  'version': 2,
+                  'candidateCount': 3,
+                  'participantCount': 6,
+                  'createdAt': '2026-07-18T02:00:00Z',
+                  'updatedAt': '2026-07-18T03:00:00Z',
+                  'selectedSlot': {
+                    'id': 'slot-final',
+                    'label': '',
+                    'startsAt': '2026-07-26T10:30:00Z',
+                    'endsAt': '2026-07-26T12:30:00Z',
+                  },
+                },
+              ],
+            }),
+            200,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }),
+      );
+      addTearDown(client.close);
+
+      final polls = await client.listManaged();
+
+      expect(polls, hasLength(1));
+      expect(polls.single.title, '生日聚会');
+      expect(polls.single.status, SharePollStatus.closed);
+      expect(polls.single.candidateCount, 3);
+      expect(polls.single.participantCount, 6);
+      expect(polls.single.selectedSlot?.id, 'slot-final');
+    },
+  );
+
   test('AI poll listing never exposes the management token', () async {
     final database = AppDatabase.inMemory();
     addTearDown(database.close);

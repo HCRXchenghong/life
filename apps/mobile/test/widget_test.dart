@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:daylink_mobile/main.dart';
 import 'package:daylink_mobile/src/data/app_authentication.dart';
 import 'package:daylink_mobile/src/application/assistant_settings.dart';
+import 'package:daylink_mobile/src/application/friend_schedule_list.dart';
 import 'package:daylink_mobile/src/data/ai_gateway_client.dart';
 import 'package:daylink_mobile/src/data/operations_repository.dart';
 import 'package:daylink_mobile/src/data/schedule_repository.dart';
@@ -11,6 +12,7 @@ import 'package:daylink_mobile/src/domain/operations/operations_models.dart';
 import 'package:daylink_mobile/src/domain/notifications/notification_settings.dart';
 import 'package:daylink_mobile/src/domain/schedule/schedule_editor_models.dart';
 import 'package:daylink_mobile/src/domain/schedule/schedule_models.dart';
+import 'package:daylink_mobile/src/domain/share/share_poll_models.dart';
 import 'package:daylink_mobile/src/domain/sync/data_sync_models.dart';
 import 'package:daylink_mobile/src/domain/sync/content_encryption_models.dart';
 import 'package:flutter/material.dart';
@@ -214,6 +216,14 @@ void main() {
     expect(find.text('AI 生图'), findsOneWidget);
     expect(find.text('Word 文档'), findsOneWidget);
     expect(find.text('表格与演示'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('tool-friend-schedule')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('friend-schedule-title')), findsOneWidget);
+    expect(find.text('还没有选时间'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('friend-schedule-back')));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('nav-assistant')));
     await tester.pumpAndSettle();
@@ -562,7 +572,8 @@ class _FakeScheduleRuntime
         DataSyncSource,
         ContentEncryptionSource,
         TrustedDeviceApprovalSource,
-        ScheduleEditorSource {
+        ScheduleEditorSource,
+        FriendScheduleListSource {
   _FakeScheduleRuntime({
     ContentEncryptionSetupStatus encryptionStatus =
         ContentEncryptionSetupStatus.notConfigured,
@@ -581,6 +592,9 @@ class _FakeScheduleRuntime
 
   @override
   HostListSource get hosts => _hosts;
+
+  @override
+  Future<List<ManagedSharePollSummary>> loadFriendSchedules() async => const [];
 
   @override
   Future<ScheduleEditorDefaults> loadScheduleEditorDefaults() async =>

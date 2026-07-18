@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import 'src/application/assistant_settings.dart';
 import 'src/application/daylink_services.dart';
+import 'src/application/friend_schedule_list.dart';
 import 'src/data/ai_gateway_client.dart';
 import 'src/data/app_authentication.dart';
 import 'src/data/app_session_monitor.dart';
@@ -16,6 +17,7 @@ import 'src/domain/notifications/notification_settings.dart';
 import 'src/domain/schedule/schedule_detail_models.dart';
 import 'src/domain/schedule/schedule_editor_models.dart';
 import 'src/domain/schedule/schedule_models.dart';
+import 'src/domain/share/share_poll_models.dart';
 import 'src/domain/sync/data_sync_models.dart';
 import 'src/domain/sync/content_encryption_models.dart';
 import 'src/presentation/app_navigation.dart';
@@ -26,6 +28,7 @@ import 'src/presentation/data_sync_page.dart';
 import 'src/presentation/device_approval_waiting_page.dart';
 import 'src/presentation/device_approval_success_page.dart';
 import 'src/presentation/end_to_end_encryption_page.dart';
+import 'src/presentation/friend_schedule_list_page.dart';
 import 'src/presentation/hosts_page.dart';
 import 'src/presentation/login_page.dart';
 import 'src/presentation/my_page.dart';
@@ -609,13 +612,34 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
   }
 
   void _selectTool(ToolboxTool tool) {
+    if (tool == ToolboxTool.friendSchedule) {
+      unawaited(_openFriendSchedules());
+      return;
+    }
     final name = switch (tool) {
-      ToolboxTool.friendSchedule => '好友选时间',
+      ToolboxTool.friendSchedule => throw StateError('handled above'),
       ToolboxTool.imageGeneration => 'AI 生图',
       ToolboxTool.wordDocument => 'Word 文档',
       ToolboxTool.spreadsheetPresentation => '表格与演示',
     };
     _showPendingPage(name);
+  }
+
+  Future<void> _openFriendSchedules() async {
+    final runtime = _runtime;
+    if (runtime is! FriendScheduleListSource) {
+      _showPendingPage('好友选时间');
+      return;
+    }
+    await _navigatorKey.currentState!.push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => FriendScheduleListPage(
+          source: runtime as FriendScheduleListSource,
+          onCreate: () => _showPendingPage('新建选时间'),
+          onOpenPoll: (_) => _showPendingPage('选时间详情'),
+        ),
+      ),
+    );
   }
 
   Widget _authenticatedHome() {
@@ -734,11 +758,17 @@ class DaylinkRuntime
         TrustedDeviceApprovalSource,
         DeviceApprovalRecoverySource,
         ScheduleEditorSource,
-        ScheduleDetailSource {
-  DaylinkRuntime._(this.services, this._assistantSettings);
+        ScheduleDetailSource,
+        FriendScheduleListSource {
+  DaylinkRuntime._(
+    this.services,
+    this._assistantSettings,
+    this._friendSchedules,
+  );
 
   final DaylinkServices services;
   final DaylinkAssistantSettings _assistantSettings;
+  final DaylinkFriendSchedules _friendSchedules;
   final StreamController<String> _forcedSignOutController =
       StreamController<String>.broadcast();
   bool _signedOut = false;
@@ -769,6 +799,7 @@ class DaylinkRuntime
         apiBaseUri: apiBaseUri,
         accessToken: accessToken,
       ),
+      DaylinkFriendSchedules(apiBaseUri: apiBaseUri, accessToken: accessToken),
     );
     services.monitorSession(
       apiBaseUri: apiBaseUri,
@@ -802,6 +833,10 @@ class DaylinkRuntime
   @override
   Future<AiEntitlement> loadAccountEntitlement() =>
       _assistantSettings.loadAccountEntitlement();
+
+  @override
+  Future<List<ManagedSharePollSummary>> loadFriendSchedules() =>
+      _friendSchedules.loadFriendSchedules();
 
   @override
   Future<ScheduleEditorDefaults> loadScheduleEditorDefaults() =>
