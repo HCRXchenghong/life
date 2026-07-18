@@ -29,6 +29,7 @@ import 'src/presentation/device_approval_waiting_page.dart';
 import 'src/presentation/device_approval_success_page.dart';
 import 'src/presentation/end_to_end_encryption_page.dart';
 import 'src/presentation/friend_schedule_editor_page.dart';
+import 'src/presentation/friend_schedule_detail_page.dart';
 import 'src/presentation/friend_schedule_list_page.dart';
 import 'src/presentation/hosts_page.dart';
 import 'src/presentation/login_page.dart';
@@ -644,7 +645,15 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
                   _showPendingPage('新建选时间');
                   return false;
                 },
-          onOpenPoll: (_) => _showPendingPage('选时间详情'),
+          onOpenPoll: runtime is FriendScheduleDetailSource
+              ? (poll) => _openFriendScheduleDetail(
+                  runtime as FriendScheduleDetailSource,
+                  poll.id,
+                )
+              : (_) async {
+                  _showPendingPage('选时间详情');
+                  return false;
+                },
         ),
       ),
     );
@@ -655,12 +664,40 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
   ) async {
     final created = await _navigatorKey.currentState!.push<bool>(
       MaterialPageRoute<bool>(
-        builder: (_) => FriendScheduleEditorPage(source: source),
+        builder: (_) => FriendScheduleEditorPage(
+          source: source,
+          onEditSchedule: _editFriendScheduleConflict,
+        ),
       ),
     );
     if (created != true) return false;
     _showMessage('选时间已创建');
     return true;
+  }
+
+  Future<bool> _openFriendScheduleDetail(
+    FriendScheduleDetailSource source,
+    String pollId,
+  ) async =>
+      await _navigatorKey.currentState!.push<bool>(
+        MaterialPageRoute<bool>(
+          builder: (_) =>
+              FriendScheduleDetailPage(pollId: pollId, source: source),
+        ),
+      ) ??
+      false;
+
+  Future<bool> _editFriendScheduleConflict(String eventId) async {
+    final runtime = _runtime;
+    if (runtime is! ScheduleDetailSource) return false;
+    final details = await (runtime as ScheduleDetailSource).loadScheduleDetail(
+      eventId,
+    );
+    if (details == null) {
+      _showMessage('冲突日程已不存在，请重新检查');
+      return false;
+    }
+    return _editSchedule(details.event, details.reminders);
   }
 
   Widget _authenticatedHome() {
@@ -780,7 +817,7 @@ class DaylinkRuntime
         DeviceApprovalRecoverySource,
         ScheduleEditorSource,
         ScheduleDetailSource,
-        FriendScheduleCreationSource {
+        FriendScheduleDetailSource {
   DaylinkRuntime._(
     this.services,
     this._assistantSettings,
@@ -871,6 +908,39 @@ class DaylinkRuntime
   @override
   Future<void> createFriendSchedule(CreateSharePollDraft draft) =>
       _friendSchedules.createFriendSchedule(draft);
+
+  @override
+  Future<List<FriendScheduleConflict>> findFriendScheduleConflicts(
+    List<SharePollSlotDraft> ranges,
+  ) => _friendSchedules.findFriendScheduleConflicts(ranges);
+
+  @override
+  Future<FriendPollDetails> loadFriendScheduleDetails(String pollId) =>
+      _friendSchedules.loadFriendScheduleDetails(pollId);
+
+  @override
+  Future<FriendPollInvite> createFriendInvite({
+    required String pollId,
+    required String displayName,
+  }) => _friendSchedules.createFriendInvite(
+    pollId: pollId,
+    displayName: displayName,
+  );
+
+  @override
+  Future<void> revokeFriendInvite({
+    required String pollId,
+    required String inviteId,
+  }) => _friendSchedules.revokeFriendInvite(pollId: pollId, inviteId: inviteId);
+
+  @override
+  Future<void> confirmFriendSchedule({
+    required FriendPollDetails details,
+    required FriendTimeSuggestion suggestion,
+  }) => _friendSchedules.confirmFriendSchedule(
+    details: details,
+    suggestion: suggestion,
+  );
 
   @override
   Future<ScheduleEditorDefaults> loadScheduleEditorDefaults() =>

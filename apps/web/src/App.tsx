@@ -3,6 +3,7 @@ import { api, navigate } from "./api";
 import { AdminEnrollment, AdminLogin, AdminSetup, PendingSetup } from "./Auth";
 import { Dashboard } from "./Dashboard";
 import { InvitePage } from "./InvitePage";
+import { FriendSelectionPage } from "./FriendSelectionPage";
 import { PollPage } from "./PollPage";
 
 type Bootstrap = {
@@ -31,12 +32,15 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (path.startsWith("/poll/") || path.startsWith("/invite/")) return;
+    if (path.startsWith("/poll/") || path.startsWith("/select/") || path.startsWith("/invite/")) return;
     void reload();
   }, [path, reload]);
 
   if (path.startsWith("/poll/")) {
     return <PollPage token={path.slice("/poll/".length)} />;
+  }
+  if (path.startsWith("/select/")) {
+    return <FriendSelectionPage token={path.slice("/select/".length)} />;
   }
   if (path.startsWith("/invite/")) {
     return <InvitePage token={path.slice("/invite/".length)} />;

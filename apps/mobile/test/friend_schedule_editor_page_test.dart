@@ -28,12 +28,12 @@ void main() {
     expect(find.text('基本信息'), findsOneWidget);
     expect(find.text('活动名称'), findsOneWidget);
     expect(find.text('补充说明'), findsOneWidget);
-    expect(find.text('候选时间'), findsOneWidget);
+    expect(find.text('可选时间范围'), findsOneWidget);
     expect(find.text('7月25日  周六'), findsOneWidget);
     expect(find.text('14:00 – 18:00'), findsOneWidget);
     expect(find.text('7月26日  周日'), findsOneWidget);
     expect(find.text('10:00 – 12:00'), findsOneWidget);
-    expect(find.text('添加候选时间'), findsOneWidget);
+    expect(find.text('添加可选时间范围'), findsOneWidget);
     expect(find.text('设置'), findsOneWidget);
     expect(find.text('截止时间'), findsOneWidget);
     expect(find.text('7月24日 22:00'), findsOneWidget);
@@ -117,9 +117,55 @@ void main() {
     await tester.pump();
     expect(find.text('请输入活动名称'), findsOneWidget);
   });
+
+  testWidgets('blocks creation and lets the user edit a conflicting schedule', (
+    tester,
+  ) async {
+    final source = _FakeCreationSource(
+      conflicts: [
+        FriendScheduleConflict(
+          eventId: 'existing-event',
+          eventTitle: '已经安排的聚餐',
+          startsAtUtc: DateTime.utc(2026, 7, 25, 7),
+          endsAtUtc: DateTime.utc(2026, 7, 25, 8),
+        ),
+      ],
+    );
+    String? edited;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FriendScheduleEditorPage(
+          source: source,
+          clock: () => DateTime(2026, 7, 18, 9),
+          onEditSchedule: (eventId) async {
+            edited = eventId;
+            return false;
+          },
+        ),
+      ),
+    );
+    await tester.enterText(
+      find.byKey(const Key('friend-schedule-editor-name')),
+      '周末出游',
+    );
+    await tester.tap(find.byKey(const Key('friend-schedule-editor-create')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('发现日程冲突'), findsOneWidget);
+    expect(find.text('已经安排的聚餐'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const Key('friend-schedule-conflict-existing-event')),
+    );
+    await tester.pumpAndSettle();
+    expect(edited, 'existing-event');
+    expect(source.created, isNull);
+  });
 }
 
 class _FakeCreationSource implements FriendScheduleCreationSource {
+  _FakeCreationSource({this.conflicts = const []});
+
+  final List<FriendScheduleConflict> conflicts;
   CreateSharePollDraft? created;
 
   @override
@@ -129,6 +175,11 @@ class _FakeCreationSource implements FriendScheduleCreationSource {
   Future<void> createFriendSchedule(CreateSharePollDraft draft) async {
     created = draft;
   }
+
+  @override
+  Future<List<FriendScheduleConflict>> findFriendScheduleConflicts(
+    List<SharePollSlotDraft> ranges,
+  ) async => conflicts;
 
   @override
   Future<List<ManagedSharePollSummary>> loadFriendSchedules() async => const [];

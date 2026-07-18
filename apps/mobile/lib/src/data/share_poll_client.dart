@@ -57,6 +57,93 @@ class SharePollClient {
     );
   }
 
+  Future<String> createExclusive(CreateSharePollDraft draft) async {
+    draft.validate();
+    final body = draft.toJson()..['exclusiveInvites'] = true;
+    final json = await _send(
+      'POST',
+      'polls',
+      body: body,
+      authenticated: true,
+      expectedStatuses: const {201},
+    );
+    return _string(_map(json['poll'], 'poll'), 'id');
+  }
+
+  Future<FriendPollDetails> managedDetails(String pollId) async {
+    final id = _pathToken(pollId);
+    final json = await _send(
+      'GET',
+      'polls/$id/details',
+      authenticated: true,
+      expectedStatuses: const {200},
+    );
+    return FriendPollDetails.fromJson(json);
+  }
+
+  Future<FriendPollInvite> createFriendInvite({
+    required String pollId,
+    required String displayName,
+  }) async {
+    final id = _pathToken(pollId);
+    final name = displayName.trim();
+    if (name.isEmpty || name.length > 80) {
+      throw ArgumentError('friend name must contain 1-80 characters');
+    }
+    final json = await _send(
+      'POST',
+      'polls/$id/invites',
+      body: {'displayName': name},
+      authenticated: true,
+      expectedStatuses: const {201},
+    );
+    return FriendPollInvite.fromJson(_map(json['invite'], 'invite'));
+  }
+
+  Future<void> revokeFriendInvite({
+    required String pollId,
+    required String inviteId,
+  }) async {
+    final id = _pathToken(pollId);
+    final friend = _pathToken(inviteId);
+    await _send(
+      'DELETE',
+      'polls/$id/invites/$friend',
+      authenticated: true,
+      expectedStatuses: const {204},
+    );
+  }
+
+  Future<FinalizedSharePoll> confirmManaged({
+    required String pollId,
+    required DateTime startsAtUtc,
+    required DateTime endsAtUtc,
+    required int expectedVersion,
+  }) async {
+    if (expectedVersion < 1 || !endsAtUtc.isAfter(startsAtUtc)) {
+      throw ArgumentError('confirmed time is invalid');
+    }
+    final id = _pathToken(pollId);
+    final json = await _send(
+      'POST',
+      'polls/$id/confirm',
+      body: {
+        'startsAt': startsAtUtc.toUtc().toIso8601String(),
+        'endsAt': endsAtUtc.toUtc().toIso8601String(),
+        'expectedVersion': expectedVersion,
+      },
+      authenticated: true,
+      expectedStatuses: const {200},
+    );
+    return FinalizedSharePoll(
+      pollId: _string(json, 'pollId'),
+      version: _integer(json, 'version'),
+      selectedSlot: SharePollSlot.fromJson(
+        _map(json['selectedSlot'], 'selectedSlot'),
+      ),
+    );
+  }
+
   Future<SharePollState> get(String publicToken) async {
     final token = _pathToken(publicToken);
     final json = await _send(

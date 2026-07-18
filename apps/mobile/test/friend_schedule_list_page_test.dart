@@ -37,7 +37,10 @@ void main() {
             createCalls++;
             return false;
           },
-          onOpenPoll: (poll) => opened = poll,
+          onOpenPoll: (poll) async {
+            opened = poll;
+            return false;
+          },
         ),
       ),
     );
@@ -67,7 +70,7 @@ void main() {
         home: FriendScheduleListPage(
           source: source,
           onCreate: () async => false,
-          onOpenPoll: (_) {},
+          onOpenPoll: (_) async => false,
         ),
       ),
     );

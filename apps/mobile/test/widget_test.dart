@@ -612,6 +612,11 @@ class _FakeScheduleRuntime
   Future<void> createFriendSchedule(CreateSharePollDraft draft) async {}
 
   @override
+  Future<List<FriendScheduleConflict>> findFriendScheduleConflicts(
+    List<SharePollSlotDraft> ranges,
+  ) async => const [];
+
+  @override
   Future<ScheduleEditorDefaults> loadScheduleEditorDefaults() async =>
       const ScheduleEditorDefaults(
         timezoneId: 'Asia/Shanghai',

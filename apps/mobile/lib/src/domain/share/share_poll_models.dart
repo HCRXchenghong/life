@@ -14,8 +14,19 @@ class SharePollSlotDraft {
   final DateTime endsAtUtc;
 
   void validate() {
-    if (!endsAtUtc.toUtc().isAfter(startsAtUtc.toUtc())) {
-      throw ArgumentError('poll slot must end after it starts');
+    final starts = startsAtUtc.toUtc();
+    final ends = endsAtUtc.toUtc();
+    final duration = ends.difference(starts);
+    if (!ends.isAfter(starts) ||
+        duration < const Duration(minutes: 5) ||
+        duration > const Duration(hours: 24) ||
+        starts.millisecondsSinceEpoch %
+                const Duration(minutes: 5).inMilliseconds !=
+            0 ||
+        ends.millisecondsSinceEpoch %
+                const Duration(minutes: 5).inMilliseconds !=
+            0) {
+      throw ArgumentError('poll time range is invalid');
     }
     if (label.length > 120) throw ArgumentError('poll slot label is too long');
   }
@@ -52,8 +63,8 @@ class CreateSharePollDraft {
     if (timezoneId.isEmpty || timezoneId.length > 80) {
       throw ArgumentError('poll timezone is invalid');
     }
-    if (slots.length < 2 || slots.length > 30) {
-      throw ArgumentError('poll must contain 2-30 candidate slots');
+    if (slots.isEmpty || slots.length > 30) {
+      throw ArgumentError('poll must contain 1-30 time ranges');
     }
     final identities = <String>{};
     for (final slot in slots) {
@@ -63,6 +74,17 @@ class CreateSharePollDraft {
       if (!identities.add(identity)) {
         throw ArgumentError('poll slots must be unique');
       }
+    }
+    final sorted = [...slots]
+      ..sort((left, right) => left.startsAtUtc.compareTo(right.startsAtUtc));
+    for (var index = 1; index < sorted.length; index++) {
+      if (sorted[index - 1].endsAtUtc.isAfter(sorted[index].startsAtUtc)) {
+        throw ArgumentError('poll time ranges must not overlap');
+      }
+    }
+    if (closesAtUtc != null &&
+        !closesAtUtc!.toUtc().isBefore(sorted.first.startsAtUtc.toUtc())) {
+      throw ArgumentError('poll deadline must be before time ranges');
     }
   }
 
@@ -293,6 +315,153 @@ class FinalizedSharePoll {
   final SharePollSlot selectedSlot;
 }
 
+enum FriendInviteStatus { pending, submitted, revoked }
+
+class FriendTimeSelection {
+  const FriendTimeSelection({
+    required this.startsAtUtc,
+    required this.endsAtUtc,
+    this.id = '',
+  });
+
+  final String id;
+  final DateTime startsAtUtc;
+  final DateTime endsAtUtc;
+
+  factory FriendTimeSelection.fromJson(Map<String, Object?> json) =>
+      FriendTimeSelection(
+        id: json['id'] as String? ?? '',
+        startsAtUtc: DateTime.parse(_requiredString(json, 'startsAt')).toUtc(),
+        endsAtUtc: DateTime.parse(_requiredString(json, 'endsAt')).toUtc(),
+      );
+}
+
+class FriendPollInvite {
+  const FriendPollInvite({
+    required this.id,
+    required this.displayName,
+    required this.inviteUrl,
+    required this.status,
+    required this.selections,
+    required this.createdAtUtc,
+    required this.updatedAtUtc,
+    this.submittedAtUtc,
+  });
+
+  final String id;
+  final String displayName;
+  final Uri inviteUrl;
+  final FriendInviteStatus status;
+  final List<FriendTimeSelection> selections;
+  final DateTime createdAtUtc;
+  final DateTime updatedAtUtc;
+  final DateTime? submittedAtUtc;
+
+  factory FriendPollInvite.fromJson(
+    Map<String, Object?> json,
+  ) => FriendPollInvite(
+    id: _requiredString(json, 'id'),
+    displayName: _requiredString(json, 'displayName'),
+    inviteUrl: Uri.parse(_requiredString(json, 'inviteUrl')),
+    status: FriendInviteStatus.values.byName(_requiredString(json, 'status')),
+    selections: _requiredList(json, 'selections')
+        .map(
+          (value) =>
+              FriendTimeSelection.fromJson(_objectMap(value, 'selection')),
+        )
+        .toList(growable: false),
+    submittedAtUtc: json['submittedAt'] == null
+        ? null
+        : DateTime.parse(json['submittedAt']! as String).toUtc(),
+    createdAtUtc: DateTime.parse(_requiredString(json, 'createdAt')).toUtc(),
+    updatedAtUtc: DateTime.parse(_requiredString(json, 'updatedAt')).toUtc(),
+  );
+}
+
+class FriendTimeSuggestion {
+  const FriendTimeSuggestion({
+    required this.startsAtUtc,
+    required this.endsAtUtc,
+    required this.peopleCount,
+  });
+
+  final DateTime startsAtUtc;
+  final DateTime endsAtUtc;
+  final int peopleCount;
+
+  factory FriendTimeSuggestion.fromJson(Map<String, Object?> json) =>
+      FriendTimeSuggestion(
+        startsAtUtc: DateTime.parse(_requiredString(json, 'startsAt')).toUtc(),
+        endsAtUtc: DateTime.parse(_requiredString(json, 'endsAt')).toUtc(),
+        peopleCount: _requiredInt(json, 'peopleCount'),
+      );
+}
+
+class FriendPollDetails {
+  const FriendPollDetails({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.timezoneId,
+    required this.status,
+    required this.version,
+    required this.ranges,
+    required this.invites,
+    required this.suggestions,
+    required this.createdAtUtc,
+    required this.updatedAtUtc,
+    this.closesAtUtc,
+    this.selectedStartsAtUtc,
+    this.selectedEndsAtUtc,
+  });
+
+  final String id;
+  final String title;
+  final String description;
+  final String timezoneId;
+  final SharePollStatus status;
+  final int version;
+  final List<SharePollSlot> ranges;
+  final List<FriendPollInvite> invites;
+  final List<FriendTimeSuggestion> suggestions;
+  final DateTime createdAtUtc;
+  final DateTime updatedAtUtc;
+  final DateTime? closesAtUtc;
+  final DateTime? selectedStartsAtUtc;
+  final DateTime? selectedEndsAtUtc;
+
+  factory FriendPollDetails.fromJson(Map<String, Object?> json) {
+    final poll = _requiredMap(json, 'poll');
+    return FriendPollDetails(
+      id: _requiredString(poll, 'id'),
+      title: _requiredString(poll, 'title'),
+      description: poll['description'] as String? ?? '',
+      timezoneId: _requiredString(poll, 'timezone'),
+      status: SharePollStatus.values.byName(_requiredString(poll, 'status')),
+      version: _requiredInt(poll, 'version'),
+      ranges: _requiredList(json, 'ranges')
+          .map((value) => SharePollSlot.fromJson(_objectMap(value, 'range')))
+          .toList(growable: false),
+      invites: _requiredList(json, 'invites')
+          .map(
+            (value) => FriendPollInvite.fromJson(_objectMap(value, 'invite')),
+          )
+          .toList(growable: false),
+      suggestions: _requiredList(json, 'suggestions')
+          .map(
+            (value) =>
+                FriendTimeSuggestion.fromJson(_objectMap(value, 'suggestion')),
+          )
+          .toList(growable: false),
+      closesAtUtc: _optionalDateTime(poll, 'closesAt'),
+      selectedStartsAtUtc: _optionalDateTime(poll, 'selectedStartsAt'),
+      selectedEndsAtUtc: _optionalDateTime(poll, 'selectedEndsAt'),
+      createdAtUtc: DateTime.parse(_requiredString(poll, 'createdAt')).toUtc(),
+      updatedAtUtc: DateTime.parse(_requiredString(poll, 'updatedAt')).toUtc(),
+    );
+  }
+}
+
 String _requiredString(Map<String, Object?> json, String key) {
   final value = json[key];
   if (value is! String || value.isEmpty) {
@@ -307,6 +476,11 @@ int _requiredInt(Map<String, Object?> json, String key) {
     throw FormatException('response field $key must be a number');
   }
   return value.toInt();
+}
+
+DateTime? _optionalDateTime(Map<String, Object?> json, String key) {
+  final value = json[key];
+  return value == null ? null : DateTime.parse(value as String).toUtc();
 }
 
 Map<String, Object?> _requiredMap(Map<String, Object?> json, String key) =>

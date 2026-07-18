@@ -36,3 +36,15 @@ test("configures AI plans with monthly token quotas only", async () => {
   assert.match(dashboard, /自然月/);
   assert.doesNotMatch(dashboard, /weeklyTokens|plusWeekly|proWeekly|周额度/);
 });
+
+test("keeps each friend poll link private and supports multiple time blocks", async () => {
+  const [app, selection] = await Promise.all([
+    readFile(new URL("../src/App.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/FriendSelectionPage.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(app, /\/select\//);
+  assert.match(selection, /\/api\/poll-invites\//);
+  assert.match(selection, /可单选，也可多选/);
+  assert.match(selection, /mergeBlocks/);
+  assert.doesNotMatch(selection, /participants|其他朋友/);
+});

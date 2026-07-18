@@ -26,8 +26,11 @@ func (s *Server) handlePolls(w http.ResponseWriter, r *http.Request) {
 		rows, err := s.db.QueryContext(r.Context(), `SELECT p.id, p.title, p.timezone, p.status, p.closes_at,
         p.version, p.created_at, p.updated_at,
         (SELECT COUNT(*) FROM share_slots slot_count WHERE slot_count.poll_id = p.id),
-        (SELECT COUNT(*) FROM share_participants participant_count WHERE participant_count.poll_id = p.id),
-        selected.id, selected.label, selected.starts_at, selected.ends_at
+        ((SELECT COUNT(*) FROM poll_friend_invites friend_count
+          WHERE friend_count.poll_id = p.id AND friend_count.status <> 'revoked') +
+         (SELECT COUNT(*) FROM poll_participants legacy_count WHERE legacy_count.poll_id = p.id)),
+        selected.id, selected.label, COALESCE(p.selected_starts_at, selected.starts_at),
+        COALESCE(p.selected_ends_at, selected.ends_at)
         FROM share_polls p
         LEFT JOIN share_slots selected ON selected.id = p.selected_slot_id AND selected.poll_id = p.id
         WHERE p.account_id = ? ORDER BY p.created_at DESC LIMIT 100`, identity.AccountID)
@@ -49,8 +52,12 @@ func (s *Server) handlePolls(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			var selectedSlot any
-			if selectedID.Valid && selectedStarts.Valid && selectedEnds.Valid {
-				selectedSlot = map[string]any{"id": selectedID.String, "label": selectedLabel.String,
+			if selectedStarts.Valid && selectedEnds.Valid {
+				resolvedID := selectedID.String
+				if resolvedID == "" {
+					resolvedID = "confirmed:" + id
+				}
+				selectedSlot = map[string]any{"id": resolvedID, "label": selectedLabel.String,
 					"startsAt": selectedStarts.Time, "endsAt": selectedEnds.Time}
 			}
 			polls = append(polls, map[string]any{"id": id, "title": title, "timezone": timezone,
@@ -73,11 +80,12 @@ func (s *Server) handlePolls(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		Title       string          `json:"title"`
-		Description string          `json:"description"`
-		Timezone    string          `json:"timezone"`
-		ClosesAt    *time.Time      `json:"closesAt"`
-		Slots       []pollSlotInput `json:"slots"`
+		Title            string          `json:"title"`
+		Description      string          `json:"description"`
+		Timezone         string          `json:"timezone"`
+		ClosesAt         *time.Time      `json:"closesAt"`
+		Slots            []pollSlotInput `json:"slots"`
+		ExclusiveInvites bool            `json:"exclusiveInvites"`
 	}
 	if err := decodeJSON(r, &input); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
@@ -85,7 +93,7 @@ func (s *Server) handlePolls(w http.ResponseWriter, r *http.Request) {
 	}
 	input.Title = strings.TrimSpace(input.Title)
 	input.Description = strings.TrimSpace(input.Description)
-	if len(input.Title) == 0 || len(input.Title) > 160 || len(input.Description) > 2000 || len(input.Slots) < 2 || len(input.Slots) > 30 {
+	if len(input.Title) == 0 || len(input.Title) > 160 || len(input.Description) > 2000 || len(input.Slots) < 1 || len(input.Slots) > 30 {
 		writeError(w, http.StatusBadRequest, "invalid_request", "投票内容无效")
 		return
 	}
@@ -93,20 +101,13 @@ func (s *Server) handlePolls(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "时区必须是有效的 IANA 时区")
 		return
 	}
-	seen := make(map[string]bool)
 	for index, slot := range input.Slots {
-		if slot.StartsAt.IsZero() || !slot.EndsAt.After(slot.StartsAt) || len(slot.Label) > 120 {
-			writeError(w, http.StatusBadRequest, "invalid_request", "候选时间无效")
-			return
-		}
-		key := slot.StartsAt.UTC().String() + slot.EndsAt.UTC().String()
-		if seen[key] {
-			writeError(w, http.StatusBadRequest, "invalid_request", "候选时间不能重复")
-			return
-		}
-		seen[key] = true
 		input.Slots[index].StartsAt = slot.StartsAt.UTC()
 		input.Slots[index].EndsAt = slot.EndsAt.UTC()
+	}
+	if err := validatePollTimeRanges(input.Slots, input.ClosesAt, time.Now().UTC()); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
 	}
 	pollID, err := security.RandomID()
 	if err != nil {
@@ -153,6 +154,12 @@ func (s *Server) handlePolls(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.audit(r.Context(), "app:"+identity.AccountID, "poll.create", "share_poll", pollID, "allowed", "low")
+	if input.ExclusiveInvites {
+		writeJSON(w, http.StatusCreated, map[string]any{"poll": map[string]any{
+			"id": pollID, "status": "open", "version": 1,
+		}})
+		return
+	}
 	writeJSON(w, http.StatusCreated, map[string]any{"poll": map[string]any{
 		"id": pollID, "publicToken": publicToken, "manageToken": manageToken,
 		"inviteUrl": s.cfg.PublicOrigin + "/poll/" + publicToken, "status": "open", "version": 1,

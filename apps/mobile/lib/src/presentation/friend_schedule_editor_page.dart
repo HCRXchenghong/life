@@ -12,10 +12,12 @@ class FriendScheduleEditorPage extends StatefulWidget {
   const FriendScheduleEditorPage({
     super.key,
     required this.source,
+    this.onEditSchedule,
     this.clock = DateTime.now,
   });
 
   final FriendScheduleCreationSource source;
+  final Future<bool> Function(String eventId)? onEditSchedule;
   final DateTime Function() clock;
 
   @override
@@ -57,10 +59,6 @@ class _FriendScheduleEditorPageState extends State<FriendScheduleEditorPage> {
       _showMessage('补充说明不能超过 2000 个字');
       return;
     }
-    if (_slots.length < 2) {
-      _showMessage('至少需要 2 个候选时间');
-      return;
-    }
     final now = widget.clock();
     if (!_closesAt.isAfter(now)) {
       _showMessage('截止时间必须晚于当前时间');
@@ -70,7 +68,7 @@ class _FriendScheduleEditorPageState extends State<FriendScheduleEditorPage> {
         .map((slot) => slot.startsAt)
         .reduce((left, right) => left.isBefore(right) ? left : right);
     if (!_closesAt.isBefore(earliestStart)) {
-      _showMessage('截止时间必须早于候选时间');
+      _showMessage('截止时间必须早于可选时间范围');
       return;
     }
 
@@ -92,10 +90,22 @@ class _FriendScheduleEditorPageState extends State<FriendScheduleEditorPage> {
             .toList(growable: false),
       );
       draft.validate();
+      while (mounted) {
+        final conflicts = await widget.source.findFriendScheduleConflicts(
+          draft.slots,
+        );
+        if (conflicts.isEmpty) break;
+        setState(() => _busy = false);
+        final eventId = await _showConflictDialog(conflicts);
+        if (!mounted || eventId == null) return;
+        final edit = widget.onEditSchedule;
+        if (edit == null || !await edit(eventId) || !mounted) return;
+        setState(() => _busy = true);
+      }
       await widget.source.createFriendSchedule(draft);
       if (mounted) Navigator.pop(context, true);
     } on ArgumentError {
-      if (mounted) _showMessage('候选时间或时区不可用，请检查后重试');
+      if (mounted) _showMessage('可选时间范围或时区不可用，请检查后重试');
     } on FriendScheduleListException catch (error) {
       if (mounted) _showMessage(error.message);
     } on Object {
@@ -130,8 +140,8 @@ class _FriendScheduleEditorPageState extends State<FriendScheduleEditorPage> {
       _showMessage('结束时间必须晚于开始时间');
       return;
     }
-    if (_isDuplicate(startsAt, endsAt, excluding: index)) {
-      _showMessage('候选时间不能重复');
+    if (_overlaps(startsAt, endsAt, excluding: index)) {
+      _showMessage('可选时间范围不能重叠');
       return;
     }
     setState(() => _slots[index] = _EditableSlot(startsAt, endsAt));
@@ -140,7 +150,7 @@ class _FriendScheduleEditorPageState extends State<FriendScheduleEditorPage> {
   Future<void> _addSlot() async {
     if (_busy) return;
     if (_slots.length >= 30) {
-      _showMessage('最多可添加 30 个候选时间');
+      _showMessage('最多可添加 30 个可选时间范围');
       return;
     }
     final last = _slots.last;
@@ -158,8 +168,8 @@ class _FriendScheduleEditorPageState extends State<FriendScheduleEditorPage> {
       minimum: startsAt.add(const Duration(minutes: 5)),
     );
     if (endsAt == null || !mounted) return;
-    if (_isDuplicate(startsAt, endsAt)) {
-      _showMessage('候选时间不能重复');
+    if (_overlaps(startsAt, endsAt)) {
+      _showMessage('可选时间范围不能重叠');
       return;
     }
     setState(() => _slots.add(_EditableSlot(startsAt, endsAt)));
@@ -167,14 +177,14 @@ class _FriendScheduleEditorPageState extends State<FriendScheduleEditorPage> {
 
   Future<void> _removeSlot(int index) async {
     if (_busy) return;
-    if (_slots.length <= 2) {
-      _showMessage('至少保留 2 个候选时间');
+    if (_slots.length <= 1) {
+      _showMessage('至少保留 1 个可选时间范围');
       return;
     }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('删除候选时间？'),
+        title: const Text('删除可选时间范围？'),
         content: const Text('删除后可以重新添加。'),
         actions: [
           TextButton(
@@ -264,14 +274,66 @@ class _FriendScheduleEditorPageState extends State<FriendScheduleEditorPage> {
     );
   }
 
-  bool _isDuplicate(DateTime startsAt, DateTime endsAt, {int? excluding}) {
+  bool _overlaps(DateTime startsAt, DateTime endsAt, {int? excluding}) {
     for (var index = 0; index < _slots.length; index++) {
       if (index == excluding) continue;
       final slot = _slots[index];
-      if (slot.startsAt == startsAt && slot.endsAt == endsAt) return true;
+      if (endsAt.isAfter(slot.startsAt) && startsAt.isBefore(slot.endsAt)) {
+        return true;
+      }
     }
     return false;
   }
+
+  Future<String?> _showConflictDialog(
+    List<FriendScheduleConflict> conflicts,
+  ) => showDialog<String>(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => AlertDialog(
+      title: const Text('发现日程冲突'),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 360, maxHeight: 330),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('以下日程与可选时间范围重叠，请选择要修改的日程，或返回调整范围。'),
+              const SizedBox(height: 12),
+              for (var index = 0; index < conflicts.length; index++) ...[
+                if (index > 0) const Divider(height: 1),
+                Builder(
+                  builder: (context) {
+                    final conflict = conflicts[index];
+                    return ListTile(
+                      key: Key('friend-schedule-conflict-${conflict.eventId}'),
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(conflict.eventTitle),
+                      subtitle: Text(
+                        '${_dateLabel(conflict.startsAtUtc.toLocal())} '
+                        '${_timeLabel(conflict.startsAtUtc.toLocal())} – '
+                        '${_timeLabel(conflict.endsAtUtc.toLocal())}',
+                      ),
+                      trailing: const Icon(Icons.arrow_forward_ios, size: 15),
+                      onTap: () => Navigator.pop(context, conflict.eventId),
+                    );
+                  },
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          key: const Key('friend-schedule-conflict-adjust-ranges'),
+          onPressed: () => Navigator.pop(context),
+          child: const Text('调整可选范围'),
+        ),
+      ],
+    ),
+  );
 
   DateTime _minimumPickerDate() {
     final now = widget.clock();
@@ -392,7 +454,7 @@ class _FriendScheduleEditorPageState extends State<FriendScheduleEditorPage> {
                   ],
                 ),
                 const SizedBox(height: 29),
-                const _SectionLabel('候选时间'),
+                const _SectionLabel('可选时间范围'),
                 const SizedBox(height: 11),
                 _FormCard(
                   children: [
@@ -573,7 +635,7 @@ class _AddCandidateRow extends StatelessWidget {
           Icon(Icons.add_circle_outline_rounded, color: _blue, size: 23),
           SizedBox(width: 8),
           Text(
-            '添加候选时间',
+            '添加可选时间范围',
             style: TextStyle(
               color: _blue,
               fontSize: 15,

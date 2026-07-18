@@ -17,7 +17,7 @@ class FriendScheduleListPage extends StatefulWidget {
 
   final FriendScheduleListSource source;
   final Future<bool> Function() onCreate;
-  final ValueChanged<ManagedSharePollSummary> onOpenPoll;
+  final Future<bool> Function(ManagedSharePollSummary poll) onOpenPoll;
 
   @override
   State<FriendScheduleListPage> createState() => _FriendScheduleListPageState();
@@ -61,6 +61,10 @@ class _FriendScheduleListPageState extends State<FriendScheduleListPage> {
     } finally {
       _creating = false;
     }
+  }
+
+  Future<void> _open(ManagedSharePollSummary poll) async {
+    if (await widget.onOpenPoll(poll)) await _load();
   }
 
   @override
@@ -166,7 +170,7 @@ class _FriendScheduleListPageState extends State<FriendScheduleListPage> {
               title: '进行中',
               sectionKey: const Key('friend-schedule-active-section'),
               polls: active,
-              onOpenPoll: widget.onOpenPoll,
+              onOpenPoll: (poll) => unawaited(_open(poll)),
             ),
             if (ended.isNotEmpty) const SizedBox(height: 29),
           ],
@@ -175,7 +179,7 @@ class _FriendScheduleListPageState extends State<FriendScheduleListPage> {
               title: '已结束',
               sectionKey: const Key('friend-schedule-ended-section'),
               polls: ended,
-              onOpenPoll: widget.onOpenPoll,
+              onOpenPoll: (poll) => unawaited(_open(poll)),
             ),
         ],
       ),
