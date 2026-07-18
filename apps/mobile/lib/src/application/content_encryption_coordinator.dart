@@ -107,11 +107,13 @@ class ContentEncryptionCoordinator
         local == LocalContentKeyStatus.pendingRecoveryRotation) {
       return const ContentEncryptionState(
         status: ContentEncryptionSetupStatus.enabled,
+        keyVersion: currentContentKeyVersion,
       );
     }
     if (local == LocalContentKeyStatus.pendingRecoveryConfirmation) {
       return const ContentEncryptionState(
         status: ContentEncryptionSetupStatus.recoveryPending,
+        keyVersion: currentContentKeyVersion,
       );
     }
     final envelope = await _authenticated(
@@ -121,6 +123,7 @@ class ContentEncryptionCoordinator
       status: envelope == null
           ? ContentEncryptionSetupStatus.notConfigured
           : ContentEncryptionSetupStatus.locked,
+      keyVersion: envelope?.keyVersion,
     );
   }
 

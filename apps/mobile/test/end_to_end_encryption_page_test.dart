@@ -97,6 +97,7 @@ void main() {
       status: ContentEncryptionSetupStatus.enabled,
     );
     var trustedDevicesOpened = false;
+    var contentMasterKeyOpened = false;
     var recoveryKeyOpened = false;
     await tester.pumpWidget(
       MaterialApp(
@@ -105,6 +106,7 @@ void main() {
           onRecoveryKeyReady: (_) async {},
           onOpenUnlock: () async {},
           onOpenTrustedDevices: () => trustedDevicesOpened = true,
+          onOpenContentMasterKey: () => contentMasterKeyOpened = true,
           onOpenRecoveryKeyManagement: () => recoveryKeyOpened = true,
         ),
       ),
@@ -121,6 +123,9 @@ void main() {
     expect(find.text('受信'), findsOneWidget);
     expect(find.text('加密保护在此设备上正常工作'), findsOneWidget);
     expect(find.byKey(const Key('e2ee-enable')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('e2ee-content-master-key-row')));
+    expect(contentMasterKeyOpened, isTrue);
 
     await tester.tap(find.byKey(const Key('e2ee-recovery-key-row')));
     expect(recoveryKeyOpened, isTrue);

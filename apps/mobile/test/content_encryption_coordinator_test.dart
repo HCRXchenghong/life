@@ -16,16 +16,20 @@ void main() {
     final transport = _FakeEnvelopeTransport();
     final coordinator = _coordinator(vault: vault, transport: transport);
 
-    expect(
-      (await coordinator.loadContentEncryptionState()).status,
-      ContentEncryptionSetupStatus.notConfigured,
-    );
+    final notConfigured = await coordinator.loadContentEncryptionState();
+    expect(notConfigured.status, ContentEncryptionSetupStatus.notConfigured);
+    expect(notConfigured.isUnlocked, isFalse);
+    expect(notConfigured.keyVersion, isNull);
     transport.envelope = _envelope();
-    expect(
-      (await coordinator.loadContentEncryptionState()).status,
-      ContentEncryptionSetupStatus.locked,
-    );
+    final locked = await coordinator.loadContentEncryptionState();
+    expect(locked.status, ContentEncryptionSetupStatus.locked);
+    expect(locked.isUnlocked, isFalse);
+    expect(locked.keyVersion, currentContentKeyVersion);
     vault.localStatus = LocalContentKeyStatus.ready;
+    final unlocked = await coordinator.loadContentEncryptionState();
+    expect(unlocked.status, ContentEncryptionSetupStatus.enabled);
+    expect(unlocked.isUnlocked, isTrue);
+    expect(unlocked.keyVersion, currentContentKeyVersion);
     expect(
       await coordinator.loadDataEncryptionStatus(),
       DataEncryptionStatus.unlocked,

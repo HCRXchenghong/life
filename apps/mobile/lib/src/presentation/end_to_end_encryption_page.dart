@@ -22,6 +22,7 @@ class EndToEndEncryptionPage extends StatefulWidget {
     this.approvalSource,
     this.onOpenDeviceApproval,
     this.onOpenTrustedDevices,
+    this.onOpenContentMasterKey,
     this.onOpenRecoveryKeyManagement,
   });
 
@@ -32,6 +33,7 @@ class EndToEndEncryptionPage extends StatefulWidget {
   final TrustedDeviceApprovalSource? approvalSource;
   final DeviceApprovalOpenCallback? onOpenDeviceApproval;
   final VoidCallback? onOpenTrustedDevices;
+  final VoidCallback? onOpenContentMasterKey;
   final VoidCallback? onOpenRecoveryKeyManagement;
 
   @override
@@ -183,6 +185,7 @@ class _EndToEndEncryptionPageState extends State<EndToEndEncryptionPage> {
                 pendingApproval: _pendingApproval != null,
                 onOpenApproval: _primaryAction,
                 onOpenTrustedDevices: widget.onOpenTrustedDevices,
+                onOpenContentMasterKey: widget.onOpenContentMasterKey,
                 onOpenRecoveryKeyManagement: widget.onOpenRecoveryKeyManagement,
               )
             : _EncryptionSetupBody(
@@ -202,6 +205,7 @@ class _EnabledEncryptionBody extends StatelessWidget {
     required this.pendingApproval,
     required this.onOpenApproval,
     this.onOpenTrustedDevices,
+    this.onOpenContentMasterKey,
     this.onOpenRecoveryKeyManagement,
   });
 
@@ -209,6 +213,7 @@ class _EnabledEncryptionBody extends StatelessWidget {
   final bool pendingApproval;
   final VoidCallback onOpenApproval;
   final VoidCallback? onOpenTrustedDevices;
+  final VoidCallback? onOpenContentMasterKey;
   final VoidCallback? onOpenRecoveryKeyManagement;
 
   @override
@@ -254,11 +259,13 @@ class _EnabledEncryptionBody extends StatelessWidget {
                 ),
                 child: Column(
                   children: [
-                    const _KeyRow(
+                    _KeyRow(
+                      key: const Key('e2ee-content-master-key-row'),
                       title: '内容主密钥',
                       subtitle: '仅保存在受信设备中',
                       value: '已保护',
                       showChevron: true,
+                      onTap: onOpenContentMasterKey,
                     ),
                     Padding(
                       padding: EdgeInsets.symmetric(horizontal: 17),

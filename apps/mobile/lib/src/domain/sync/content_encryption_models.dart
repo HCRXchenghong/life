@@ -8,10 +8,19 @@ enum ContentEncryptionSetupStatus {
 }
 
 class ContentEncryptionState {
-  const ContentEncryptionState({required this.status});
+  const ContentEncryptionState({required this.status, this.keyVersion})
+    : assert(keyVersion == null || keyVersion > 0);
 
   final ContentEncryptionSetupStatus status;
+  final int? keyVersion;
+
+  bool get isUnlocked =>
+      status == ContentEncryptionSetupStatus.enabled ||
+      status == ContentEncryptionSetupStatus.recoveryPending;
 }
+
+const currentContentKeyVersion = 1;
+const contentEncryptionAlgorithmLabel = 'AES-256-GCM';
 
 class RecoveryKeyDraft {
   const RecoveryKeyDraft._({required this.encodedKey});

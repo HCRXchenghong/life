@@ -18,6 +18,7 @@ import 'src/domain/sync/content_encryption_models.dart';
 import 'src/presentation/app_navigation.dart';
 import 'src/presentation/account_security_page.dart';
 import 'src/presentation/assistant_page.dart';
+import 'src/presentation/content_master_key_page.dart';
 import 'src/presentation/data_sync_page.dart';
 import 'src/presentation/device_approval_waiting_page.dart';
 import 'src/presentation/device_approval_success_page.dart';
@@ -368,6 +369,7 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
               : null,
           onOpenDeviceApproval: _openTrustedDeviceApproval,
           onOpenTrustedDevices: () => unawaited(_openTrustedDevices()),
+          onOpenContentMasterKey: () => unawaited(_openContentMasterKey()),
           onOpenRecoveryKeyManagement: () =>
               unawaited(_openRecoveryKeyManagement()),
         ),
@@ -383,6 +385,17 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
       ),
     ),
   );
+
+  Future<void> _openContentMasterKey() async {
+    final runtime = _runtime;
+    if (runtime is! ContentEncryptionSource) return;
+    await _navigatorKey.currentState!.push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            ContentMasterKeyPage(source: runtime as ContentEncryptionSource),
+      ),
+    );
+  }
 
   Future<void> _openRecoveryKey(RecoveryKeyDraft draft) async {
     final runtime = _runtime;
