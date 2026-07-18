@@ -16,7 +16,7 @@ class FriendScheduleListPage extends StatefulWidget {
   });
 
   final FriendScheduleListSource source;
-  final VoidCallback onCreate;
+  final Future<bool> Function() onCreate;
   final ValueChanged<ManagedSharePollSummary> onOpenPoll;
 
   @override
@@ -27,6 +27,7 @@ class _FriendScheduleListPageState extends State<FriendScheduleListPage> {
   List<ManagedSharePollSummary>? _polls;
   String? _error;
   int _loadGeneration = 0;
+  var _creating = false;
 
   @override
   void initState() {
@@ -49,6 +50,16 @@ class _FriendScheduleListPageState extends State<FriendScheduleListPage> {
     } on Object {
       if (!mounted || generation != _loadGeneration) return;
       setState(() => _error = '暂时无法加载，请稍后重试');
+    }
+  }
+
+  Future<void> _create() async {
+    if (_creating) return;
+    _creating = true;
+    try {
+      if (await widget.onCreate()) await _load();
+    } finally {
+      _creating = false;
     }
   }
 
@@ -84,7 +95,7 @@ class _FriendScheduleListPageState extends State<FriendScheduleListPage> {
         actions: [
           TextButton(
             key: const Key('friend-schedule-new'),
-            onPressed: widget.onCreate,
+            onPressed: () => unawaited(_create()),
             style: TextButton.styleFrom(
               foregroundColor: const Color(0xFF3370FF),
               textStyle: const TextStyle(
@@ -129,7 +140,7 @@ class _FriendScheduleListPageState extends State<FriendScheduleListPage> {
         actionLabel: '新建一个',
         actionKey: const Key('friend-schedule-empty-new'),
         onRefresh: _load,
-        onAction: widget.onCreate,
+        onAction: () => unawaited(_create()),
       );
     }
 

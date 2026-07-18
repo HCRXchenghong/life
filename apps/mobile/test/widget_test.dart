@@ -222,6 +222,15 @@ void main() {
 
     expect(find.byKey(const Key('friend-schedule-title')), findsOneWidget);
     expect(find.text('还没有选时间'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('friend-schedule-empty-new')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('friend-schedule-editor-title')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('friend-schedule-editor-back')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('friend-schedule-back')));
     await tester.pumpAndSettle();
 
@@ -573,7 +582,7 @@ class _FakeScheduleRuntime
         ContentEncryptionSource,
         TrustedDeviceApprovalSource,
         ScheduleEditorSource,
-        FriendScheduleListSource {
+        FriendScheduleCreationSource {
   _FakeScheduleRuntime({
     ContentEncryptionSetupStatus encryptionStatus =
         ContentEncryptionSetupStatus.notConfigured,
@@ -595,6 +604,12 @@ class _FakeScheduleRuntime
 
   @override
   Future<List<ManagedSharePollSummary>> loadFriendSchedules() async => const [];
+
+  @override
+  Future<String> loadFriendScheduleTimezoneId() async => 'Asia/Shanghai';
+
+  @override
+  Future<void> createFriendSchedule(CreateSharePollDraft draft) async {}
 
   @override
   Future<ScheduleEditorDefaults> loadScheduleEditorDefaults() async =>

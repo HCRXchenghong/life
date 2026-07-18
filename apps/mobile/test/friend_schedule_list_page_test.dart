@@ -33,7 +33,10 @@ void main() {
               ),
             ),
           ]),
-          onCreate: () => createCalls++,
+          onCreate: () async {
+            createCalls++;
+            return false;
+          },
           onOpenPoll: (poll) => opened = poll,
         ),
       ),
@@ -63,7 +66,7 @@ void main() {
       MaterialApp(
         home: FriendScheduleListPage(
           source: source,
-          onCreate: () {},
+          onCreate: () async => false,
           onOpenPoll: (_) {},
         ),
       ),

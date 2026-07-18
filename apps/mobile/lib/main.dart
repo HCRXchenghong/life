@@ -28,6 +28,7 @@ import 'src/presentation/data_sync_page.dart';
 import 'src/presentation/device_approval_waiting_page.dart';
 import 'src/presentation/device_approval_success_page.dart';
 import 'src/presentation/end_to_end_encryption_page.dart';
+import 'src/presentation/friend_schedule_editor_page.dart';
 import 'src/presentation/friend_schedule_list_page.dart';
 import 'src/presentation/hosts_page.dart';
 import 'src/presentation/login_page.dart';
@@ -635,11 +636,31 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
       MaterialPageRoute<void>(
         builder: (_) => FriendScheduleListPage(
           source: runtime as FriendScheduleListSource,
-          onCreate: () => _showPendingPage('新建选时间'),
+          onCreate: runtime is FriendScheduleCreationSource
+              ? () => _openFriendScheduleEditor(
+                  runtime as FriendScheduleCreationSource,
+                )
+              : () async {
+                  _showPendingPage('新建选时间');
+                  return false;
+                },
           onOpenPoll: (_) => _showPendingPage('选时间详情'),
         ),
       ),
     );
+  }
+
+  Future<bool> _openFriendScheduleEditor(
+    FriendScheduleCreationSource source,
+  ) async {
+    final created = await _navigatorKey.currentState!.push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => FriendScheduleEditorPage(source: source),
+      ),
+    );
+    if (created != true) return false;
+    _showMessage('选时间已创建');
+    return true;
   }
 
   Widget _authenticatedHome() {
@@ -759,7 +780,7 @@ class DaylinkRuntime
         DeviceApprovalRecoverySource,
         ScheduleEditorSource,
         ScheduleDetailSource,
-        FriendScheduleListSource {
+        FriendScheduleCreationSource {
   DaylinkRuntime._(
     this.services,
     this._assistantSettings,
@@ -799,7 +820,12 @@ class DaylinkRuntime
         apiBaseUri: apiBaseUri,
         accessToken: accessToken,
       ),
-      DaylinkFriendSchedules(apiBaseUri: apiBaseUri, accessToken: accessToken),
+      DaylinkFriendSchedules(
+        services: services,
+        apiBaseUri: apiBaseUri,
+        accessToken: accessToken,
+        refreshAccessToken: refreshAccessToken,
+      ),
     );
     services.monitorSession(
       apiBaseUri: apiBaseUri,
@@ -837,6 +863,14 @@ class DaylinkRuntime
   @override
   Future<List<ManagedSharePollSummary>> loadFriendSchedules() =>
       _friendSchedules.loadFriendSchedules();
+
+  @override
+  Future<String> loadFriendScheduleTimezoneId() =>
+      _friendSchedules.loadFriendScheduleTimezoneId();
+
+  @override
+  Future<void> createFriendSchedule(CreateSharePollDraft draft) =>
+      _friendSchedules.createFriendSchedule(draft);
 
   @override
   Future<ScheduleEditorDefaults> loadScheduleEditorDefaults() =>
