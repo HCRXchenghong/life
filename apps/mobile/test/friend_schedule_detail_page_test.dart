@@ -106,6 +106,7 @@ class _FakePosterRenderer extends PosterTemplateRenderer {
   Future<Uint8List> render({
     required PosterTemplate template,
     required PosterRenderData data,
+    String? fontFamily,
   }) async => base64Decode(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
   );

@@ -52,7 +52,11 @@ func (s *Server) handleAdminBootstrap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if status == "pending" && (!expires.Valid || expires.Time.Before(time.Now().UTC())) {
-		_, _ = s.db.ExecContext(r.Context(), "DELETE FROM admin_accounts WHERE status = 'pending' AND enrollment_expires_at <= UTC_TIMESTAMP(6)")
+		_ = restoreExpiredAdminEnrollment(r.Context(), s.db)
+		writeJSON(w, http.StatusOK, map[string]any{"state": "uninitialized"})
+		return
+	}
+	if status == "disabled" {
 		writeJSON(w, http.StatusOK, map[string]any{"state": "uninitialized"})
 		return
 	}
@@ -116,16 +120,6 @@ func (s *Server) handleAdminSetup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "setup_failed", "暂时无法创建管理员")
 		return
 	}
-	id, err := security.RandomID()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "setup_failed", "暂时无法创建管理员")
-		return
-	}
-	ciphertext, nonce, err := security.Encrypt(s.cfg.AuthMasterKey, "admin-totp:"+id, []byte(secret))
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "setup_failed", "暂时无法创建管理员")
-		return
-	}
 	enrollmentToken, err := security.RandomToken("dle_")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "setup_failed", "暂时无法创建管理员")
@@ -138,22 +132,50 @@ func (s *Server) handleAdminSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(r.Context(), "DELETE FROM admin_accounts WHERE status = 'pending' AND enrollment_expires_at <= UTC_TIMESTAMP(6)"); err != nil {
+	if err := restoreExpiredAdminEnrollment(r.Context(), tx); err != nil {
 		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "数据库暂时不可用")
 		return
 	}
-	var count int
-	if err := tx.QueryRowContext(r.Context(), "SELECT COUNT(*) FROM admin_accounts").Scan(&count); err != nil || count != 0 {
+	var id, status string
+	err = tx.QueryRowContext(r.Context(), "SELECT id, status FROM admin_accounts LIMIT 1 FOR UPDATE").Scan(&id, &status)
+	isReset := err == nil && status == "disabled"
+	if errors.Is(err, sql.ErrNoRows) {
+		id, err = security.RandomID()
+	} else if err == nil && status != "disabled" {
+		err = errors.New("admin setup unavailable")
+	}
+	if err != nil {
 		writeError(w, http.StatusConflict, "setup_unavailable", "后台已初始化或正在初始化")
 		return
 	}
-	_, err = tx.ExecContext(r.Context(), `INSERT INTO admin_accounts
+	ciphertext, nonce, err := security.Encrypt(s.cfg.AuthMasterKey, "admin-totp:"+id, []byte(secret))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "setup_failed", "暂时无法创建管理员")
+		return
+	}
+	if isReset {
+		_, err = tx.ExecContext(r.Context(), `UPDATE admin_accounts SET username = ?, username_canonical = ?,
+        password_algorithm = ?, password_hash = ?, password_salt = ?, password_iterations = ?,
+        totp_secret_ciphertext = ?, totp_secret_nonce = ?, totp_last_counter = NULL, status = 'pending',
+        enrollment_token_hash = ?, enrollment_expires_at = ?, failed_login_count = 0, locked_until = NULL,
+        last_login_at = NULL, password_changed_at = ? WHERE id = ? AND status = 'disabled'`,
+			username, strings.ToLower(username), digest.Algorithm, digest.Hash, digest.Salt, digest.Iterations,
+			ciphertext, nonce, security.SHA256(enrollmentToken), now.Add(enrollmentTTL), now, id)
+		if err == nil {
+			_, err = tx.ExecContext(r.Context(), "DELETE FROM admin_totp_rebindings WHERE admin_id = ?", id)
+		}
+		if err == nil {
+			_, err = tx.ExecContext(r.Context(), "UPDATE admin_sessions SET revoked_at = UTC_TIMESTAMP(6) WHERE admin_id = ? AND revoked_at IS NULL", id)
+		}
+	} else {
+		_, err = tx.ExecContext(r.Context(), `INSERT INTO admin_accounts
       (id, singleton_key, username, username_canonical, password_algorithm, password_hash,
        password_salt, password_iterations, totp_secret_ciphertext, totp_secret_nonce,
        status, enrollment_token_hash, enrollment_expires_at, password_changed_at)
       VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`, id, username,
-		strings.ToLower(username), digest.Algorithm, digest.Hash, digest.Salt, digest.Iterations,
-		ciphertext, nonce, security.SHA256(enrollmentToken), now.Add(enrollmentTTL), now)
+			strings.ToLower(username), digest.Algorithm, digest.Hash, digest.Salt, digest.Iterations,
+			ciphertext, nonce, security.SHA256(enrollmentToken), now.Add(enrollmentTTL), now)
+	}
 	if err != nil {
 		writeError(w, http.StatusConflict, "setup_unavailable", "后台已初始化或正在初始化")
 		return
@@ -162,7 +184,11 @@ func (s *Server) handleAdminSetup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "数据库暂时不可用")
 		return
 	}
-	s.audit(r.Context(), "system:first-admin-setup", "admin.enrollment.started", "admin_account", id, "allowed", "critical")
+	action := "admin.enrollment.started"
+	if isReset {
+		action = "admin.enrollment.reset_started"
+	}
+	s.audit(r.Context(), "system:first-admin-setup", action, "admin_account", id, "allowed", "critical")
 	s.setPrivateCookie(w, r, enrollmentCookie, enrollmentToken, enrollmentTTL)
 	writeJSON(w, http.StatusCreated, map[string]any{"next": "/admin/setup/2fa"})
 }
@@ -176,10 +202,36 @@ func (s *Server) handleAdminSetupCancel(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusUnauthorized, "enrollment_expired", "初始化会话已失效")
 		return
 	}
-	_, _ = s.db.ExecContext(r.Context(), "DELETE FROM admin_accounts WHERE id = ? AND status = 'pending'", account.ID)
+	result, err := s.db.ExecContext(r.Context(), `UPDATE admin_accounts SET status = 'disabled',
+      enrollment_token_hash = NULL, enrollment_expires_at = NULL
+      WHERE id = ? AND status = 'pending' AND activated_at IS NOT NULL`, account.ID)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "database_unavailable", "数据库暂时不可用")
+		return
+	}
+	if changed, _ := result.RowsAffected(); changed == 0 {
+		_, _ = s.db.ExecContext(r.Context(), "DELETE FROM admin_accounts WHERE id = ? AND status = 'pending'", account.ID)
+	}
 	s.clearCookie(w, r, enrollmentCookie)
 	s.audit(r.Context(), "system:first-admin-setup", "admin.enrollment.cancelled", "admin_account", account.ID, "allowed", "critical")
 	writeJSON(w, http.StatusOK, map[string]any{"next": "/admin"})
+}
+
+type enrollmentResetExecutor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func restoreExpiredAdminEnrollment(ctx context.Context, executor enrollmentResetExecutor) error {
+	if _, err := executor.ExecContext(ctx, `UPDATE admin_accounts SET status = 'disabled',
+      enrollment_token_hash = NULL, enrollment_expires_at = NULL
+      WHERE status = 'pending' AND activated_at IS NOT NULL
+      AND (enrollment_expires_at IS NULL OR enrollment_expires_at <= UTC_TIMESTAMP(6))`); err != nil {
+		return err
+	}
+	_, err := executor.ExecContext(ctx, `DELETE FROM admin_accounts
+      WHERE status = 'pending' AND activated_at IS NULL
+      AND (enrollment_expires_at IS NULL OR enrollment_expires_at <= UTC_TIMESTAMP(6))`)
+	return err
 }
 
 func (s *Server) handleAdminEnrollment(w http.ResponseWriter, r *http.Request) {

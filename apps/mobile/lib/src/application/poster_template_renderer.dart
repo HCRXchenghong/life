@@ -12,6 +12,7 @@ class PosterTemplateRenderer {
   Future<Uint8List> render({
     required PosterTemplate template,
     required PosterRenderData data,
+    String? fontFamily,
   }) async {
     final schema = template.schema;
     final recorder = ui.PictureRecorder();
@@ -26,7 +27,12 @@ class PosterTemplateRenderer {
         case PosterLayerType.shape:
           _paintShape(canvas, layer);
         case PosterLayerType.text:
-          _paintText(canvas, layer, data.bindings[layer.binding] ?? '');
+          _paintText(
+            canvas,
+            layer,
+            data.bindings[layer.binding] ?? '',
+            fontFamily,
+          );
         case PosterLayerType.qr:
           _paintQR(canvas, layer, data.inviteUrl.toString());
       }
@@ -61,7 +67,12 @@ class PosterTemplateRenderer {
     if (layer.strokeWidth > 0) canvas.drawRect(rect, stroke);
   }
 
-  void _paintText(Canvas canvas, PosterLayer layer, String value) {
+  void _paintText(
+    Canvas canvas,
+    PosterLayer layer,
+    String value,
+    String? fontFamily,
+  ) {
     var fontSize = layer.fontSize;
     late TextPainter painter;
     while (true) {
@@ -70,6 +81,7 @@ class PosterTemplateRenderer {
           text: value,
           style: TextStyle(
             color: _color(layer.color),
+            fontFamily: fontFamily,
             fontSize: fontSize,
             fontWeight: FontWeight
                 .values[(layer.fontWeight ~/ 100 - 1).clamp(0, 8).toInt()],
