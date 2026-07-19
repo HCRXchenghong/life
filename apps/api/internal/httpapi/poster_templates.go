@@ -21,6 +21,8 @@ const (
 	builtInPosterTemplateCode = "minimal-blue"
 	builtInSunsetTemplateID   = "00000000-0000-4000-8000-000000000012"
 	builtInSunsetTemplateCode = "city-sunset"
+	builtInMistyTemplateID    = "00000000-0000-4000-8000-000000000015"
+	builtInMistyTemplateCode  = "misty-ticket"
 )
 
 const builtInMinimalPosterSchema = `{
@@ -63,6 +65,35 @@ const builtInSunsetPosterSchema = `{
   ]
 }`
 
+const builtInMistyPosterSchema = `{
+  "schemaVersion": 1,
+  "canvas": {"width": 1080, "height": 1440, "backgroundColor": "#EFEDF4"},
+  "layers": [
+    {"type":"shape","shape":"rect","x":60,"y":60,"width":900,"height":1320,"fillColor":"#FFFFFF","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"shape","shape":"rect","x":850,"y":60,"width":110,"height":1320,"fillColor":"#6754D9","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"shape","shape":"ellipse","x":760,"y":86,"width":150,"height":150,"fillColor":"#DCD6FF","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"shape","shape":"ellipse","x":825,"y":290,"width":50,"height":50,"fillColor":"#EFEDF4","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"shape","shape":"ellipse","x":825,"y":450,"width":50,"height":50,"fillColor":"#EFEDF4","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"shape","shape":"ellipse","x":825,"y":610,"width":50,"height":50,"fillColor":"#EFEDF4","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"shape","shape":"ellipse","x":825,"y":770,"width":50,"height":50,"fillColor":"#EFEDF4","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"shape","shape":"ellipse","x":825,"y":930,"width":50,"height":50,"fillColor":"#EFEDF4","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"shape","shape":"ellipse","x":825,"y":1090,"width":50,"height":50,"fillColor":"#EFEDF4","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"shape","shape":"rect","x":100,"y":700,"width":650,"height":130,"fillColor":"#F0ECFF","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"shape","shape":"rect","x":470,"y":1120,"width":74,"height":6,"fillColor":"#6754D9","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"text","binding":"brandName","x":100,"y":98,"width":360,"height":60,"fontSize":37,"minFontSize":31,"maxLines":1,"fontWeight":700,"color":"#6754D9","align":"start"},
+    {"type":"text","binding":"salutation","x":100,"y":220,"width":680,"height":220,"fontSize":70,"minFontSize":43,"maxLines":3,"fontWeight":700,"color":"#1E2030","align":"start"},
+    {"type":"shape","shape":"rect","x":100,"y":475,"width":620,"height":2,"fillColor":"#D9D6E2","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"text","binding":"activityTitle","x":100,"y":525,"width":650,"height":72,"fontSize":44,"minFontSize":34,"maxLines":1,"fontWeight":700,"color":"#1E2030","align":"start"},
+    {"type":"text","binding":"activityDescription","x":100,"y":610,"width":660,"height":78,"fontSize":27,"minFontSize":22,"maxLines":2,"fontWeight":400,"color":"#6B6E7D","align":"start"},
+    {"type":"text","binding":"dateRange","x":126,"y":724,"width":590,"height":44,"fontSize":29,"minFontSize":24,"maxLines":1,"fontWeight":600,"color":"#3E326F","align":"start"},
+    {"type":"text","binding":"deadline","x":126,"y":778,"width":500,"height":38,"fontSize":23,"minFontSize":19,"maxLines":1,"fontWeight":400,"color":"#777487","align":"start"},
+    {"type":"qr","binding":"inviteUrl","x":100,"y":920,"width":310,"height":310,"quietZone":28},
+    {"type":"text","binding":"qrLabel","x":470,"y":938,"width":300,"height":50,"fontSize":30,"minFontSize":24,"maxLines":1,"fontWeight":700,"color":"#6754D9","align":"start"},
+    {"type":"text","binding":"privateHint","x":470,"y":1003,"width":320,"height":42,"fontSize":22,"minFontSize":19,"maxLines":1,"fontWeight":400,"color":"#6B6E7D","align":"start"},
+    {"type":"text","binding":"organizerName","x":470,"y":1160,"width":320,"height":52,"fontSize":30,"minFontSize":24,"maxLines":1,"fontWeight":600,"color":"#1E2030","align":"start"}
+  ]
+}`
+
 type builtInPosterDefinition struct {
 	id     string
 	code   string
@@ -73,6 +104,7 @@ type builtInPosterDefinition struct {
 var builtInPosterDefinitions = []builtInPosterDefinition{
 	{id: builtInPosterTemplateID, code: builtInPosterTemplateCode, name: "极简蓝白", schema: builtInMinimalPosterSchema},
 	{id: builtInSunsetTemplateID, code: builtInSunsetTemplateCode, name: "城市日落", schema: builtInSunsetPosterSchema},
+	{id: builtInMistyTemplateID, code: builtInMistyTemplateCode, name: "雾紫票根", schema: builtInMistyPosterSchema},
 }
 
 var posterColorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{8}$|^#[0-9A-Fa-f]{6}$`)
