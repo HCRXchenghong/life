@@ -170,7 +170,8 @@ class _FriendScheduleDetailPageState extends State<FriendScheduleDetailPage> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
       builder: (_) => FriendInvitePosterSheet(
-        template: template,
+        templates: templates,
+        initialTemplate: template,
         data: data,
         invite: invite,
         renderer: widget.posterRenderer,

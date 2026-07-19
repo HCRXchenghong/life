@@ -6,12 +6,14 @@ import (
 )
 
 func TestBuiltInPosterTemplateIsValid(t *testing.T) {
-	canonical, schema, err := validatePosterTemplateSchema(json.RawMessage(builtInMinimalPosterSchema))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(canonical) == 0 || schema.Canvas.Width != 1080 || schema.Canvas.Height != 1440 {
-		t.Fatal("built-in poster template has an unexpected canvas")
+	for _, definition := range builtInPosterDefinitions {
+		canonical, schema, err := validatePosterTemplateSchema(json.RawMessage(definition.schema))
+		if err != nil {
+			t.Fatalf("%s: %v", definition.code, err)
+		}
+		if len(canonical) == 0 || schema.Canvas.Width != 1080 || schema.Canvas.Height != 1440 {
+			t.Fatalf("%s has an unexpected canvas", definition.code)
+		}
 	}
 }
 

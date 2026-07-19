@@ -19,6 +19,8 @@ import (
 const (
 	builtInPosterTemplateID   = "00000000-0000-4000-8000-000000000011"
 	builtInPosterTemplateCode = "minimal-blue"
+	builtInSunsetTemplateID   = "00000000-0000-4000-8000-000000000012"
+	builtInSunsetTemplateCode = "city-sunset"
 )
 
 const builtInMinimalPosterSchema = `{
@@ -38,6 +40,40 @@ const builtInMinimalPosterSchema = `{
     {"type":"text","binding":"privateHint","x":96,"y":1310,"width":520,"height":42,"fontSize":24,"minFontSize":20,"maxLines":1,"fontWeight":400,"color":"#646A73","align":"start"}
   ]
 }`
+
+const builtInSunsetPosterSchema = `{
+  "schemaVersion": 1,
+  "canvas": {"width": 1080, "height": 1440, "backgroundColor": "#FFF9F4"},
+  "layers": [
+    {"type":"shape","shape":"ellipse","x":790,"y":-150,"width":470,"height":470,"fillColor":"#FFB37B","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"shape","shape":"ellipse","x":-220,"y":470,"width":500,"height":500,"fillColor":"#FFDCC8","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"shape","shape":"rect","x":0,"y":930,"width":1080,"height":510,"fillColor":"#191B22","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"shape","shape":"ellipse","x":870,"y":1160,"width":300,"height":300,"fillColor":"#FF7849","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"text","binding":"brandName","x":84,"y":72,"width":420,"height":64,"fontSize":38,"minFontSize":32,"maxLines":1,"fontWeight":700,"color":"#F06432","align":"start"},
+    {"type":"text","binding":"salutation","x":84,"y":208,"width":780,"height":270,"fontSize":78,"minFontSize":46,"maxLines":3,"fontWeight":700,"color":"#202229","align":"start"},
+    {"type":"shape","shape":"rect","x":84,"y":555,"width":12,"height":270,"fillColor":"#F06432","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"text","binding":"activityTitle","x":132,"y":555,"width":720,"height":76,"fontSize":46,"minFontSize":34,"maxLines":1,"fontWeight":700,"color":"#202229","align":"start"},
+    {"type":"text","binding":"activityDescription","x":132,"y":650,"width":720,"height":92,"fontSize":29,"minFontSize":23,"maxLines":2,"fontWeight":400,"color":"#64666D","align":"start"},
+    {"type":"text","binding":"dateRange","x":132,"y":772,"width":720,"height":48,"fontSize":31,"minFontSize":25,"maxLines":1,"fontWeight":600,"color":"#202229","align":"start"},
+    {"type":"text","binding":"deadline","x":132,"y":830,"width":720,"height":42,"fontSize":25,"minFontSize":21,"maxLines":1,"fontWeight":400,"color":"#777980","align":"start"},
+    {"type":"qr","binding":"inviteUrl","x":84,"y":1020,"width":300,"height":300,"quietZone":28},
+    {"type":"text","binding":"qrLabel","x":438,"y":1042,"width":480,"height":54,"fontSize":32,"minFontSize":25,"maxLines":1,"fontWeight":700,"color":"#FFB37B","align":"start"},
+    {"type":"text","binding":"privateHint","x":438,"y":1110,"width":500,"height":44,"fontSize":24,"minFontSize":20,"maxLines":1,"fontWeight":400,"color":"#D5D6DA","align":"start"},
+    {"type":"text","binding":"organizerName","x":438,"y":1230,"width":340,"height":54,"fontSize":30,"minFontSize":24,"maxLines":1,"fontWeight":600,"color":"#FFFFFF","align":"start"}
+  ]
+}`
+
+type builtInPosterDefinition struct {
+	id     string
+	code   string
+	name   string
+	schema string
+}
+
+var builtInPosterDefinitions = []builtInPosterDefinition{
+	{id: builtInPosterTemplateID, code: builtInPosterTemplateCode, name: "极简蓝白", schema: builtInMinimalPosterSchema},
+	{id: builtInSunsetTemplateID, code: builtInSunsetTemplateCode, name: "城市日落", schema: builtInSunsetPosterSchema},
+}
 
 var posterColorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{8}$|^#[0-9A-Fa-f]{6}$`)
 
@@ -101,10 +137,14 @@ type adminPosterTemplateUpdateInput struct {
 func (s *Server) ensureBuiltInPosterTemplate() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	canonical, _, err := validatePosterTemplateSchema(json.RawMessage(builtInMinimalPosterSchema))
-	if err != nil {
-		s.logger.Error("built-in poster template is invalid")
-		return
+	canonicals := make([]json.RawMessage, len(builtInPosterDefinitions))
+	for index, definition := range builtInPosterDefinitions {
+		canonical, _, err := validatePosterTemplateSchema(json.RawMessage(definition.schema))
+		if err != nil {
+			s.logger.Error("built-in poster template is invalid", "template", definition.code)
+			return
+		}
+		canonicals[index] = canonical
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -112,16 +152,19 @@ func (s *Server) ensureBuiltInPosterTemplate() {
 		return
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err = tx.ExecContext(ctx, `INSERT INTO poster_templates
+	for index, definition := range builtInPosterDefinitions {
+		canonical := canonicals[index]
+		if _, err = tx.ExecContext(ctx, `INSERT INTO poster_templates
       (id, code, name, status, current_version, built_in) VALUES (?, ?, ?, 'published', 1, TRUE)
-      ON DUPLICATE KEY UPDATE built_in = TRUE`, builtInPosterTemplateID, builtInPosterTemplateCode, "极简蓝白"); err != nil {
-		s.logger.Warn("unable to initialize built-in poster template")
-		return
-	}
-	if _, err = tx.ExecContext(ctx, `INSERT IGNORE INTO poster_template_versions
-      (template_id, version, schema_json, schema_hash) VALUES (?, 1, ?, ?)`, builtInPosterTemplateID, canonical, security.SHA256(string(canonical))); err != nil {
-		s.logger.Warn("unable to initialize built-in poster template")
-		return
+			ON DUPLICATE KEY UPDATE built_in = TRUE`, definition.id, definition.code, definition.name); err != nil {
+			s.logger.Warn("unable to initialize built-in poster template")
+			return
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT IGNORE INTO poster_template_versions
+      (template_id, version, schema_json, schema_hash) VALUES (?, 1, ?, ?)`, definition.id, canonical, security.SHA256(string(canonical))); err != nil {
+			s.logger.Warn("unable to initialize built-in poster template")
+			return
+		}
 	}
 	if err = tx.Commit(); err != nil {
 		s.logger.Warn("unable to initialize built-in poster template")

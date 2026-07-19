@@ -11,14 +11,16 @@ import '../domain/share/share_poll_models.dart';
 class FriendInvitePosterSheet extends StatefulWidget {
   const FriendInvitePosterSheet({
     super.key,
-    required this.template,
+    required this.templates,
+    required this.initialTemplate,
     required this.data,
     required this.invite,
     this.renderer = const PosterTemplateRenderer(),
     this.shareService = const PosterShareService(),
   });
 
-  final PosterTemplate template;
+  final List<PosterTemplate> templates;
+  final PosterTemplate initialTemplate;
   final PosterRenderData data;
   final FriendPollInvite invite;
   final PosterTemplateRenderer renderer;
@@ -30,27 +32,46 @@ class FriendInvitePosterSheet extends StatefulWidget {
 }
 
 class _FriendInvitePosterSheetState extends State<FriendInvitePosterSheet> {
+  late PosterTemplate _template;
   Uint8List? _bytes;
   String? _error;
   var _busy = false;
   var _saved = false;
+  var _renderGeneration = 0;
 
   @override
   void initState() {
     super.initState();
+    _template = widget.initialTemplate;
     unawaited(_render());
   }
 
   Future<void> _render() async {
+    final generation = ++_renderGeneration;
     try {
       final bytes = await widget.renderer.render(
-        template: widget.template,
+        template: _template,
         data: widget.data,
       );
-      if (mounted) setState(() => _bytes = bytes);
+      if (mounted && generation == _renderGeneration) {
+        setState(() => _bytes = bytes);
+      }
     } on Object {
-      if (mounted) setState(() => _error = '海报生成失败，请稍后重试');
+      if (mounted && generation == _renderGeneration) {
+        setState(() => _error = '海报生成失败，请稍后重试');
+      }
     }
+  }
+
+  void _selectTemplate(PosterTemplate template) {
+    if (template.id == _template.id || _busy) return;
+    setState(() {
+      _template = template;
+      _bytes = null;
+      _error = null;
+      _saved = false;
+    });
+    unawaited(_render());
   }
 
   Future<void> _save() async {
@@ -173,7 +194,7 @@ class _FriendInvitePosterSheetState extends State<FriendInvitePosterSheet> {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        '${widget.template.name} · 每位朋友二维码不同',
+                        '${_template.name} · 每位朋友二维码不同',
                         style: const TextStyle(
                           color: Color(0xFF8F959E),
                           fontSize: 13,
@@ -189,6 +210,29 @@ class _FriendInvitePosterSheetState extends State<FriendInvitePosterSheet> {
                 ),
               ],
             ),
+            if (widget.templates.length > 1) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 38,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: widget.templates.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    final template = widget.templates[index];
+                    return ChoiceChip(
+                      key: Key('friend-poster-template-${template.code}'),
+                      label: Text(template.name),
+                      selected: template.id == _template.id,
+                      showCheckmark: false,
+                      onSelected: _busy
+                          ? null
+                          : (_) => _selectTemplate(template),
+                    );
+                  },
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             Container(
               constraints: const BoxConstraints(maxHeight: 500),
@@ -199,8 +243,8 @@ class _FriendInvitePosterSheetState extends State<FriendInvitePosterSheet> {
               padding: const EdgeInsets.all(12),
               child: AspectRatio(
                 aspectRatio:
-                    widget.template.schema.canvas.width /
-                    widget.template.schema.canvas.height,
+                    _template.schema.canvas.width /
+                    _template.schema.canvas.height,
                 child: _poster(),
               ),
             ),

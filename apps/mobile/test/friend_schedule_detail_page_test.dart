@@ -85,6 +85,13 @@ void main() {
     expect(source.createdName, '小林');
     expect(find.text('3/50'), findsOneWidget);
     expect(find.text('小林的邀请海报'), findsOneWidget);
+    expect(find.text('极简蓝白 · 每位朋友二维码不同'), findsOneWidget);
+
+    await tester.tap(
+      find.byKey(const Key('friend-poster-template-city-sunset')),
+    );
+    await tester.pump();
+    expect(find.text('城市日落 · 每位朋友二维码不同'), findsOneWidget);
 
     await tester.tap(find.byTooltip('关闭'));
     await tester.pumpAndSettle();
@@ -126,6 +133,13 @@ class _FakeDetailsSource implements FriendScheduleDetailSource {
   @override
   Future<List<PosterTemplate>> loadPosterTemplates() async => [
     PosterTemplate.fromJson(_posterTemplateJson()),
+    PosterTemplate.fromJson(
+      _posterTemplateJson(
+        id: 'poster-sunset',
+        code: 'city-sunset',
+        name: '城市日落',
+      ),
+    ),
   ];
 
   @override
@@ -257,10 +271,14 @@ FriendPollInvite _invite(
   updatedAtUtc: DateTime.utc(2026, 7, 18),
 );
 
-Map<String, Object?> _posterTemplateJson() => {
-  'id': 'poster-minimal',
-  'code': 'minimal-blue',
-  'name': '极简蓝白',
+Map<String, Object?> _posterTemplateJson({
+  String id = 'poster-minimal',
+  String code = 'minimal-blue',
+  String name = '极简蓝白',
+}) => {
+  'id': id,
+  'code': code,
+  'name': name,
   'status': 'published',
   'version': 1,
   'builtIn': true,
