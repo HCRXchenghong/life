@@ -17,12 +17,14 @@ import (
 )
 
 const (
-	builtInPosterTemplateID   = "00000000-0000-4000-8000-000000000011"
-	builtInPosterTemplateCode = "minimal-blue"
-	builtInSunsetTemplateID   = "00000000-0000-4000-8000-000000000012"
-	builtInSunsetTemplateCode = "city-sunset"
-	builtInMistyTemplateID    = "00000000-0000-4000-8000-000000000015"
-	builtInMistyTemplateCode  = "misty-ticket"
+	builtInPosterTemplateID      = "00000000-0000-4000-8000-000000000011"
+	builtInPosterTemplateCode    = "minimal-blue"
+	builtInSunsetTemplateID      = "00000000-0000-4000-8000-000000000012"
+	builtInSunsetTemplateCode    = "city-sunset"
+	builtInMistyTemplateID       = "00000000-0000-4000-8000-000000000015"
+	builtInMistyTemplateCode     = "misty-ticket"
+	builtInCreamRoseTemplateID   = "00000000-0000-4000-8000-000000000016"
+	builtInCreamRoseTemplateCode = "cream-rose"
 )
 
 const builtInMinimalPosterSchema = `{
@@ -94,6 +96,29 @@ const builtInMistyPosterSchema = `{
   ]
 }`
 
+const builtInCreamRosePosterSchema = `{
+  "schemaVersion": 1,
+  "canvas": {"width": 1080, "height": 1440, "backgroundColor": "#FBF6F2"},
+  "layers": [
+    {"type":"shape","shape":"rect","x":0,"y":0,"width":390,"height":1440,"fillColor":"#4A202B","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"shape","shape":"ellipse","x":790,"y":-150,"width":450,"height":450,"fillColor":"#E5A0B1","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"shape","shape":"ellipse","x":-150,"y":270,"width":360,"height":360,"fillColor":"#D7617A","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"shape","shape":"rect","x":450,"y":470,"width":480,"height":2,"fillColor":"#D9C5C9","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"shape","shape":"rect","x":450,"y":690,"width":540,"height":150,"fillColor":"#F3DDE3","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"shape","shape":"rect","x":450,"y":960,"width":78,"height":6,"fillColor":"#D7617A","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"text","binding":"brandName","x":49,"y":61,"width":280,"height":58,"fontSize":38,"minFontSize":32,"maxLines":1,"fontWeight":700,"color":"#FFFFFF","align":"start"},
+    {"type":"text","binding":"salutation","x":450,"y":188,"width":560,"height":170,"fontSize":64,"minFontSize":42,"maxLines":3,"fontWeight":700,"color":"#4A202B","align":"start"},
+    {"type":"text","binding":"activityTitle","x":450,"y":528,"width":540,"height":68,"fontSize":43,"minFontSize":33,"maxLines":1,"fontWeight":700,"color":"#4A202B","align":"start"},
+    {"type":"text","binding":"activityDescription","x":450,"y":609,"width":540,"height":70,"fontSize":27,"minFontSize":22,"maxLines":2,"fontWeight":400,"color":"#846C72","align":"start"},
+    {"type":"text","binding":"dateRange","x":475,"y":717,"width":490,"height":46,"fontSize":29,"minFontSize":24,"maxLines":1,"fontWeight":600,"color":"#743447","align":"start"},
+    {"type":"text","binding":"deadline","x":475,"y":778,"width":450,"height":40,"fontSize":23,"minFontSize":19,"maxLines":1,"fontWeight":400,"color":"#92757C","align":"start"},
+    {"type":"text","binding":"organizerName","x":450,"y":1005,"width":420,"height":52,"fontSize":30,"minFontSize":24,"maxLines":1,"fontWeight":600,"color":"#4A202B","align":"start"},
+    {"type":"qr","binding":"inviteUrl","x":60,"y":950,"width":270,"height":270,"quietZone":24},
+    {"type":"text","binding":"qrLabel","x":47,"y":1254,"width":300,"height":48,"fontSize":28,"minFontSize":23,"maxLines":1,"fontWeight":700,"color":"#F3DDE3","align":"start"},
+    {"type":"text","binding":"privateHint","x":35,"y":1320,"width":330,"height":40,"fontSize":22,"minFontSize":18,"maxLines":1,"fontWeight":600,"color":"#FFFFFF","align":"start"}
+  ]
+}`
+
 type builtInPosterDefinition struct {
 	id     string
 	code   string
@@ -105,6 +130,7 @@ var builtInPosterDefinitions = []builtInPosterDefinition{
 	{id: builtInPosterTemplateID, code: builtInPosterTemplateCode, name: "极简蓝白", schema: builtInMinimalPosterSchema},
 	{id: builtInSunsetTemplateID, code: builtInSunsetTemplateCode, name: "城市日落", schema: builtInSunsetPosterSchema},
 	{id: builtInMistyTemplateID, code: builtInMistyTemplateCode, name: "雾紫票根", schema: builtInMistyPosterSchema},
+	{id: builtInCreamRoseTemplateID, code: builtInCreamRoseTemplateCode, name: "奶油玫瑰", schema: builtInCreamRosePosterSchema},
 }
 
 var posterColorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{8}$|^#[0-9A-Fa-f]{6}$`)
