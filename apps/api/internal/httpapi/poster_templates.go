@@ -25,6 +25,8 @@ const (
 	builtInMistyTemplateCode     = "misty-ticket"
 	builtInCreamRoseTemplateID   = "00000000-0000-4000-8000-000000000016"
 	builtInCreamRoseTemplateCode = "cream-rose"
+	builtInSeaBreezeTemplateID   = "00000000-0000-4000-8000-000000000017"
+	builtInSeaBreezeTemplateCode = "sea-breeze"
 )
 
 const builtInMinimalPosterSchema = `{
@@ -119,6 +121,29 @@ const builtInCreamRosePosterSchema = `{
   ]
 }`
 
+const builtInSeaBreezePosterSchema = `{
+  "schemaVersion": 1,
+  "canvas": {"width": 1080, "height": 1440, "backgroundColor": "#F7F1E7"},
+  "layers": [
+    {"type":"shape","shape":"rect","x":0,"y":0,"width":1080,"height":550,"fillColor":"#174A48","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"shape","shape":"ellipse","x":790,"y":-155,"width":445,"height":445,"fillColor":"#F18A6B","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"shape","shape":"ellipse","x":-105,"y":400,"width":245,"height":245,"fillColor":"#E8C25D","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"shape","shape":"rect","x":80,"y":798,"width":570,"height":150,"fillColor":"#DDE9E1","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"shape","shape":"rect","x":80,"y":1110,"width":80,"height":7,"fillColor":"#F18A6B","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"shape","shape":"rect","x":80,"y":1320,"width":920,"height":2,"fillColor":"#CFC6B9","strokeColor":"#00000000","strokeWidth":0},
+    {"type":"text","binding":"brandName","x":80,"y":64,"width":360,"height":60,"fontSize":39,"minFontSize":32,"maxLines":1,"fontWeight":700,"color":"#FFFFFF","align":"start"},
+    {"type":"text","binding":"salutation","x":80,"y":205,"width":650,"height":220,"fontSize":76,"minFontSize":44,"maxLines":3,"fontWeight":700,"color":"#FFFFFF","align":"start"},
+    {"type":"text","binding":"activityTitle","x":80,"y":620,"width":620,"height":72,"fontSize":45,"minFontSize":34,"maxLines":1,"fontWeight":700,"color":"#193F3D","align":"start"},
+    {"type":"text","binding":"activityDescription","x":80,"y":705,"width":650,"height":72,"fontSize":27,"minFontSize":22,"maxLines":2,"fontWeight":400,"color":"#68706D","align":"start"},
+    {"type":"text","binding":"dateRange","x":108,"y":828,"width":510,"height":44,"fontSize":29,"minFontSize":24,"maxLines":1,"fontWeight":600,"color":"#174A48","align":"start"},
+    {"type":"text","binding":"deadline","x":108,"y":888,"width":460,"height":38,"fontSize":23,"minFontSize":19,"maxLines":1,"fontWeight":400,"color":"#657671","align":"start"},
+    {"type":"qr","binding":"inviteUrl","x":730,"y":650,"width":270,"height":270,"quietZone":24},
+    {"type":"text","binding":"qrLabel","x":690,"y":955,"width":350,"height":48,"fontSize":28,"minFontSize":23,"maxLines":1,"fontWeight":700,"color":"#F18A6B","align":"center"},
+    {"type":"text","binding":"organizerName","x":80,"y":1150,"width":420,"height":52,"fontSize":31,"minFontSize":24,"maxLines":1,"fontWeight":600,"color":"#193F3D","align":"start"},
+    {"type":"text","binding":"privateHint","x":80,"y":1350,"width":560,"height":38,"fontSize":22,"minFontSize":18,"maxLines":1,"fontWeight":400,"color":"#77736C","align":"start"}
+  ]
+}`
+
 type builtInPosterDefinition struct {
 	id     string
 	code   string
@@ -131,6 +156,7 @@ var builtInPosterDefinitions = []builtInPosterDefinition{
 	{id: builtInSunsetTemplateID, code: builtInSunsetTemplateCode, name: "城市日落", schema: builtInSunsetPosterSchema},
 	{id: builtInMistyTemplateID, code: builtInMistyTemplateCode, name: "雾紫票根", schema: builtInMistyPosterSchema},
 	{id: builtInCreamRoseTemplateID, code: builtInCreamRoseTemplateCode, name: "奶油玫瑰", schema: builtInCreamRosePosterSchema},
+	{id: builtInSeaBreezeTemplateID, code: builtInSeaBreezeTemplateCode, name: "海风青橙", schema: builtInSeaBreezePosterSchema},
 }
 
 var posterColorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{8}$|^#[0-9A-Fa-f]{6}$`)
