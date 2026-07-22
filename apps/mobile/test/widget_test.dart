@@ -213,7 +213,7 @@ void main() {
 
     expect(find.byKey(const Key('toolbox-title')), findsOneWidget);
     expect(find.text('好友选时间'), findsOneWidget);
-    expect(find.text('AI 生图'), findsOneWidget);
+    expect(find.text('AI 生图'), findsNothing);
     expect(find.text('Word 文档'), findsOneWidget);
     expect(find.text('表格与演示'), findsOneWidget);
 

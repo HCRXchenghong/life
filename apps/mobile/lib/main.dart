@@ -13,6 +13,7 @@ import 'src/data/app_session_monitor.dart';
 import 'src/data/operations_repository.dart';
 import 'src/data/schedule_repository.dart';
 import 'src/domain/ai/ai_models.dart';
+import 'src/domain/ai/assistant_image_models.dart';
 import 'src/domain/notifications/notification_settings.dart';
 import 'src/domain/schedule/schedule_detail_models.dart';
 import 'src/domain/schedule/schedule_editor_models.dart';
@@ -621,7 +622,6 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
     }
     final name = switch (tool) {
       ToolboxTool.friendSchedule => throw StateError('handled above'),
-      ToolboxTool.imageGeneration => 'AI 生图',
       ToolboxTool.wordDocument => 'Word 文档',
       ToolboxTool.spreadsheetPresentation => '表格与演示',
     };
@@ -734,14 +734,19 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
       }
       if (_selectedDestination == AppDestination.assistant) {
         return AssistantPage(
+          key: ValueKey<String>('assistant-${_session!.accountId}'),
           settings: runtime is AssistantSettingsSource
               ? runtime as AssistantSettingsSource
+              : null,
+          images: runtime is AssistantImageGenerationSource
+              ? runtime as AssistantImageGenerationSource
               : null,
           onDestinationSelected: _selectDestination,
           onOpenHistory: () => _showPendingPage('对话历史'),
           onNewConversation: () => _showPendingPage('新对话'),
           onOpenMore: () => _showPendingPage('助手更多设置'),
-          onAddAttachment: () => _showPendingPage('添加附件'),
+          onAddAttachment: () => _showPendingPage('选择图片'),
+          onAddFile: () => _showPendingPage('选择文件'),
           onVoiceInput: () => _showPendingPage('语音输入'),
           onSubmit: (_) async => _showPendingPage('安全审批与对话结果'),
           onMessage: _showMessage,
@@ -810,6 +815,7 @@ class DaylinkRuntime
         ScheduleAwareRuntime,
         HostAwareRuntime,
         AssistantSettingsSource,
+        AssistantImageGenerationSource,
         AccountEntitlementSource,
         NotificationSettingsSource,
         DataSyncSource,
@@ -893,6 +899,21 @@ class DaylinkRuntime
     model: model,
     reasoningEffort: reasoningEffort,
   );
+
+  @override
+  Future<AssistantGeneratedImage> generateAssistantImage({
+    required String prompt,
+    required AssistantImageSize size,
+    required AssistantImageQuality quality,
+  }) => _assistantSettings.generateAssistantImage(
+    prompt: prompt,
+    size: size,
+    quality: quality,
+  );
+
+  @override
+  void cancelAssistantImageGeneration() =>
+      _assistantSettings.cancelAssistantImageGeneration();
 
   @override
   Future<AiEntitlement> loadAccountEntitlement() =>
@@ -1062,6 +1083,7 @@ class DaylinkRuntime
   Future<void> _forceSignOut(String reason) async {
     if (_signedOut) return;
     _signedOut = true;
+    _assistantSettings.cancelAssistantImageGeneration();
     await services.close();
     if (!_forcedSignOutController.isClosed) {
       _forcedSignOutController.add(reason);
@@ -1076,6 +1098,7 @@ class DaylinkRuntime
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
+    _assistantSettings.cancelAssistantImageGeneration();
     await services.close();
     await _forcedSignOutController.close();
   }

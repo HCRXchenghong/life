@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:daylink_mobile/src/data/ai_gateway_client.dart';
 import 'package:daylink_mobile/src/domain/ai/ai_models.dart';
+import 'package:daylink_mobile/src/domain/ai/assistant_image_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -118,6 +119,54 @@ void main() {
     expect(remote.reasoningEffort, AiReasoningEffort.xhigh);
     expect(requests.last.method, 'POST');
     expect(requests.last.body, '{}');
+    client.close();
+  });
+
+  test('generates a validated PNG through the authenticated gateway', () async {
+    final httpClient = MockClient((request) async {
+      expect(request.url.path, '/api/assistant/images');
+      expect(request.method, 'POST');
+      expect(request.headers['authorization'], 'Bearer dlka_app-access');
+      expect(jsonDecode(request.body), {
+        'providerId': 'provider-1',
+        'prompt': '一只蓝色的小鸟',
+        'n': 1,
+        'size': '1536x1024',
+        'quality': 'high',
+        'output_format': 'png',
+      });
+      return http.Response(
+        jsonEncode({
+          'created': 1,
+          'data': [
+            {
+              'b64_json': base64Encode(const [137, 80, 78, 71, 13, 10, 26, 10]),
+              'revised_prompt': '一只在天空飞翔的蓝色小鸟',
+            },
+          ],
+        }),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    });
+    final client = AiGatewayClient(
+      apiBaseUri: Uri.parse('https://daylink.example/api/'),
+      mobileToken: 'dlka_app-access',
+      httpClient: httpClient,
+    );
+
+    final image = await client.generateImage(
+      providerId: 'provider-1',
+      prompt: ' 一只蓝色的小鸟 ',
+      size: AssistantImageSize.landscape,
+      quality: AssistantImageQuality.high,
+    );
+
+    expect(image.prompt, '一只蓝色的小鸟');
+    expect(image.size, AssistantImageSize.landscape);
+    expect(image.quality, AssistantImageQuality.high);
+    expect(image.revisedPrompt, '一只在天空飞翔的蓝色小鸟');
+    expect(image.bytes.sublist(0, 4), [137, 80, 78, 71]);
     client.close();
   });
 }

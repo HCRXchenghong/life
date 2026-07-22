@@ -1,5 +1,9 @@
+import 'dart:convert';
+
+import 'package:daylink_mobile/src/application/assistant_image_actions.dart';
 import 'package:daylink_mobile/src/application/assistant_settings.dart';
 import 'package:daylink_mobile/src/domain/ai/ai_models.dart';
+import 'package:daylink_mobile/src/domain/ai/assistant_image_models.dart';
 import 'package:daylink_mobile/src/presentation/app_navigation.dart';
 import 'package:daylink_mobile/src/presentation/assistant_page.dart';
 import 'package:flutter/material.dart';
@@ -101,6 +105,11 @@ void main() {
     await tester.tap(find.byKey(const Key('assistant-new-conversation')));
     await tester.tap(find.byKey(const Key('assistant-more')));
     await tester.tap(find.byKey(const Key('assistant-add')));
+    await tester.pumpAndSettle();
+    expect(find.text('添加到对话'), findsOneWidget);
+    expect(find.text('生成图片'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('assistant-add-image')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('assistant-microphone')));
     expect(actions, ['history', 'new', 'more', 'attachment', 'voice']);
 
@@ -117,6 +126,64 @@ void main() {
     await tester.tap(find.byKey(const Key('nav-schedule')));
     await tester.tap(find.byKey(const Key('nav-toolbox')));
     expect(destinations, [AppDestination.schedule, AppDestination.toolbox]);
+  });
+
+  testWidgets('generates, saves and shares an image inside the conversation', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(430, 932));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final images = _FakeImageSource();
+    final actions = _FakeImageActions();
+    final messages = <String>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AssistantPage(
+          settings: _FakeAssistantSettings(),
+          images: images,
+          imageActions: actions,
+          onDestinationSelected: (_) {},
+          onOpenHistory: () {},
+          onNewConversation: () {},
+          onOpenMore: () {},
+          onAddAttachment: () {},
+          onVoiceInput: () {},
+          onSubmit: (_) async {},
+          onMessage: messages.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('assistant-add')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('assistant-generate-image')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('assistant-image-mode')), findsOneWidget);
+    expect(find.text('描述要生成的图片'), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const Key('assistant-input')),
+      '一张蓝色的极简日程海报',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('assistant-primary-action')));
+    await tester.pumpAndSettle();
+
+    expect(images.lastPrompt, '一张蓝色的极简日程海报');
+    expect(find.byKey(const Key('assistant-generated-image')), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('assistant-save-image')));
+    await tester.tap(find.byKey(const Key('assistant-save-image')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('assistant-share-image')));
+    await tester.tap(find.byKey(const Key('assistant-share-image')));
+    await tester.pumpAndSettle();
+
+    expect(actions.saved, 1);
+    expect(actions.shared, 1);
+    expect(messages, contains('图片已保存到相册'));
+    expect(tester.takeException(), isNull);
   });
 }
 
@@ -141,4 +208,44 @@ class _FakeAssistantSettings implements AssistantSettingsSource {
     lastModel = model;
     lastEffort = reasoningEffort;
   }
+}
+
+class _FakeImageSource implements AssistantImageGenerationSource {
+  String? lastPrompt;
+  var cancelled = false;
+
+  @override
+  void cancelAssistantImageGeneration() => cancelled = true;
+
+  @override
+  Future<AssistantGeneratedImage> generateAssistantImage({
+    required String prompt,
+    required AssistantImageSize size,
+    required AssistantImageQuality quality,
+  }) async {
+    lastPrompt = prompt;
+    return AssistantGeneratedImage(
+      bytes: base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      ),
+      prompt: prompt,
+      size: size,
+      quality: quality,
+      createdAt: DateTime.utc(2026, 7, 22),
+    );
+  }
+}
+
+class _FakeImageActions implements AssistantImageActionSource {
+  var saved = 0;
+  var shared = 0;
+
+  @override
+  Future<void> saveToGallery(AssistantGeneratedImage image) async => saved++;
+
+  @override
+  Future<void> share(
+    AssistantGeneratedImage image, {
+    required Rect sharePositionOrigin,
+  }) async => shared++;
 }

@@ -22,8 +22,7 @@ void main() {
     expect(find.text('常用工具'), findsOneWidget);
     expect(find.text('好友选时间'), findsOneWidget);
     expect(find.text('发链接，一起定时间'), findsOneWidget);
-    expect(find.text('AI 生图'), findsOneWidget);
-    expect(find.text('描述想法，生成图片'), findsOneWidget);
+    expect(find.text('AI 生图'), findsNothing);
     expect(find.text('Word 文档'), findsOneWidget);
     expect(find.text('生成并保存文档'), findsOneWidget);
     expect(find.text('表格与演示'), findsOneWidget);
@@ -59,7 +58,6 @@ void main() {
 
     for (final key in const [
       Key('tool-friend-schedule'),
-      Key('tool-image-generation'),
       Key('tool-word-document'),
       Key('tool-spreadsheet-presentation'),
     ]) {

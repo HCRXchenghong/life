@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../application/assistant_image_actions.dart';
 import '../application/assistant_settings.dart';
+import '../data/ai_gateway_client.dart';
 import '../domain/ai/ai_models.dart';
+import '../domain/ai/assistant_image_models.dart';
 import 'app_navigation.dart';
 
 class AssistantPage extends StatefulWidget {
@@ -17,6 +20,9 @@ class AssistantPage extends StatefulWidget {
     required this.onSubmit,
     required this.onMessage,
     this.settings,
+    this.images,
+    this.imageActions = const AssistantImageActions(),
+    this.onAddFile,
   });
 
   final ValueChanged<AppDestination> onDestinationSelected;
@@ -28,6 +34,9 @@ class AssistantPage extends StatefulWidget {
   final Future<void> Function(String input) onSubmit;
   final ValueChanged<String> onMessage;
   final AssistantSettingsSource? settings;
+  final AssistantImageGenerationSource? images;
+  final AssistantImageActionSource imageActions;
+  final VoidCallback? onAddFile;
 
   @override
   State<AssistantPage> createState() => _AssistantPageState();
@@ -43,6 +52,12 @@ class _AssistantPageState extends State<AssistantPage> {
   var _reasoningEffort = AiReasoningEffort.high;
   var _savingPreferences = false;
   var _submitting = false;
+  var _imageMode = false;
+  var _generationEpoch = 0;
+  int? _activeImageTurn;
+  AssistantImageSize _imageSize = AssistantImageSize.square;
+  AssistantImageQuality _imageQuality = AssistantImageQuality.medium;
+  final List<_ImageConversationTurn> _imageTurns = [];
 
   @override
   void initState() {
@@ -134,6 +149,10 @@ class _AssistantPageState extends State<AssistantPage> {
   Future<void> _submit() async {
     final input = _inputController.text.trim();
     if (input.isEmpty || _submitting) return;
+    if (_imageMode) {
+      await _generateImage(input);
+      return;
+    }
     setState(() => _submitting = true);
     try {
       await widget.onSubmit(input);
@@ -142,8 +161,125 @@ class _AssistantPageState extends State<AssistantPage> {
     }
   }
 
+  Future<void> _showAddTools() async {
+    final action = await showModalBottomSheet<_AssistantAddAction>(
+      context: context,
+      useSafeArea: true,
+      showDragHandle: false,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: const Color(0x99000000),
+      builder: (_) => const _AssistantAddSheet(),
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case _AssistantAddAction.image:
+        widget.onAddAttachment();
+      case _AssistantAddAction.file:
+        (widget.onAddFile ?? widget.onAddAttachment)();
+      case _AssistantAddAction.generateImage:
+        if (widget.images == null) {
+          widget.onMessage('当前账号暂时无法使用 AI 生图');
+          return;
+        }
+        setState(() => _imageMode = true);
+    }
+  }
+
+  Future<void> _generateImage(String prompt) async {
+    final source = widget.images;
+    if (source == null) {
+      widget.onMessage('当前账号暂时无法使用 AI 生图');
+      return;
+    }
+    final request = ++_generationEpoch;
+    final turnIndex = _imageTurns.length;
+    _inputController.clear();
+    setState(() {
+      _submitting = true;
+      _activeImageTurn = turnIndex;
+      _imageTurns.add(_ImageConversationTurn(prompt: prompt));
+    });
+    try {
+      final image = await source.generateAssistantImage(
+        prompt: prompt,
+        size: _imageSize,
+        quality: _imageQuality,
+      );
+      if (!mounted || request != _generationEpoch) return;
+      setState(() {
+        _imageTurns[turnIndex] = _ImageConversationTurn(
+          prompt: prompt,
+          image: image,
+        );
+      });
+    } on Object catch (error) {
+      if (!mounted || request != _generationEpoch) return;
+      final message = _friendlyImageError(error);
+      setState(() {
+        _imageTurns[turnIndex] = _ImageConversationTurn(
+          prompt: prompt,
+          error: message,
+        );
+      });
+      widget.onMessage(message);
+    } finally {
+      if (mounted && request == _generationEpoch) {
+        setState(() {
+          _submitting = false;
+          _activeImageTurn = null;
+        });
+      }
+    }
+  }
+
+  void _cancelImageGeneration() {
+    final turnIndex = _activeImageTurn;
+    _generationEpoch++;
+    widget.images?.cancelAssistantImageGeneration();
+    setState(() {
+      _submitting = false;
+      _activeImageTurn = null;
+      if (turnIndex != null && turnIndex < _imageTurns.length) {
+        final turn = _imageTurns[turnIndex];
+        _imageTurns[turnIndex] = _ImageConversationTurn(
+          prompt: turn.prompt,
+          error: '已取消生成',
+        );
+      }
+    });
+    widget.onMessage('已取消生成');
+  }
+
+  Future<void> _saveImage(AssistantGeneratedImage image) async {
+    try {
+      await widget.imageActions.saveToGallery(image);
+      if (mounted) widget.onMessage('图片已保存到相册');
+    } on Object {
+      if (mounted) widget.onMessage('保存失败，请检查相册权限后重试');
+    }
+  }
+
+  Future<void> _shareImage(
+    BuildContext context,
+    AssistantGeneratedImage image,
+  ) async {
+    final renderObject = context.findRenderObject();
+    final origin = renderObject is RenderBox
+        ? renderObject.localToGlobal(Offset.zero) & renderObject.size
+        : const Rect.fromLTWH(0, 0, 1, 1);
+    try {
+      await widget.imageActions.share(image, sharePositionOrigin: origin);
+    } on Object {
+      if (mounted) widget.onMessage('分享失败，请稍后重试');
+    }
+  }
+
   @override
   void dispose() {
+    if (_submitting && _imageMode) {
+      widget.images?.cancelAssistantImageGeneration();
+    }
     _inputController
       ..removeListener(_refreshInput)
       ..dispose();
@@ -174,21 +310,31 @@ class _AssistantPageState extends State<AssistantPage> {
                       onOpenMore: widget.onOpenMore,
                     ),
                   ),
-                  const Expanded(
-                    child: Align(
-                      alignment: Alignment(0, -0.05),
-                      child: Text(
-                        '有什么可以帮忙的？',
-                        key: Key('assistant-greeting'),
-                        style: TextStyle(
-                          color: Color(0xFF1F2329),
-                          fontSize: 25,
-                          height: 1.25,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: -0.3,
-                        ),
-                      ),
-                    ),
+                  Expanded(
+                    child: _imageTurns.isEmpty
+                        ? const Align(
+                            alignment: Alignment(0, -0.05),
+                            child: Text(
+                              '有什么可以帮忙的？',
+                              key: Key('assistant-greeting'),
+                              style: TextStyle(
+                                color: Color(0xFF1F2329),
+                                fontSize: 25,
+                                height: 1.25,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: -0.3,
+                              ),
+                            ),
+                          )
+                        : _ImageConversation(
+                            turns: _imageTurns,
+                            onSave: _saveImage,
+                            onShare: _shareImage,
+                            onRegenerate: (image) {
+                              setState(() => _imageMode = true);
+                              _generateImage(image.prompt);
+                            },
+                          ),
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(23, 0, 23, 13),
@@ -196,21 +342,42 @@ class _AssistantPageState extends State<AssistantPage> {
                       alignment: Alignment.centerLeft,
                       child: Wrap(
                         spacing: 9,
-                        children: [
-                          _ModelChip(
-                            models: _models,
-                            label: _modelPinned && _selectedModel != null
-                                ? _selectedModel!
-                                : '自动选择',
-                            enabled: !_savingPreferences,
-                            onSelected: _selectModel,
-                          ),
-                          _ReasoningChip(
-                            value: _reasoningEffort,
-                            enabled: !_savingPreferences,
-                            onSelected: _selectReasoning,
-                          ),
-                        ],
+                        children: _imageMode
+                            ? [
+                                _ImageModeChip(
+                                  onClose: _submitting
+                                      ? null
+                                      : () =>
+                                            setState(() => _imageMode = false),
+                                ),
+                                _ImageSizeChip(
+                                  value: _imageSize,
+                                  enabled: !_submitting,
+                                  onSelected: (value) =>
+                                      setState(() => _imageSize = value),
+                                ),
+                                _ImageQualityChip(
+                                  value: _imageQuality,
+                                  enabled: !_submitting,
+                                  onSelected: (value) =>
+                                      setState(() => _imageQuality = value),
+                                ),
+                              ]
+                            : [
+                                _ModelChip(
+                                  models: _models,
+                                  label: _modelPinned && _selectedModel != null
+                                      ? _selectedModel!
+                                      : '自动选择',
+                                  enabled: !_savingPreferences,
+                                  onSelected: _selectModel,
+                                ),
+                                _ReasoningChip(
+                                  value: _reasoningEffort,
+                                  enabled: !_savingPreferences,
+                                  onSelected: _selectReasoning,
+                                ),
+                              ],
                       ),
                     ),
                   ),
@@ -219,9 +386,11 @@ class _AssistantPageState extends State<AssistantPage> {
                     child: _Composer(
                       controller: _inputController,
                       submitting: _submitting,
-                      onAddAttachment: widget.onAddAttachment,
+                      imageMode: _imageMode,
+                      onAddAttachment: _showAddTools,
                       onVoiceInput: widget.onVoiceInput,
                       onSubmit: _submit,
+                      onCancel: _cancelImageGeneration,
                     ),
                   ),
                 ],
@@ -524,16 +693,20 @@ class _Composer extends StatelessWidget {
   const _Composer({
     required this.controller,
     required this.submitting,
+    required this.imageMode,
     required this.onAddAttachment,
     required this.onVoiceInput,
     required this.onSubmit,
+    required this.onCancel,
   });
 
   final TextEditingController controller;
   final bool submitting;
+  final bool imageMode;
   final VoidCallback onAddAttachment;
   final VoidCallback onVoiceInput;
   final VoidCallback onSubmit;
+  final VoidCallback onCancel;
 
   @override
   Widget build(BuildContext context) {
@@ -577,12 +750,12 @@ class _Composer extends StatelessWidget {
               maxLength: 32768,
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => onSubmit(),
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 isCollapsed: true,
                 counterText: '',
                 border: InputBorder.none,
-                hintText: '询问 Daylink',
-                hintStyle: TextStyle(
+                hintText: imageMode ? '描述要生成的图片' : '询问 Daylink',
+                hintStyle: const TextStyle(
                   color: Color(0xFF8F959E),
                   fontSize: 16,
                   fontWeight: FontWeight.w400,
@@ -607,7 +780,9 @@ class _Composer extends StatelessWidget {
             child: InkWell(
               key: const Key('assistant-primary-action'),
               customBorder: const CircleBorder(),
-              onTap: submitting
+              onTap: submitting && imageMode
+                  ? onCancel
+                  : submitting
                   ? null
                   : hasInput
                   ? onSubmit
@@ -615,13 +790,20 @@ class _Composer extends StatelessWidget {
               child: SizedBox.square(
                 dimension: 44,
                 child: submitting
-                    ? const Padding(
-                        padding: EdgeInsets.all(13),
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
+                    ? imageMode
+                          ? const Icon(
+                              Icons.stop_rounded,
+                              key: Key('assistant-cancel-generation'),
+                              color: Colors.white,
+                              size: 22,
+                            )
+                          : const Padding(
+                              padding: EdgeInsets.all(13),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
                     : Icon(
                         hasInput
                             ? Icons.arrow_upward_rounded
@@ -636,6 +818,537 @@ class _Composer extends StatelessWidget {
       ),
     );
   }
+}
+
+enum _AssistantAddAction { image, file, generateImage }
+
+class _AssistantAddSheet extends StatelessWidget {
+  const _AssistantAddSheet();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const Key('assistant-add-sheet'),
+    padding: const EdgeInsets.fromLTRB(22, 15, 22, 21),
+    decoration: const BoxDecoration(
+      color: Color(0xFFF7F8FA),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+    ),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Center(
+          child: Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: const Color(0xFFD7DAE0),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ),
+        const SizedBox(height: 21),
+        const Text(
+          '添加到对话',
+          style: TextStyle(
+            color: Color(0xFF1F2329),
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 19),
+        Row(
+          children: [
+            Expanded(
+              child: _AssistantAddTile(
+                actionKey: const Key('assistant-add-image'),
+                icon: Icons.image_outlined,
+                label: '图片',
+                onTap: () => Navigator.pop(context, _AssistantAddAction.image),
+              ),
+            ),
+            const SizedBox(width: 11),
+            Expanded(
+              child: _AssistantAddTile(
+                actionKey: const Key('assistant-add-file'),
+                icon: Icons.insert_drive_file_outlined,
+                label: '文件',
+                onTap: () => Navigator.pop(context, _AssistantAddAction.file),
+              ),
+            ),
+            const SizedBox(width: 11),
+            Expanded(
+              child: _AssistantAddTile(
+                actionKey: const Key('assistant-generate-image'),
+                icon: Icons.auto_awesome_outlined,
+                label: '生成图片',
+                highlighted: true,
+                onTap: () =>
+                    Navigator.pop(context, _AssistantAddAction.generateImage),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.fromLTRB(15, 13, 15, 13),
+          decoration: BoxDecoration(
+            color: const Color(0xFFEEF3FF),
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.info_outline_rounded,
+                color: Color(0xFF3370FF),
+                size: 19,
+              ),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '图片会在当前对话中生成，可继续修改、保存或分享；用量计入当前账号月额度。',
+                  style: TextStyle(
+                    color: Color(0xFF4E5969),
+                    fontSize: 13,
+                    height: 1.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _AssistantAddTile extends StatelessWidget {
+  const _AssistantAddTile({
+    required this.actionKey,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.highlighted = false,
+  });
+
+  final Key actionKey;
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: highlighted ? const Color(0xFFEEF3FF) : Colors.white,
+    shape: RoundedRectangleBorder(
+      side: BorderSide(
+        color: highlighted ? const Color(0xFF8EADFF) : const Color(0xFFE1E4E8),
+      ),
+      borderRadius: BorderRadius.circular(16),
+    ),
+    clipBehavior: Clip.antiAlias,
+    child: InkWell(
+      key: actionKey,
+      onTap: onTap,
+      child: SizedBox(
+        height: 105,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: const Color(0xFF3370FF), size: 29),
+            const SizedBox(height: 10),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFF1F2329),
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _ImageModeChip extends StatelessWidget {
+  const _ImageModeChip({required this.onClose});
+
+  final VoidCallback? onClose;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const Key('assistant-image-mode'),
+    height: 39,
+    padding: const EdgeInsets.only(left: 13, right: 6),
+    decoration: BoxDecoration(
+      color: const Color(0xFFEEF3FF),
+      border: Border.all(color: const Color(0xFFB7CAFF)),
+      borderRadius: BorderRadius.circular(14),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(
+          Icons.auto_awesome_outlined,
+          size: 17,
+          color: Color(0xFF3370FF),
+        ),
+        const SizedBox(width: 7),
+        const Text(
+          '生成图片',
+          style: TextStyle(
+            color: Color(0xFF245BDB),
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        IconButton(
+          key: const Key('assistant-close-image-mode'),
+          onPressed: onClose,
+          visualDensity: VisualDensity.compact,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 30, height: 32),
+          icon: const Icon(Icons.close_rounded, size: 17),
+          color: const Color(0xFF646A73),
+        ),
+      ],
+    ),
+  );
+}
+
+class _ImageSizeChip extends StatelessWidget {
+  const _ImageSizeChip({
+    required this.value,
+    required this.enabled,
+    required this.onSelected,
+  });
+
+  final AssistantImageSize value;
+  final bool enabled;
+  final ValueChanged<AssistantImageSize> onSelected;
+
+  @override
+  Widget build(BuildContext context) => PopupMenuButton<AssistantImageSize>(
+    key: const Key('assistant-image-size'),
+    enabled: enabled,
+    tooltip: '图片比例',
+    position: PopupMenuPosition.over,
+    onSelected: onSelected,
+    itemBuilder: (_) => AssistantImageSize.values
+        .map((size) => PopupMenuItem(value: size, child: Text(size.label)))
+        .toList(growable: false),
+    child: _ToolChip(label: value.label, compact: true),
+  );
+}
+
+class _ImageQualityChip extends StatelessWidget {
+  const _ImageQualityChip({
+    required this.value,
+    required this.enabled,
+    required this.onSelected,
+  });
+
+  final AssistantImageQuality value;
+  final bool enabled;
+  final ValueChanged<AssistantImageQuality> onSelected;
+
+  @override
+  Widget build(BuildContext context) => PopupMenuButton<AssistantImageQuality>(
+    key: const Key('assistant-image-quality'),
+    enabled: enabled,
+    tooltip: '图片质量',
+    position: PopupMenuPosition.over,
+    onSelected: onSelected,
+    itemBuilder: (_) => AssistantImageQuality.values
+        .map(
+          (quality) =>
+              PopupMenuItem(value: quality, child: Text(quality.label)),
+        )
+        .toList(growable: false),
+    child: _ToolChip(label: value.label, compact: true),
+  );
+}
+
+class _ImageConversationTurn {
+  const _ImageConversationTurn({required this.prompt, this.image, this.error});
+
+  final String prompt;
+  final AssistantGeneratedImage? image;
+  final String? error;
+}
+
+class _ImageConversation extends StatelessWidget {
+  const _ImageConversation({
+    required this.turns,
+    required this.onSave,
+    required this.onShare,
+    required this.onRegenerate,
+  });
+
+  final List<_ImageConversationTurn> turns;
+  final Future<void> Function(AssistantGeneratedImage image) onSave;
+  final Future<void> Function(
+    BuildContext context,
+    AssistantGeneratedImage image,
+  )
+  onShare;
+  final ValueChanged<AssistantGeneratedImage> onRegenerate;
+
+  @override
+  Widget build(BuildContext context) => ListView.separated(
+    key: const Key('assistant-conversation'),
+    padding: const EdgeInsets.fromLTRB(22, 28, 22, 22),
+    reverse: true,
+    itemCount: turns.length,
+    separatorBuilder: (_, _) => const SizedBox(height: 22),
+    itemBuilder: (context, reverseIndex) {
+      final turn = turns[turns.length - reverseIndex - 1];
+      return _ImageConversationCard(
+        turn: turn,
+        onSave: onSave,
+        onShare: onShare,
+        onRegenerate: onRegenerate,
+      );
+    },
+  );
+}
+
+class _ImageConversationCard extends StatelessWidget {
+  const _ImageConversationCard({
+    required this.turn,
+    required this.onSave,
+    required this.onShare,
+    required this.onRegenerate,
+  });
+
+  final _ImageConversationTurn turn;
+  final Future<void> Function(AssistantGeneratedImage image) onSave;
+  final Future<void> Function(
+    BuildContext context,
+    AssistantGeneratedImage image,
+  )
+  onShare;
+  final ValueChanged<AssistantGeneratedImage> onRegenerate;
+
+  @override
+  Widget build(BuildContext context) {
+    final image = turn.image;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 315),
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE9EDF5),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Text(
+              turn.prompt,
+              style: const TextStyle(
+                color: Color(0xFF1F2329),
+                fontSize: 15,
+                height: 1.45,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 13),
+        if (image == null && turn.error == null)
+          const _ImageGeneratingCard()
+        else if (image == null)
+          _ImageErrorCard(message: turn.error!)
+        else
+          _GeneratedImageCard(
+            image: image,
+            onSave: () => onSave(image),
+            onShare: () => onShare(context, image),
+            onRegenerate: () => onRegenerate(image),
+          ),
+      ],
+    );
+  }
+}
+
+class _ImageGeneratingCard extends StatelessWidget {
+  const _ImageGeneratingCard();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const Key('assistant-image-generating'),
+    height: 154,
+    decoration: BoxDecoration(
+      color: Colors.white,
+      border: Border.all(color: const Color(0xFFE1E4E8)),
+      borderRadius: BorderRadius.circular(18),
+    ),
+    child: const Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox.square(
+            dimension: 24,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.4,
+              color: Color(0xFF3370FF),
+            ),
+          ),
+          SizedBox(height: 13),
+          Text(
+            '正在生成图片…',
+            style: TextStyle(color: Color(0xFF646A73), fontSize: 14),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _ImageErrorCard extends StatelessWidget {
+  const _ImageErrorCard({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const Key('assistant-image-error'),
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: const Color(0xFFFFF3F0),
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: Row(
+      children: [
+        const Icon(Icons.error_outline_rounded, color: Color(0xFFD54941)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            message,
+            style: const TextStyle(color: Color(0xFF4E5969), fontSize: 14),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _GeneratedImageCard extends StatelessWidget {
+  const _GeneratedImageCard({
+    required this.image,
+    required this.onSave,
+    required this.onShare,
+    required this.onRegenerate,
+  });
+
+  final AssistantGeneratedImage image;
+  final VoidCallback onSave;
+  final VoidCallback onShare;
+  final VoidCallback onRegenerate;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const Key('assistant-generated-image'),
+    padding: const EdgeInsets.all(8),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      border: Border.all(color: const Color(0xFFE1E4E8)),
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: AspectRatio(
+            aspectRatio: switch (image.size) {
+              AssistantImageSize.square => 1,
+              AssistantImageSize.landscape => 1.5,
+              AssistantImageSize.portrait => 2 / 3,
+            },
+            child: Image.memory(
+              image.bytes,
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+              errorBuilder: (_, _, _) => const ColoredBox(
+                color: Color(0xFFF1F2F4),
+                child: Center(child: Icon(Icons.broken_image_outlined)),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 5),
+        Row(
+          children: [
+            _ImageActionButton(
+              actionKey: const Key('assistant-save-image'),
+              icon: Icons.download_rounded,
+              label: '保存',
+              onTap: onSave,
+            ),
+            _ImageActionButton(
+              actionKey: const Key('assistant-share-image'),
+              icon: Icons.ios_share_rounded,
+              label: '分享',
+              onTap: onShare,
+            ),
+            const Spacer(),
+            _ImageActionButton(
+              actionKey: const Key('assistant-regenerate-image'),
+              icon: Icons.refresh_rounded,
+              label: '再生成',
+              onTap: onRegenerate,
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+
+class _ImageActionButton extends StatelessWidget {
+  const _ImageActionButton({
+    required this.actionKey,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final Key actionKey;
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => TextButton.icon(
+    key: actionKey,
+    onPressed: onTap,
+    style: TextButton.styleFrom(
+      foregroundColor: const Color(0xFF4E5969),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      visualDensity: VisualDensity.compact,
+    ),
+    icon: Icon(icon, size: 18),
+    label: Text(label),
+  );
+}
+
+String _friendlyImageError(Object error) {
+  if (error is AiGatewayException) {
+    return switch (error.code) {
+      'subscription_required' => '当前账号没有可用的 AI 套餐',
+      'quota_exceeded' || 'monthly_quota_exceeded' => '本月 AI 额度已用完',
+      'session_rejected' || 'invalid_token' => '登录已失效，请重新登录',
+      'image_model_unavailable' => '后台尚未配置可用的生图模型',
+      'rate_limited' => '生成请求太频繁，请稍后再试',
+      _ => '图片生成失败，请稍后重试',
+    };
+  }
+  return '图片生成失败，请稍后重试';
 }
 
 String _reasoningLabel(AiReasoningEffort effort) => switch (effort) {

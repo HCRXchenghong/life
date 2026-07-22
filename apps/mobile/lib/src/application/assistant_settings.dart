@@ -1,6 +1,7 @@
 import '../data/ai_gateway_client.dart';
 import '../data/app_session_monitor.dart';
 import '../domain/ai/ai_models.dart';
+import '../domain/ai/assistant_image_models.dart';
 
 enum AssistantMode { local, sshAgent }
 
@@ -31,15 +32,29 @@ abstract interface class AccountEntitlementSource {
   Future<AiEntitlement> loadAccountEntitlement();
 }
 
+abstract interface class AssistantImageGenerationSource {
+  Future<AssistantGeneratedImage> generateAssistantImage({
+    required String prompt,
+    required AssistantImageSize size,
+    required AssistantImageQuality quality,
+  });
+
+  void cancelAssistantImageGeneration();
+}
+
 class DaylinkAssistantSettings
-    implements AssistantSettingsSource, AccountEntitlementSource {
-  const DaylinkAssistantSettings({
+    implements
+        AssistantSettingsSource,
+        AccountEntitlementSource,
+        AssistantImageGenerationSource {
+  DaylinkAssistantSettings({
     required this.apiBaseUri,
     required this.accessToken,
   });
 
   final Uri apiBaseUri;
   final AccessTokenProvider accessToken;
+  AiGatewayClient? _activeImageClient;
 
   @override
   Future<AiEntitlement> loadAccountEntitlement() async {
@@ -94,6 +109,48 @@ class DaylinkAssistantSettings
     } finally {
       client.close();
     }
+  }
+
+  @override
+  Future<AssistantGeneratedImage> generateAssistantImage({
+    required String prompt,
+    required AssistantImageSize size,
+    required AssistantImageQuality quality,
+  }) async {
+    if (_activeImageClient != null) {
+      throw const AiGatewayException(
+        'request_in_progress',
+        'An image request is already in progress',
+      );
+    }
+    final client = await _client();
+    _activeImageClient = client;
+    try {
+      final configuration = await client.localConfiguration();
+      if (configuration.provider.imageModel == null) {
+        throw const AiGatewayException(
+          'image_model_unavailable',
+          'The configured AI provider does not expose an image model',
+        );
+      }
+      return await client.generateImage(
+        providerId: configuration.provider.id,
+        prompt: prompt,
+        size: size,
+        quality: quality,
+      );
+    } finally {
+      if (identical(_activeImageClient, client)) {
+        _activeImageClient = null;
+      }
+      client.close();
+    }
+  }
+
+  @override
+  void cancelAssistantImageGeneration() {
+    _activeImageClient?.close();
+    _activeImageClient = null;
   }
 
   Future<AiGatewayClient> _client() async {

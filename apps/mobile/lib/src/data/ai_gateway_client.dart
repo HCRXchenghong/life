@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 import '../domain/ai/ai_models.dart';
+import '../domain/ai/assistant_image_models.dart';
 
 class AiGatewayClient {
   AiGatewayClient({
@@ -65,6 +66,86 @@ class AiGatewayClient {
     );
   }
 
+  Future<AssistantGeneratedImage> generateImage({
+    required String providerId,
+    required String prompt,
+    required AssistantImageSize size,
+    required AssistantImageQuality quality,
+  }) async {
+    final normalizedPrompt = prompt.trim();
+    if (normalizedPrompt.isEmpty || normalizedPrompt.length > 8000) {
+      throw const AiGatewayException(
+        'invalid_prompt',
+        'Image prompt must contain between 1 and 8000 characters',
+      );
+    }
+    final payload = await _request(
+      'POST',
+      'assistant/images',
+      body: {
+        'providerId': providerId,
+        'prompt': normalizedPrompt,
+        'n': 1,
+        'size': size.wireName,
+        'quality': quality.wireName,
+        'output_format': 'png',
+      },
+      timeout: const Duration(minutes: 2),
+      maxResponseBytes: 48 << 20,
+    );
+    final data = payload['data'];
+    if (data is! List<Object?> || data.length != 1) {
+      throw const AiGatewayException(
+        'invalid_response',
+        'AI gateway returned an invalid image response',
+      );
+    }
+    final item = data.single;
+    if (item is! Map<String, Object?>) {
+      throw const AiGatewayException(
+        'invalid_response',
+        'AI gateway returned an invalid image response',
+      );
+    }
+    final encoded = item['b64_json'];
+    if (encoded is! String || encoded.isEmpty || encoded.length > (46 << 20)) {
+      throw const AiGatewayException(
+        'invalid_response',
+        'AI gateway returned an invalid image payload',
+      );
+    }
+    late final Uint8List bytes;
+    try {
+      bytes = base64Decode(encoded);
+    } on FormatException {
+      throw const AiGatewayException(
+        'invalid_response',
+        'AI gateway returned invalid image data',
+      );
+    }
+    if (bytes.length > (32 << 20) || !_isPng(bytes)) {
+      throw const AiGatewayException(
+        'invalid_response',
+        'AI gateway returned an unsupported image',
+      );
+    }
+    final revisedPrompt = item['revised_prompt'];
+    if (revisedPrompt != null && revisedPrompt is! String) {
+      throw const AiGatewayException(
+        'invalid_response',
+        'AI gateway returned an invalid revised prompt',
+      );
+    }
+    return AssistantGeneratedImage(
+      bytes: bytes,
+      prompt: normalizedPrompt,
+      revisedPrompt: revisedPrompt as String?,
+      size: size,
+      quality: quality,
+      createdAt: DateTime.now().toUtc(),
+    );
+  }
+
   Future<RemoteAiGatewayCredential> createRemoteCredential() async {
     final payload = await _request('POST', 'app/ai-remote-token');
     final gateway = payload['gateway']! as Map<String, Object?>;
@@ -106,6 +187,8 @@ class AiGatewayClient {
     String method,
     String path, {
     Map<String, Object?>? body,
+    Duration timeout = const Duration(seconds: 30),
+    int maxResponseBytes = 1 << 20,
   }) async {
     final request = http.Request(method, _apiBaseUri.resolve(path))
       ..headers.addAll({
@@ -116,20 +199,16 @@ class AiGatewayClient {
     if (method != 'GET') {
       request.body = jsonEncode(body ?? const <String, Object?>{});
     }
-    final response = await _http
-        .send(request)
-        .timeout(const Duration(seconds: 30));
-    if ((response.contentLength ?? 0) > 1 << 20) {
+    final response = await _http.send(request).timeout(timeout);
+    if ((response.contentLength ?? 0) > maxResponseBytes) {
       throw const AiGatewayException(
         'invalid_response',
         'AI gateway response is too large',
       );
     }
     final builder = BytesBuilder(copy: false);
-    await for (final chunk in response.stream.timeout(
-      const Duration(seconds: 30),
-    )) {
-      if (builder.length + chunk.length > 1 << 20) {
+    await for (final chunk in response.stream.timeout(timeout)) {
+      if (builder.length + chunk.length > maxResponseBytes) {
         throw const AiGatewayException(
           'invalid_response',
           'AI gateway response is too large',
@@ -277,4 +356,13 @@ String _requireToken(String value) {
     throw ArgumentError('invalid App access token');
   }
   return value;
+}
+
+bool _isPng(Uint8List bytes) {
+  const signature = <int>[137, 80, 78, 71, 13, 10, 26, 10];
+  if (bytes.length < signature.length) return false;
+  for (var index = 0; index < signature.length; index++) {
+    if (bytes[index] != signature[index]) return false;
+  }
+  return true;
 }

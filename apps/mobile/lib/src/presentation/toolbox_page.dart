@@ -3,12 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'app_navigation.dart';
 
-enum ToolboxTool {
-  friendSchedule,
-  imageGeneration,
-  wordDocument,
-  spreadsheetPresentation,
-}
+enum ToolboxTool { friendSchedule, wordDocument, spreadsheetPresentation }
 
 class ToolboxPage extends StatelessWidget {
   const ToolboxPage({
@@ -78,19 +73,6 @@ class ToolboxPage extends StatelessWidget {
                               onToolSelected(ToolboxTool.friendSchedule),
                         ),
                         _ToolCard(
-                          key: const Key('tool-image-generation'),
-                          icon: const _ImageGenerationIcon(),
-                          title: 'AI 生图',
-                          subtitle: '描述想法，生成图片',
-                          onTap: () =>
-                              onToolSelected(ToolboxTool.imageGeneration),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    _ToolRow(
-                      children: [
-                        _ToolCard(
                           key: const Key('tool-word-document'),
                           icon: const Icon(
                             Icons.description_outlined,
@@ -101,6 +83,11 @@ class ToolboxPage extends StatelessWidget {
                           subtitle: '生成并保存文档',
                           onTap: () => onToolSelected(ToolboxTool.wordDocument),
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    _ToolRow(
+                      children: [
                         _ToolCard(
                           key: const Key('tool-spreadsheet-presentation'),
                           icon: const _SpreadsheetPresentationIcon(),
@@ -138,7 +125,11 @@ class _ToolRow extends StatelessWidget {
     children: [
       Expanded(child: AspectRatio(aspectRatio: 1.43, child: children[0])),
       const SizedBox(width: 16),
-      Expanded(child: AspectRatio(aspectRatio: 1.43, child: children[1])),
+      Expanded(
+        child: children.length > 1
+            ? AspectRatio(aspectRatio: 1.43, child: children[1])
+            : const SizedBox.shrink(),
+      ),
     ],
   );
 }
@@ -215,27 +206,6 @@ class _FriendScheduleIcon extends StatelessWidget {
         right: -1,
         bottom: -1,
         child: Icon(Icons.group_outlined, color: Color(0xFF3370FF), size: 17),
-      ),
-    ],
-  );
-}
-
-class _ImageGenerationIcon extends StatelessWidget {
-  const _ImageGenerationIcon();
-
-  @override
-  Widget build(BuildContext context) => const Stack(
-    clipBehavior: Clip.none,
-    children: [
-      Icon(
-        Icons.add_photo_alternate_outlined,
-        color: Color(0xFF3370FF),
-        size: 32,
-      ),
-      Positioned(
-        right: -1,
-        top: -4,
-        child: Icon(Icons.auto_awesome, color: Color(0xFF3370FF), size: 13),
       ),
     ],
   );
