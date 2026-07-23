@@ -1,4 +1,5 @@
 import '../domain/ai/assistant_artifact_models.dart';
+import '../domain/ai/assistant_input_file.dart';
 import '../domain/ai/tool_protocol.dart';
 import 'assistant_settings.dart';
 
@@ -17,6 +18,7 @@ abstract interface class AssistantConversationSource {
     required String input,
     required AssistantMode mode,
     required ApprovalDelegate approvals,
+    List<AssistantInputFile> files = const [],
   });
 
   void cancelAssistantMessage();

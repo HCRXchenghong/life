@@ -1,12 +1,15 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:daylink_mobile/src/application/assistant_artifact_actions.dart';
 import 'package:daylink_mobile/src/application/assistant_conversation.dart';
+import 'package:daylink_mobile/src/application/assistant_file_picker.dart';
 import 'package:daylink_mobile/src/application/assistant_image_actions.dart';
 import 'package:daylink_mobile/src/application/assistant_settings.dart';
 import 'package:daylink_mobile/src/domain/ai/ai_models.dart';
 import 'package:daylink_mobile/src/domain/ai/assistant_artifact_models.dart';
 import 'package:daylink_mobile/src/domain/ai/assistant_image_models.dart';
+import 'package:daylink_mobile/src/domain/ai/assistant_input_file.dart';
 import 'package:daylink_mobile/src/domain/ai/tool_protocol.dart';
 import 'package:daylink_mobile/src/presentation/app_navigation.dart';
 import 'package:daylink_mobile/src/presentation/assistant_page.dart';
@@ -263,6 +266,50 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('reads selected files and sends their real bytes to the model', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(430, 932));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final conversation = _FileConversationSource();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AssistantPage(
+          settings: _FakeAssistantSettings(),
+          conversation: conversation,
+          fileSource: _FakeFileSource(),
+          onDestinationSelected: (_) {},
+          onOpenHistory: () {},
+          onNewConversation: () {},
+          onOpenMore: () {},
+          onAddAttachment: () {},
+          onVoiceInput: () {},
+          onSubmit: (_) async {},
+          onMessage: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('assistant-add')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('assistant-add-file')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('assistant-input-files')), findsOneWidget);
+    expect(find.text('真实资料.pdf'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('assistant-input')), '总结文件');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('assistant-primary-action')));
+    await tester.pumpAndSettle();
+
+    expect(conversation.files.single.filename, '真实资料.pdf');
+    expect(conversation.files.single.bytes, [0x25, 0x50, 0x44, 0x46]);
+    expect(find.text('已读取真实文件'), findsOneWidget);
+    expect(find.text('真实资料.pdf'), findsOneWidget);
+  });
 }
 
 class _FakeAssistantSettings implements AssistantSettingsSource {
@@ -337,6 +384,7 @@ class _FakeConversationSource implements AssistantConversationSource {
     required String input,
     required AssistantMode mode,
     required ApprovalDelegate approvals,
+    List<AssistantInputFile> files = const [],
   }) async {
     final decision = await approvals(
       const ToolSpec(
@@ -390,4 +438,36 @@ class _FakeArtifactActions implements AssistantArtifactActionSource {
   }) async {
     downloads++;
   }
+}
+
+class _FakeFileSource implements AssistantInputFileSource {
+  @override
+  Future<List<AssistantInputFile>> pickFiles() async => [
+    AssistantInputFile(
+      filename: '真实资料.pdf',
+      contentType: 'application/pdf',
+      bytes: Uint8List.fromList(const [0x25, 0x50, 0x44, 0x46]),
+    ),
+  ];
+}
+
+class _FileConversationSource implements AssistantConversationSource {
+  List<AssistantInputFile> files = const [];
+
+  @override
+  void cancelAssistantMessage() {}
+
+  @override
+  Future<AssistantConversationReply> sendAssistantMessage({
+    required String input,
+    required AssistantMode mode,
+    required ApprovalDelegate approvals,
+    List<AssistantInputFile> files = const [],
+  }) async {
+    this.files = files;
+    return const AssistantConversationReply(text: '已读取真实文件');
+  }
+
+  @override
+  void startNewAssistantConversation() {}
 }

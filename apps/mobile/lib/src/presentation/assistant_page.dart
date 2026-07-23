@@ -3,12 +3,14 @@ import 'package:flutter/services.dart';
 
 import '../application/assistant_artifact_actions.dart';
 import '../application/assistant_conversation.dart';
+import '../application/assistant_file_picker.dart';
 import '../application/assistant_image_actions.dart';
 import '../application/assistant_settings.dart';
 import '../data/ai_gateway_client.dart';
 import '../domain/ai/ai_models.dart';
 import '../domain/ai/assistant_artifact_models.dart';
 import '../domain/ai/assistant_image_models.dart';
+import '../domain/ai/assistant_input_file.dart';
 import '../domain/ai/tool_protocol.dart';
 import 'app_navigation.dart';
 import 'assistant_artifact_preview_sheet.dart';
@@ -29,7 +31,7 @@ class AssistantPage extends StatefulWidget {
     this.imageActions = const AssistantImageActions(),
     this.conversation,
     this.artifactActions = const AssistantArtifactActions(),
-    this.onAddFile,
+    this.fileSource = const DeviceAssistantInputFileSource(),
   });
 
   final ValueChanged<AppDestination> onDestinationSelected;
@@ -45,7 +47,7 @@ class AssistantPage extends StatefulWidget {
   final AssistantImageActionSource imageActions;
   final AssistantConversationSource? conversation;
   final AssistantArtifactActionSource artifactActions;
-  final VoidCallback? onAddFile;
+  final AssistantInputFileSource fileSource;
 
   @override
   State<AssistantPage> createState() => _AssistantPageState();
@@ -66,6 +68,7 @@ class _AssistantPageState extends State<AssistantPage> {
   int? _activeImageTurn;
   var _conversationEpoch = 0;
   int? _activeConversationTurn;
+  final List<AssistantInputFile> _inputFiles = [];
   AssistantImageSize _imageSize = AssistantImageSize.square;
   AssistantImageQuality _imageQuality = AssistantImageQuality.medium;
   final List<_AssistantConversationTurn> _turns = [];
@@ -183,22 +186,31 @@ class _AssistantPageState extends State<AssistantPage> {
   ) async {
     final request = ++_conversationEpoch;
     final turnIndex = _turns.length;
+    final files = List<AssistantInputFile>.unmodifiable(_inputFiles);
+    final fileNames = files
+        .map((file) => file.filename)
+        .toList(growable: false);
     _inputController.clear();
     setState(() {
       _submitting = true;
       _activeConversationTurn = turnIndex;
-      _turns.add(_AssistantConversationTurn(prompt: input));
+      _inputFiles.clear();
+      _turns.add(
+        _AssistantConversationTurn(prompt: input, fileNames: fileNames),
+      );
     });
     try {
       final reply = await conversation.sendAssistantMessage(
         input: input,
         mode: _mode,
         approvals: _approveTool,
+        files: files,
       );
       if (!mounted || request != _conversationEpoch) return;
       setState(() {
         _turns[turnIndex] = _AssistantConversationTurn(
           prompt: input,
+          fileNames: fileNames,
           response: reply.text,
           artifacts: reply.artifacts,
         );
@@ -209,6 +221,7 @@ class _AssistantPageState extends State<AssistantPage> {
       setState(() {
         _turns[turnIndex] = _AssistantConversationTurn(
           prompt: input,
+          fileNames: fileNames,
           error: message,
         );
       });
@@ -234,6 +247,7 @@ class _AssistantPageState extends State<AssistantPage> {
         final turn = _turns[turnIndex];
         _turns[turnIndex] = _AssistantConversationTurn(
           prompt: turn.prompt,
+          fileNames: turn.fileNames,
           error: '已取消请求',
         );
       }
@@ -251,43 +265,52 @@ class _AssistantPageState extends State<AssistantPage> {
 
   Future<ApprovalDecision> _approveTool(ToolSpec spec, ToolCall call) async {
     if (!mounted) return ApprovalDecision.cancel;
+    final artifactKind = _artifactKindForTool(spec.name);
     final approved = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(_toolApprovalTitle(spec)),
-        content: Text(
-          _toolApprovalDescription(spec, call),
-          style: const TextStyle(
-            color: Color(0xFF4E5969),
-            fontSize: 14,
-            height: 1.55,
-          ),
-        ),
-        actions: [
-          TextButton(
-            key: const Key('assistant-tool-decline'),
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            key: const Key('assistant-tool-approve'),
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF3370FF),
-              foregroundColor: Colors.white,
+      barrierColor: const Color(0x660B1220),
+      builder: (context) => artifactKind == null
+          ? _GenericToolApprovalDialog(spec: spec, call: call)
+          : _ArtifactToolApprovalDialog(
+              kind: artifactKind,
+              displayName: _artifactDisplayName(artifactKind, call),
             ),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('允许此次'),
-          ),
-        ],
-      ),
     );
     return approved == true
         ? ApprovalDecision.accept
         : ApprovalDecision.decline;
+  }
+
+  Future<void> _pickAssistantFiles() async {
+    if (_submitting) return;
+    try {
+      final selected = await widget.fileSource.pickFiles();
+      if (!mounted || selected.isEmpty) return;
+      final merged = [..._inputFiles, ...selected];
+      if (merged.length > maximumAssistantInputFiles) {
+        widget.onMessage('一次最多添加 5 个文件');
+        return;
+      }
+      final totalBytes = merged.fold<int>(
+        0,
+        (total, file) => total + file.bytes.length,
+      );
+      if (totalBytes > maximumAssistantInputFilesBytes) {
+        widget.onMessage('所选文件合计不能超过 20 MB');
+        return;
+      }
+      setState(() {
+        _imageMode = false;
+        _inputFiles
+          ..clear()
+          ..addAll(merged);
+      });
+    } on AssistantFileSelectionException catch (error) {
+      if (mounted) widget.onMessage(error.message);
+    } on Object {
+      if (mounted) widget.onMessage('无法读取所选文件，请重新选择');
+    }
   }
 
   Future<void> _showAddTools() async {
@@ -305,13 +328,16 @@ class _AssistantPageState extends State<AssistantPage> {
       case _AssistantAddAction.image:
         widget.onAddAttachment();
       case _AssistantAddAction.file:
-        (widget.onAddFile ?? widget.onAddAttachment)();
+        await _pickAssistantFiles();
       case _AssistantAddAction.generateImage:
         if (widget.images == null) {
           widget.onMessage('当前账号暂时无法使用 AI 生图');
           return;
         }
-        setState(() => _imageMode = true);
+        setState(() {
+          _inputFiles.clear();
+          _imageMode = true;
+        });
     }
   }
 
@@ -439,6 +465,7 @@ class _AssistantPageState extends State<AssistantPage> {
     widget.conversation?.startNewAssistantConversation();
     setState(() {
       _turns.clear();
+      _inputFiles.clear();
       _imageMode = false;
     });
     widget.onNewConversation();
@@ -509,6 +536,16 @@ class _AssistantPageState extends State<AssistantPage> {
                             onDownloadArtifact: _downloadArtifact,
                           ),
                   ),
+                  if (_inputFiles.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(23, 0, 23, 10),
+                      child: _AssistantInputFilesBar(
+                        files: _inputFiles,
+                        enabled: !_submitting,
+                        onRemove: (file) =>
+                            setState(() => _inputFiles.remove(file)),
+                      ),
+                    ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(23, 0, 23, 13),
                     child: Align(
@@ -577,6 +614,167 @@ class _AssistantPageState extends State<AssistantPage> {
         ],
       ),
     ),
+  );
+}
+
+class _ArtifactToolApprovalDialog extends StatelessWidget {
+  const _ArtifactToolApprovalDialog({
+    required this.kind,
+    required this.displayName,
+  });
+
+  final AssistantArtifactKind kind;
+  final String displayName;
+
+  @override
+  Widget build(BuildContext context) => Dialog(
+    key: const Key('assistant-artifact-approval-dialog'),
+    backgroundColor: Colors.white,
+    surfaceTintColor: Colors.transparent,
+    insetPadding: const EdgeInsets.symmetric(horizontal: 38),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(22, 25, 22, 22),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            '允许生成文件？',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Color(0xFF1F2329),
+              fontSize: 21,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 21),
+          Container(
+            key: const Key('assistant-artifact-approval-file'),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEEF3FF),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: Row(
+              children: [
+                _ArtifactIcon(kind: kind),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF1F2329),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        kind.label,
+                        style: const TextStyle(
+                          color: Color(0xFF8F959E),
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          const Text(
+            '文件将保存到当前账号的本地隔离空间。\n内部存储路径不会发送给模型。',
+            style: TextStyle(
+              color: Color(0xFF646A73),
+              fontSize: 14,
+              height: 1.55,
+            ),
+          ),
+          const SizedBox(height: 22),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  key: const Key('assistant-tool-decline'),
+                  onPressed: () => Navigator.pop(context, false),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF1F2329),
+                    side: const BorderSide(color: Color(0xFFD9DCE2)),
+                    minimumSize: const Size.fromHeight(49),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                  ),
+                  child: const Text('取消'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton(
+                  key: const Key('assistant-tool-approve'),
+                  onPressed: () => Navigator.pop(context, true),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF3370FF),
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size.fromHeight(49),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                  ),
+                  child: const Text('允许此次'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _GenericToolApprovalDialog extends StatelessWidget {
+  const _GenericToolApprovalDialog({required this.spec, required this.call});
+
+  final ToolSpec spec;
+  final ToolCall call;
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    backgroundColor: Colors.white,
+    surfaceTintColor: Colors.transparent,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    title: Text(_toolApprovalTitle(spec)),
+    content: Text(
+      _toolApprovalDescription(spec, call),
+      style: const TextStyle(
+        color: Color(0xFF4E5969),
+        fontSize: 14,
+        height: 1.55,
+      ),
+    ),
+    actions: [
+      TextButton(
+        key: const Key('assistant-tool-decline'),
+        onPressed: () => Navigator.pop(context, false),
+        child: const Text('取消'),
+      ),
+      FilledButton(
+        key: const Key('assistant-tool-approve'),
+        style: FilledButton.styleFrom(
+          backgroundColor: const Color(0xFF3370FF),
+          foregroundColor: Colors.white,
+        ),
+        onPressed: () => Navigator.pop(context, true),
+        child: const Text('允许此次'),
+      ),
+    ],
   );
 }
 
@@ -858,6 +1056,91 @@ class _ToolChip extends StatelessWidget {
           color: Color(0xFF646A73),
         ),
       ],
+    ),
+  );
+}
+
+class _AssistantInputFilesBar extends StatelessWidget {
+  const _AssistantInputFilesBar({
+    required this.files,
+    required this.enabled,
+    required this.onRemove,
+  });
+
+  final List<AssistantInputFile> files;
+  final bool enabled;
+  final ValueChanged<AssistantInputFile> onRemove;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    key: const Key('assistant-input-files'),
+    height: 58,
+    child: ListView.separated(
+      scrollDirection: Axis.horizontal,
+      itemCount: files.length,
+      separatorBuilder: (_, _) => const SizedBox(width: 8),
+      itemBuilder: (context, index) {
+        final file = files[index];
+        return Container(
+          key: Key('assistant-input-file-$index'),
+          constraints: const BoxConstraints(maxWidth: 245),
+          padding: const EdgeInsets.fromLTRB(12, 8, 5, 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: const Color(0xFFE1E4E8)),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.insert_drive_file_rounded,
+                size: 22,
+                color: Color(0xFF3370FF),
+              ),
+              const SizedBox(width: 9),
+              Flexible(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      file.filename,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF1F2329),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      formatArtifactBytes(file.bytes.length),
+                      style: const TextStyle(
+                        color: Color(0xFF8F959E),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                key: Key('assistant-input-file-remove-$index'),
+                onPressed: enabled ? () => onRemove(file) : null,
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: 31,
+                  height: 36,
+                ),
+                icon: const Icon(Icons.close_rounded, size: 17),
+                color: const Color(0xFF646A73),
+              ),
+            ],
+          ),
+        );
+      },
     ),
   );
 }
@@ -1238,6 +1521,7 @@ class _ImageQualityChip extends StatelessWidget {
 class _AssistantConversationTurn {
   const _AssistantConversationTurn({
     required this.prompt,
+    this.fileNames = const [],
     this.response,
     this.artifacts = const [],
     this.image,
@@ -1246,6 +1530,7 @@ class _AssistantConversationTurn {
   });
 
   final String prompt;
+  final List<String> fileNames;
   final String? response;
   final List<AssistantGeneratedArtifact> artifacts;
   final AssistantGeneratedImage? image;
@@ -1330,6 +1615,55 @@ class _AssistantConversationCard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (turn.fileNames.isNotEmpty) ...[
+          Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 7,
+              runSpacing: 7,
+              children: [
+                for (final name in turn.fileNames)
+                  Container(
+                    constraints: const BoxConstraints(maxWidth: 250),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 11,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: const Color(0xFFE1E4E8)),
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.insert_drive_file_rounded,
+                          size: 18,
+                          color: Color(0xFF3370FF),
+                        ),
+                        const SizedBox(width: 7),
+                        Flexible(
+                          child: Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFF4E5969),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
         Align(
           alignment: Alignment.centerRight,
           child: Container(
@@ -1827,6 +2161,21 @@ String _toolApprovalTitle(ToolSpec spec) => switch (spec.name) {
   'daylink_create_presentation' => '允许生成文件？',
   _ => '允许执行此操作？',
 };
+
+AssistantArtifactKind? _artifactKindForTool(String toolName) =>
+    switch (toolName) {
+      'daylink_create_word_document' => AssistantArtifactKind.document,
+      'daylink_create_spreadsheet' => AssistantArtifactKind.spreadsheet,
+      'daylink_create_presentation' => AssistantArtifactKind.presentation,
+      _ => null,
+    };
+
+String _artifactDisplayName(AssistantArtifactKind kind, ToolCall call) {
+  final rawTitle = (call.arguments['title'] as String?)?.trim();
+  final title = rawTitle == null || rawTitle.isEmpty ? 'Daylink 文档' : rawTitle;
+  final suffix = '.${kind.extension}';
+  return title.toLowerCase().endsWith(suffix) ? title : '$title$suffix';
+}
 
 String _reasoningLabel(AiReasoningEffort effort) => switch (effort) {
   AiReasoningEffort.low => '低',

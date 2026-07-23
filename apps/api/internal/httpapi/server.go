@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/subtle"
 	"database/sql"
@@ -207,10 +208,21 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func decodeJSON(r *http.Request, destination any) error {
+	return decodeJSONLimited(r, destination, maxJSONBody)
+}
+
+func decodeJSONLimited(r *http.Request, destination any, maximum int64) error {
 	if !strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "application/json") {
 		return errors.New("Content-Type must be application/json")
 	}
-	decoder := json.NewDecoder(io.LimitReader(r.Body, maxJSONBody))
+	raw, err := io.ReadAll(io.LimitReader(r.Body, maximum+1))
+	if err != nil {
+		return fmt.Errorf("read JSON: %w", err)
+	}
+	if int64(len(raw)) > maximum {
+		return errors.New("request body is too large")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(destination); err != nil {
 		return fmt.Errorf("invalid JSON: %w", err)

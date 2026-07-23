@@ -28,6 +28,13 @@ type providerSecret struct {
 	APIKeyNonce      []byte
 }
 
+const (
+	maximumAssistantResponsesBody = 32 << 20
+	maximumAssistantInputFiles    = 5
+	maximumAssistantInputFile     = 10 << 20
+	maximumAssistantInputFileSum  = 20 << 20
+)
+
 func (s *Server) handleAdminAITest(w http.ResponseWriter, r *http.Request) {
 	if !s.requireSameOrigin(w, r) {
 		return
@@ -102,7 +109,7 @@ func (s *Server) handleAssistantResponses(w http.ResponseWriter, r *http.Request
 		Store              *bool             `json:"store,omitempty"`
 		ParallelToolCalls  *bool             `json:"parallel_tool_calls,omitempty"`
 	}
-	if err := decodeJSON(r, &input); err != nil || input.ProviderID == "" || len(input.Input) == 0 || len(input.Tools) > 64 ||
+	if err := decodeJSONLimited(r, &input, maximumAssistantResponsesBody); err != nil || input.ProviderID == "" || len(input.Input) == 0 || len(input.Tools) > 64 ||
 		(input.ParallelToolCalls != nil && *input.ParallelToolCalls) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "Responses 请求无效")
 		return
@@ -129,6 +136,10 @@ func (s *Server) handleAssistantResponses(w http.ResponseWriter, r *http.Request
 	var parsedInput any
 	if json.Unmarshal(input.Input, &parsedInput) != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "input 无效")
+		return
+	}
+	if err := validateAssistantResponseInput(parsedInput); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_file_input", "文件输入无效或超出限制")
 		return
 	}
 	body := map[string]any{
@@ -167,6 +178,160 @@ func (s *Server) handleAssistantResponses(w http.ResponseWriter, r *http.Request
 	s.finishAIRun(r.Context(), runID, "succeeded", "", "", responseID)
 	s.audit(r.Context(), "app:"+identity.AccountID, "ai_gateway.response", "ai_provider", provider.ID, "allowed", "medium")
 	writeJSON(w, http.StatusOK, result)
+}
+
+func validateAssistantResponseInput(value any) error {
+	items, ok := value.([]any)
+	if !ok || len(items) == 0 || len(items) > 64 {
+		return errors.New("input must be a bounded array")
+	}
+	fileCount := 0
+	fileBytes := 0
+	for _, raw := range items {
+		item, ok := raw.(map[string]any)
+		if !ok {
+			return errors.New("input item must be an object")
+		}
+		if itemType, _ := item["type"].(string); itemType == "function_call_output" {
+			if !hasOnlyKeys(item, "type", "call_id", "output") {
+				return errors.New("function output has unknown fields")
+			}
+			callID, _ := item["call_id"].(string)
+			output, _ := item["output"].(string)
+			if callID == "" || len(callID) > 200 || len(output) > 256<<10 {
+				return errors.New("function output is invalid")
+			}
+			continue
+		}
+		if role, _ := item["role"].(string); role != "user" {
+			return errors.New("only user input is accepted")
+		}
+		if !hasOnlyKeys(item, "role", "content") {
+			return errors.New("user input has unknown fields")
+		}
+		content, ok := item["content"].([]any)
+		if !ok || len(content) == 0 || len(content) > maximumAssistantInputFiles+1 {
+			return errors.New("user content is invalid")
+		}
+		for _, rawPart := range content {
+			part, ok := rawPart.(map[string]any)
+			if !ok {
+				return errors.New("content part must be an object")
+			}
+			switch partType, _ := part["type"].(string); partType {
+			case "input_text":
+				if !hasOnlyKeys(part, "type", "text") {
+					return errors.New("input text has unknown fields")
+				}
+				text, _ := part["text"].(string)
+				if len(text) == 0 || len(text) > 32768 {
+					return errors.New("input text is invalid")
+				}
+			case "input_file":
+				if !hasOnlyKeys(part, "type", "filename", "file_data", "detail") {
+					return errors.New("input file has unknown fields")
+				}
+				size, err := validateAssistantBase64File(part)
+				if err != nil {
+					return err
+				}
+				fileCount++
+				fileBytes += size
+				if fileCount > maximumAssistantInputFiles || fileBytes > maximumAssistantInputFileSum {
+					return errors.New("file input limit exceeded")
+				}
+			default:
+				return errors.New("unsupported content part")
+			}
+		}
+	}
+	return nil
+}
+
+func hasOnlyKeys(value map[string]any, allowed ...string) bool {
+	for key := range value {
+		found := false
+		for _, candidate := range allowed {
+			if key == candidate {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+func validateAssistantBase64File(part map[string]any) (int, error) {
+	filename, _ := part["filename"].(string)
+	data, _ := part["file_data"].(string)
+	if filename == "" || len(filename) > 160 || strings.ContainsAny(filename, `/\`) ||
+		strings.ContainsRune(filename, '\x00') {
+		return 0, errors.New("file name is invalid")
+	}
+	comma := strings.IndexByte(data, ',')
+	if comma < 0 || !strings.HasPrefix(data, "data:") {
+		return 0, errors.New("file data URI is invalid")
+	}
+	metadata := data[len("data:"):comma]
+	if !strings.HasSuffix(metadata, ";base64") {
+		return 0, errors.New("file data must be base64")
+	}
+	contentType := strings.TrimSuffix(metadata, ";base64")
+	if !acceptedAssistantFileContentTypes[contentType] {
+		return 0, errors.New("file content type is unsupported")
+	}
+	if detail, exists := part["detail"]; exists {
+		value, ok := detail.(string)
+		if !ok || contentType != "application/pdf" ||
+			(value != "auto" && value != "low" && value != "high") {
+			return 0, errors.New("file detail is invalid")
+		}
+	}
+	encoded := data[comma+1:]
+	if len(encoded) == 0 || len(encoded) > base64.StdEncoding.EncodedLen(maximumAssistantInputFile) {
+		return 0, errors.New("file is too large")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil || len(decoded) == 0 || len(decoded) > maximumAssistantInputFile {
+		return 0, errors.New("file base64 is invalid")
+	}
+	if !validAssistantFileMagic(contentType, decoded) {
+		return 0, errors.New("file content does not match its type")
+	}
+	return len(decoded), nil
+}
+
+func validAssistantFileMagic(contentType string, content []byte) bool {
+	switch contentType {
+	case "application/pdf":
+		return len(content) >= 4 && string(content[:4]) == "%PDF"
+	case "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		"application/vnd.openxmlformats-officedocument.presentationml.presentation",
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+		return len(content) >= 4 && content[0] == 0x50 && content[1] == 0x4b
+	default:
+		return true
+	}
+}
+
+var acceptedAssistantFileContentTypes = map[string]bool{
+	"application/pdf": true,
+	"text/plain":      true, "text/markdown": true, "application/json": true,
+	"text/xml": true, "text/html": true, "text/csv": true, "text/tsv": true,
+	"application/msword": true,
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
+	"application/rtf": true, "application/vnd.oasis.opendocument.text": true,
+	"application/vnd.ms-powerpoint":                                             true,
+	"application/vnd.openxmlformats-officedocument.presentationml.presentation": true,
+	"application/vnd.ms-excel":                                                  true,
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         true,
+	"text/x-c": true, "text/x-c++": true, "text/x-golang": true, "text/x-java": true,
+	"text/javascript": true, "application/typescript": true, "text/x-python": true,
+	"text/x-ruby": true, "text/x-rust": true, "text/x-swift": true,
+	"application/x-sql": true, "application/yaml": true,
 }
 
 func (s *Server) handleAssistantImages(w http.ResponseWriter, r *http.Request) {

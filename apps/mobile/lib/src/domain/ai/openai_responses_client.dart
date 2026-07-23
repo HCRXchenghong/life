@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 import 'ai_models.dart';
+import 'assistant_input_file.dart';
 import 'tool_protocol.dart';
 
 class OpenAiResponsesClient {
@@ -18,15 +19,25 @@ class OpenAiResponsesClient {
     required String apiKey,
     required String input,
     required ToolRegistry tools,
+    List<AssistantInputFile> files = const [],
     String? previousResponseId,
     int maxToolRounds = 12,
   }) async {
     if (!provider.enabled) throw StateError('AI provider is disabled');
+    _validateFiles(files);
     var round = 0;
     var nextInput = <Object?>[
       {
         'role': 'user',
         'content': [
+          for (final file in files)
+            {
+              'type': 'input_file',
+              'filename': file.filename,
+              'file_data':
+                  'data:${file.contentType};base64,${base64Encode(file.bytes)}',
+              if (file.contentType == 'application/pdf') 'detail': 'auto',
+            },
           {'type': 'input_text', 'text': input},
         ],
       },
@@ -181,6 +192,16 @@ class OpenAiResponsesClient {
 
   Uri _endpoint(Uri base, String path) =>
       Uri.parse('${base.toString().replaceFirst(RegExp(r'/$'), '')}/$path');
+}
+
+void _validateFiles(List<AssistantInputFile> files) {
+  if (files.length > maximumAssistantInputFiles) {
+    throw ArgumentError('too many input files');
+  }
+  final total = files.fold<int>(0, (sum, file) => sum + file.bytes.length);
+  if (total > maximumAssistantInputFilesBytes) {
+    throw ArgumentError('input files are too large');
+  }
 }
 
 class AiProviderException implements Exception {

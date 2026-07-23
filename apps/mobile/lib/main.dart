@@ -16,6 +16,7 @@ import 'src/data/schedule_repository.dart';
 import 'src/domain/ai/ai_models.dart';
 import 'src/domain/ai/assistant_image_models.dart';
 import 'src/domain/ai/assistant_artifact_models.dart';
+import 'src/domain/ai/assistant_input_file.dart';
 import 'src/domain/ai/openai_responses_client.dart';
 import 'src/domain/ai/tool_protocol.dart';
 import 'src/domain/notifications/notification_settings.dart';
@@ -753,7 +754,6 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
           onNewConversation: () => _showPendingPage('新对话'),
           onOpenMore: () => _showPendingPage('助手更多设置'),
           onAddAttachment: () => _showPendingPage('选择图片'),
-          onAddFile: () => _showPendingPage('选择文件'),
           onVoiceInput: () => _showPendingPage('语音输入'),
           onSubmit: (_) async => _showPendingPage('安全审批与对话结果'),
           onMessage: _showMessage,
@@ -937,6 +937,7 @@ class DaylinkRuntime
     required String input,
     required AssistantMode mode,
     required ApprovalDelegate approvals,
+    List<AssistantInputFile> files = const [],
   }) async {
     if (_signedOut) {
       throw StateError('登录已失效，请重新登录');
@@ -972,6 +973,7 @@ class DaylinkRuntime
         apiKey: configuration.accessToken,
         input: input,
         tools: registry,
+        files: files,
         previousResponseId: _previousAssistantResponseId,
       );
       _previousAssistantResponseId = result.responseId.isEmpty
