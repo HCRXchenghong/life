@@ -6,6 +6,7 @@ import '../data/app_session_monitor.dart';
 import '../data/app_database.dart';
 import '../data/artifact_client.dart';
 import '../data/artifact_repository.dart';
+import '../data/assistant_conversation_repository.dart';
 import '../data/data_sync_client.dart';
 import '../data/data_sync_repository.dart';
 import '../data/device_approval_client.dart';
@@ -48,6 +49,7 @@ class DaylinkServices {
     required this.scheduleEditor,
     required this.operations,
     required this.aiProviders,
+    required this.assistantConversations,
     required this.responses,
   });
 
@@ -63,6 +65,7 @@ class DaylinkServices {
   final ScheduleEditorCoordinator scheduleEditor;
   final OperationsRepository operations;
   final AiProviderRepository aiProviders;
+  final AssistantConversationRepository assistantConversations;
   final OpenAiResponsesClient responses;
   final List<AppSessionMonitor> _sessionMonitors = [];
   bool _closed = false;
@@ -123,6 +126,7 @@ class DaylinkServices {
       ),
       operations: OperationsRepository(database),
       aiProviders: AiProviderRepository(database, secrets),
+      assistantConversations: AssistantConversationRepository(database),
       responses: responses,
     );
     try {

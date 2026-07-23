@@ -414,6 +414,121 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('opens, searches and restores the approved history drawer', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(430, 932));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final source = _HistoryConversationSource();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AssistantPage(
+          settings: _FakeAssistantSettings(),
+          conversation: source,
+          history: source,
+          accountName: 'chenghong',
+          onDestinationSelected: (_) {},
+          onOpenHistory: () {},
+          onNewConversation: () {},
+          onOpenMore: () {},
+          onAddAttachment: () {},
+          onVoiceInput: () {},
+          onSubmit: (_) async {},
+          onMessage: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('assistant-history')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('assistant-history-drawer')), findsOneWidget);
+    expect(find.text('Daylink'), findsOneWidget);
+    expect(find.text('搜索对话'), findsOneWidget);
+    expect(find.text('新建对话'), findsOneWidget);
+    expect(find.text('今天'), findsOneWidget);
+    expect(find.text('昨天'), findsOneWidget);
+    expect(find.text('过去 7 天'), findsOneWidget);
+    expect(find.text('整理产品需求和预算'), findsOneWidget);
+    expect(find.text('chenghong'), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const Key('assistant-history-search')),
+      '服务器',
+    );
+    await tester.pump();
+    expect(find.text('服务器巡检总结'), findsOneWidget);
+    expect(find.text('整理产品需求和预算'), findsNothing);
+
+    await tester.tap(find.text('服务器巡检总结'));
+    await tester.pumpAndSettle();
+    expect(source.selectedId, _HistoryConversationSource.yesterdayId);
+    expect(find.byKey(const Key('assistant-history-drawer')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('renames and confirms deletion from conversation history', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(430, 932));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final source = _HistoryConversationSource();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AssistantPage(
+          settings: _FakeAssistantSettings(),
+          conversation: source,
+          history: source,
+          accountName: 'chenghong',
+          onDestinationSelected: (_) {},
+          onOpenHistory: () {},
+          onNewConversation: () {},
+          onOpenMore: () {},
+          onAddAttachment: () {},
+          onVoiceInput: () {},
+          onSubmit: (_) async {},
+          onMessage: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('assistant-history')));
+    await tester.pumpAndSettle();
+
+    final menuKey = Key(
+      'assistant-history-menu-${_HistoryConversationSource.todayId}',
+    );
+    await tester.tap(find.byKey(menuKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('重命名'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('assistant-history-rename-input')),
+      '产品规划与预算',
+    );
+    await tester.tap(find.byKey(const Key('assistant-history-rename-confirm')));
+    await tester.pumpAndSettle();
+    expect(source.renamedTitle, '产品规划与预算');
+    expect(find.text('产品规划与预算'), findsOneWidget);
+
+    await tester.tap(find.byKey(menuKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('assistant-history-delete-dialog')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('assistant-history-delete-confirm')));
+    await tester.pumpAndSettle();
+    expect(source.deletedId, _HistoryConversationSource.todayId);
+    expect(find.text('产品规划与预算'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 }
 
 class _FakeAssistantSettings implements AssistantSettingsSource {
@@ -626,4 +741,80 @@ class _FileConversationSource implements AssistantConversationSource {
 
   @override
   void startNewAssistantConversation() {}
+}
+
+class _HistoryConversationSource
+    implements AssistantConversationSource, AssistantConversationHistorySource {
+  static const todayId = '550e8400-e29b-41d4-a716-446655440000';
+  static const yesterdayId = '550e8400-e29b-41d4-a716-446655440001';
+  static const olderId = '550e8400-e29b-41d4-a716-446655440002';
+
+  String? selectedId = todayId;
+  String? renamedTitle;
+  String? deletedId;
+  late final List<AssistantConversationSummary> _items = [
+    AssistantConversationSummary(
+      id: todayId,
+      title: '整理产品需求和预算',
+      updatedAt: DateTime.now().toUtc(),
+    ),
+    AssistantConversationSummary(
+      id: yesterdayId,
+      title: '服务器巡检总结',
+      updatedAt: DateTime.now().toUtc().subtract(const Duration(days: 1)),
+    ),
+    AssistantConversationSummary(
+      id: olderId,
+      title: 'SSH 日志问题排查',
+      updatedAt: DateTime.now().toUtc().subtract(const Duration(days: 4)),
+    ),
+  ];
+
+  @override
+  String? get activeAssistantConversationId => selectedId;
+
+  @override
+  void cancelAssistantMessage() {}
+
+  @override
+  Future<void> deleteAssistantConversation(String conversationId) async {
+    deletedId = conversationId;
+    _items.removeWhere((item) => item.id == conversationId);
+    if (selectedId == conversationId) selectedId = null;
+  }
+
+  @override
+  Future<List<AssistantConversationSummary>>
+  loadAssistantConversations() async => List.unmodifiable(_items);
+
+  @override
+  Future<void> renameAssistantConversation(
+    String conversationId,
+    String title,
+  ) async {
+    renamedTitle = title;
+    final index = _items.indexWhere((item) => item.id == conversationId);
+    final current = _items[index];
+    _items[index] = AssistantConversationSummary(
+      id: current.id,
+      title: title,
+      updatedAt: current.updatedAt,
+    );
+  }
+
+  @override
+  Future<void> selectAssistantConversation(String conversationId) async {
+    selectedId = conversationId;
+  }
+
+  @override
+  Future<AssistantConversationReply> sendAssistantMessage({
+    required String input,
+    required AssistantMode mode,
+    required ApprovalDelegate approvals,
+    List<AssistantInputFile> files = const [],
+  }) async => const AssistantConversationReply(text: '完成');
+
+  @override
+  void startNewAssistantConversation() => selectedId = null;
 }

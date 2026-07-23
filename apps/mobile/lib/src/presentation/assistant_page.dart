@@ -14,6 +14,7 @@ import '../domain/ai/assistant_input_file.dart';
 import '../domain/ai/tool_protocol.dart';
 import 'app_navigation.dart';
 import 'assistant_artifact_preview_sheet.dart';
+import 'assistant_history_drawer.dart';
 
 class AssistantPage extends StatefulWidget {
   const AssistantPage({
@@ -30,8 +31,10 @@ class AssistantPage extends StatefulWidget {
     this.images,
     this.imageActions = const AssistantImageActions(),
     this.conversation,
+    this.history,
     this.artifactActions = const AssistantArtifactActions(),
     this.fileSource = const DeviceAssistantInputFileSource(),
+    this.accountName = 'Daylink',
   });
 
   final ValueChanged<AppDestination> onDestinationSelected;
@@ -46,8 +49,10 @@ class AssistantPage extends StatefulWidget {
   final AssistantImageGenerationSource? images;
   final AssistantImageActionSource imageActions;
   final AssistantConversationSource? conversation;
+  final AssistantConversationHistorySource? history;
   final AssistantArtifactActionSource artifactActions;
   final AssistantInputFileSource fileSource;
+  final String accountName;
 
   @override
   State<AssistantPage> createState() => _AssistantPageState();
@@ -72,11 +77,14 @@ class _AssistantPageState extends State<AssistantPage> {
   AssistantImageSize _imageSize = AssistantImageSize.square;
   AssistantImageQuality _imageQuality = AssistantImageQuality.medium;
   final List<_AssistantConversationTurn> _turns = [];
+  final Map<String, List<_AssistantConversationTurn>> _turnsByConversation = {};
+  String? _activeConversationId;
 
   @override
   void initState() {
     super.initState();
     _inputController.addListener(_refreshInput);
+    _activeConversationId = widget.history?.activeAssistantConversationId;
     _loadPreferences();
   }
 
@@ -84,6 +92,9 @@ class _AssistantPageState extends State<AssistantPage> {
   void didUpdateWidget(covariant AssistantPage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.settings, widget.settings)) _loadPreferences();
+    if (!identical(oldWidget.history, widget.history)) {
+      _activeConversationId = widget.history?.activeAssistantConversationId;
+    }
   }
 
   void _refreshInput() {
@@ -208,12 +219,16 @@ class _AssistantPageState extends State<AssistantPage> {
       );
       if (!mounted || request != _conversationEpoch) return;
       setState(() {
+        if (reply.conversationId != null) {
+          _activeConversationId = reply.conversationId;
+        }
         _turns[turnIndex] = _AssistantConversationTurn(
           prompt: input,
           sourceFiles: sourceFiles,
           response: reply.text,
           artifacts: reply.artifacts,
         );
+        _cacheActiveConversationTurns();
       });
     } on Object catch (error) {
       if (!mounted || request != _conversationEpoch) return;
@@ -461,9 +476,60 @@ class _AssistantPageState extends State<AssistantPage> {
     }
   }
 
+  Future<void> _openHistoryDrawer() async {
+    final history = widget.history;
+    if (history == null) {
+      widget.onOpenHistory();
+      return;
+    }
+    await showAssistantHistoryDrawer(
+      context: context,
+      source: history,
+      accountName: widget.accountName,
+      activeConversationId: _activeConversationId,
+      onSelect: (conversation) async {
+        _cacheActiveConversationTurns();
+        await history.selectAssistantConversation(conversation.id);
+        if (!mounted) return;
+        setState(() {
+          _activeConversationId = conversation.id;
+          _turns
+            ..clear()
+            ..addAll(
+              _turnsByConversation[conversation.id] ??
+                  const <_AssistantConversationTurn>[],
+            );
+          _inputFiles.clear();
+          _imageMode = false;
+        });
+      },
+      onNewConversation: () async => _startNewConversation(),
+      onDeleted: (conversationId) async {
+        _turnsByConversation.remove(conversationId);
+        if (_activeConversationId != conversationId || !mounted) return;
+        setState(() {
+          _activeConversationId = null;
+          _turns.clear();
+          _inputFiles.clear();
+          _imageMode = false;
+        });
+      },
+      onOpenSettings: widget.onOpenMore,
+      onMessage: widget.onMessage,
+    );
+  }
+
+  void _cacheActiveConversationTurns() {
+    final conversationId = _activeConversationId;
+    if (conversationId == null) return;
+    _turnsByConversation[conversationId] = List.unmodifiable(_turns);
+  }
+
   void _startNewConversation() {
+    _cacheActiveConversationTurns();
     widget.conversation?.startNewAssistantConversation();
     setState(() {
+      _activeConversationId = null;
       _turns.clear();
       _inputFiles.clear();
       _imageMode = false;
@@ -503,7 +569,7 @@ class _AssistantPageState extends State<AssistantPage> {
                       mode: _mode,
                       supportedModes: _supportedModes,
                       onModeSelected: (mode) => setState(() => _mode = mode),
-                      onOpenHistory: widget.onOpenHistory,
+                      onOpenHistory: _openHistoryDrawer,
                       onNewConversation: _startNewConversation,
                       onOpenMore: widget.onOpenMore,
                     ),

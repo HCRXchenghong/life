@@ -749,9 +749,13 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
           conversation: runtime is AssistantConversationSource
               ? runtime as AssistantConversationSource
               : null,
+          history: runtime is AssistantConversationHistorySource
+              ? runtime as AssistantConversationHistorySource
+              : null,
+          accountName: _session!.username,
           onDestinationSelected: _selectDestination,
-          onOpenHistory: () => _showPendingPage('对话历史'),
-          onNewConversation: () => _showPendingPage('新对话'),
+          onOpenHistory: () {},
+          onNewConversation: () {},
           onOpenMore: () => _showPendingPage('助手更多设置'),
           onAddAttachment: () => _showPendingPage('选择图片'),
           onVoiceInput: () => _showPendingPage('语音输入'),
@@ -824,6 +828,7 @@ class DaylinkRuntime
         AssistantSettingsSource,
         AssistantImageGenerationSource,
         AssistantConversationSource,
+        AssistantConversationHistorySource,
         AccountEntitlementSource,
         NotificationSettingsSource,
         DataSyncSource,
@@ -849,6 +854,7 @@ class DaylinkRuntime
   final StreamController<String> _forcedSignOutController =
       StreamController<String>.broadcast();
   String? _previousAssistantResponseId;
+  String? _activeAssistantConversationId;
   OpenAiResponsesClient? _activeAssistantResponses;
   ConfiguredArtifactService? _activeArtifactService;
   bool _signedOut = false;
@@ -950,6 +956,24 @@ class DaylinkRuntime
       throw StateError('登录已失效，请重新登录');
     }
     final configuration = await _assistantSettings.loadConfiguration();
+    var storedConversation = _activeAssistantConversationId == null
+        ? null
+        : await services.assistantConversations.find(
+            _activeAssistantConversationId!,
+          );
+    if (storedConversation == null) {
+      storedConversation = await services.assistantConversations.create(
+        provider: configuration.provider,
+        firstPrompt: input,
+      );
+      _activeAssistantConversationId = storedConversation.id;
+      _previousAssistantResponseId = null;
+    } else {
+      if (storedConversation.providerId != configuration.provider.id) {
+        throw StateError('原对话的 AI 配置已变更，请新建对话后继续');
+      }
+      _previousAssistantResponseId = storedConversation.previousResponseId;
+    }
     final artifactService = services.configureArtifacts(
       apiBaseUri: _apiBaseUri,
       mobileToken: token,
@@ -979,9 +1003,14 @@ class DaylinkRuntime
       _previousAssistantResponseId = result.responseId.isEmpty
           ? _previousAssistantResponseId
           : result.responseId;
+      await services.assistantConversations.updateResponse(
+        id: storedConversation.id,
+        previousResponseId: _previousAssistantResponseId,
+      );
       return AssistantConversationReply(
         text: result.text.trim(),
         artifacts: List.unmodifiable(createdArtifacts),
+        conversationId: storedConversation.id,
       );
     } finally {
       if (identical(_activeAssistantResponses, responses)) {
@@ -1007,6 +1036,41 @@ class DaylinkRuntime
   void startNewAssistantConversation() {
     cancelAssistantMessage();
     _previousAssistantResponseId = null;
+    _activeAssistantConversationId = null;
+  }
+
+  @override
+  String? get activeAssistantConversationId => _activeAssistantConversationId;
+
+  @override
+  Future<List<AssistantConversationSummary>> loadAssistantConversations() =>
+      services.assistantConversations.list();
+
+  @override
+  Future<void> selectAssistantConversation(String conversationId) async {
+    cancelAssistantMessage();
+    final conversation = await services.assistantConversations.find(
+      conversationId,
+    );
+    if (conversation == null) {
+      throw StateError('对话已不存在');
+    }
+    _activeAssistantConversationId = conversation.id;
+    _previousAssistantResponseId = conversation.previousResponseId;
+  }
+
+  @override
+  Future<void> renameAssistantConversation(
+    String conversationId,
+    String title,
+  ) => services.assistantConversations.rename(conversationId, title);
+
+  @override
+  Future<void> deleteAssistantConversation(String conversationId) async {
+    await services.assistantConversations.delete(conversationId);
+    if (_activeAssistantConversationId == conversationId) {
+      startNewAssistantConversation();
+    }
   }
 
   @override

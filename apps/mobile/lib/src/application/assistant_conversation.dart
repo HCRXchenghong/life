@@ -7,10 +7,12 @@ class AssistantConversationReply {
   const AssistantConversationReply({
     required this.text,
     this.artifacts = const [],
+    this.conversationId,
   });
 
   final String text;
   final List<AssistantGeneratedArtifact> artifacts;
+  final String? conversationId;
 }
 
 abstract interface class AssistantConversationSource {
@@ -24,4 +26,28 @@ abstract interface class AssistantConversationSource {
   void cancelAssistantMessage();
 
   void startNewAssistantConversation();
+}
+
+class AssistantConversationSummary {
+  const AssistantConversationSummary({
+    required this.id,
+    required this.title,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String title;
+  final DateTime updatedAt;
+}
+
+abstract interface class AssistantConversationHistorySource {
+  String? get activeAssistantConversationId;
+
+  Future<List<AssistantConversationSummary>> loadAssistantConversations();
+
+  Future<void> selectAssistantConversation(String conversationId);
+
+  Future<void> renameAssistantConversation(String conversationId, String title);
+
+  Future<void> deleteAssistantConversation(String conversationId);
 }
