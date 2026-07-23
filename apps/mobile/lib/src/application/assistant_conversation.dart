@@ -49,5 +49,46 @@ abstract interface class AssistantConversationHistorySource {
 
   Future<void> renameAssistantConversation(String conversationId, String title);
 
+  Future<void> clearAssistantConversation(String conversationId);
+
   Future<void> deleteAssistantConversation(String conversationId);
+}
+
+enum AssistantConversationExportFormat {
+  pdf('PDF', 'pdf', 'application/pdf'),
+  markdown('Markdown', 'md', 'text/markdown');
+
+  const AssistantConversationExportFormat(
+    this.label,
+    this.extension,
+    this.contentType,
+  );
+
+  final String label;
+  final String extension;
+  final String contentType;
+}
+
+class AssistantConversationExportTurn {
+  const AssistantConversationExportTurn({
+    required this.prompt,
+    required this.response,
+    this.sourceFileNames = const [],
+    this.artifactNames = const [],
+  });
+
+  final String prompt;
+  final String response;
+  final List<String> sourceFileNames;
+  final List<String> artifactNames;
+}
+
+class AssistantConversationExportDocument {
+  const AssistantConversationExportDocument({
+    required this.title,
+    required this.turns,
+  });
+
+  final String title;
+  final List<AssistantConversationExportTurn> turns;
 }

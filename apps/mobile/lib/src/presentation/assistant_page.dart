@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../application/assistant_artifact_actions.dart';
 import '../application/assistant_conversation.dart';
+import '../application/assistant_conversation_export.dart';
 import '../application/assistant_file_picker.dart';
 import '../application/assistant_image_actions.dart';
 import '../application/assistant_settings.dart';
@@ -14,6 +17,7 @@ import '../domain/ai/assistant_input_file.dart';
 import '../domain/ai/tool_protocol.dart';
 import 'app_navigation.dart';
 import 'assistant_artifact_preview_sheet.dart';
+import 'assistant_conversation_options_sheet.dart';
 import 'assistant_history_drawer.dart';
 
 class AssistantPage extends StatefulWidget {
@@ -33,6 +37,7 @@ class AssistantPage extends StatefulWidget {
     this.conversation,
     this.history,
     this.artifactActions = const AssistantArtifactActions(),
+    this.conversationExports = const AssistantConversationExportActions(),
     this.fileSource = const DeviceAssistantInputFileSource(),
     this.accountName = 'Daylink',
   });
@@ -51,6 +56,7 @@ class AssistantPage extends StatefulWidget {
   final AssistantConversationSource? conversation;
   final AssistantConversationHistorySource? history;
   final AssistantArtifactActionSource artifactActions;
+  final AssistantConversationExportSource conversationExports;
   final AssistantInputFileSource fileSource;
   final String accountName;
 
@@ -514,9 +520,170 @@ class _AssistantPageState extends State<AssistantPage> {
           _imageMode = false;
         });
       },
-      onOpenSettings: widget.onOpenMore,
+      onOpenSettings: () => unawaited(_openConversationOptions()),
       onMessage: widget.onMessage,
     );
+  }
+
+  Future<void> _openConversationOptions() async {
+    final conversationId = _activeConversationId;
+    final history = widget.history;
+    final option = await showAssistantConversationOptionsSheet(
+      context: context,
+      hasConversation: conversationId != null && history != null,
+    );
+    if (!mounted || option == null) return;
+    if (conversationId == null || history == null) {
+      widget.onMessage('请先发送一条消息');
+      return;
+    }
+    final title = await _loadActiveConversationTitle(history, conversationId);
+    if (!mounted) return;
+    if (title == null) {
+      widget.onMessage('当前对话已不存在');
+      return;
+    }
+    switch (option) {
+      case AssistantConversationOption.rename:
+        await _renameConversation(history, conversationId, title);
+        return;
+      case AssistantConversationOption.export:
+        await _exportConversation(title);
+        return;
+      case AssistantConversationOption.clear:
+        await _clearConversation(history, conversationId, title);
+        return;
+      case AssistantConversationOption.delete:
+        await _deleteConversation(history, conversationId, title);
+        return;
+    }
+  }
+
+  Future<String?> _loadActiveConversationTitle(
+    AssistantConversationHistorySource history,
+    String conversationId,
+  ) async {
+    try {
+      final conversations = await history.loadAssistantConversations();
+      for (final conversation in conversations) {
+        if (conversation.id == conversationId) return conversation.title;
+      }
+      return null;
+    } on Object {
+      widget.onMessage('无法加载当前对话，请稍后重试');
+      return null;
+    }
+  }
+
+  Future<void> _renameConversation(
+    AssistantConversationHistorySource history,
+    String conversationId,
+    String title,
+  ) async {
+    final renamed = await showAssistantConversationRenameDialog(
+      context: context,
+      currentTitle: title,
+    );
+    if (!mounted || renamed == null || renamed == title) return;
+    try {
+      await history.renameAssistantConversation(conversationId, renamed);
+      if (mounted) widget.onMessage('对话已重命名');
+    } on Object {
+      if (mounted) widget.onMessage('重命名失败，请稍后重试');
+    }
+  }
+
+  Future<void> _exportConversation(String title) async {
+    final exportTurns = _turns
+        .where((turn) => turn.response != null || turn.error != null)
+        .map(
+          (turn) => AssistantConversationExportTurn(
+            prompt: turn.prompt,
+            response: turn.response ?? turn.error ?? '',
+            sourceFileNames: turn.sourceFiles
+                .map((file) => file.filename)
+                .toList(growable: false),
+            artifactNames: turn.artifacts
+                .map((artifact) => artifact.displayName)
+                .toList(growable: false),
+          ),
+        )
+        .toList(growable: false);
+    if (exportTurns.isEmpty) {
+      widget.onMessage('当前设备没有可导出的已加载内容');
+      return;
+    }
+    final format = await showAssistantExportFormatSheet(context: context);
+    if (!mounted || format == null) return;
+    final renderObject = context.findRenderObject();
+    final origin = renderObject is RenderBox
+        ? renderObject.localToGlobal(Offset.zero) & renderObject.size
+        : const Rect.fromLTWH(0, 0, 1, 1);
+    try {
+      await widget.conversationExports.export(
+        AssistantConversationExportDocument(title: title, turns: exportTurns),
+        format: format,
+        sharePositionOrigin: origin,
+      );
+      if (mounted) widget.onMessage('已打开系统保存面板');
+    } on AssistantConversationExportException catch (error) {
+      if (mounted) widget.onMessage(error.message);
+    } on Object {
+      if (mounted) widget.onMessage('导出失败，请稍后重试');
+    }
+  }
+
+  Future<void> _clearConversation(
+    AssistantConversationHistorySource history,
+    String conversationId,
+    String title,
+  ) async {
+    final confirmed = await confirmAssistantConversationAction(
+      context: context,
+      action: AssistantConversationOption.clear,
+      title: title,
+    );
+    if (!confirmed || !mounted) return;
+    try {
+      await history.clearAssistantConversation(conversationId);
+      if (!mounted) return;
+      setState(() {
+        _turns.clear();
+        _inputFiles.clear();
+        _imageMode = false;
+        _turnsByConversation[conversationId] = const [];
+      });
+      widget.onMessage('当前对话内容已清空');
+    } on Object {
+      if (mounted) widget.onMessage('清空失败，请稍后重试');
+    }
+  }
+
+  Future<void> _deleteConversation(
+    AssistantConversationHistorySource history,
+    String conversationId,
+    String title,
+  ) async {
+    final confirmed = await confirmAssistantConversationAction(
+      context: context,
+      action: AssistantConversationOption.delete,
+      title: title,
+    );
+    if (!confirmed || !mounted) return;
+    try {
+      await history.deleteAssistantConversation(conversationId);
+      if (!mounted) return;
+      setState(() {
+        _activeConversationId = null;
+        _turnsByConversation.remove(conversationId);
+        _turns.clear();
+        _inputFiles.clear();
+        _imageMode = false;
+      });
+      widget.onMessage('对话已删除');
+    } on Object {
+      if (mounted) widget.onMessage('删除失败，请稍后重试');
+    }
   }
 
   void _cacheActiveConversationTurns() {
@@ -571,7 +738,7 @@ class _AssistantPageState extends State<AssistantPage> {
                       onModeSelected: (mode) => setState(() => _mode = mode),
                       onOpenHistory: _openHistoryDrawer,
                       onNewConversation: _startNewConversation,
-                      onOpenMore: widget.onOpenMore,
+                      onOpenMore: _openConversationOptions,
                     ),
                   ),
                   Expanded(

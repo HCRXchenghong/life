@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:daylink_mobile/src/application/assistant_artifact_actions.dart';
 import 'package:daylink_mobile/src/application/assistant_conversation.dart';
+import 'package:daylink_mobile/src/application/assistant_conversation_export.dart';
 import 'package:daylink_mobile/src/application/assistant_file_picker.dart';
 import 'package:daylink_mobile/src/application/assistant_image_actions.dart';
 import 'package:daylink_mobile/src/application/assistant_settings.dart';
@@ -111,6 +112,13 @@ void main() {
     await tester.tap(find.byKey(const Key('assistant-history')));
     await tester.tap(find.byKey(const Key('assistant-new-conversation')));
     await tester.tap(find.byKey(const Key('assistant-more')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('assistant-conversation-options-sheet')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('assistant-options-close')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('assistant-add')));
     await tester.pumpAndSettle();
     expect(find.text('添加到对话'), findsOneWidget);
@@ -118,7 +126,7 @@ void main() {
     await tester.tap(find.byKey(const Key('assistant-add-image')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('assistant-microphone')));
-    expect(actions, ['history', 'new', 'more', 'attachment', 'voice']);
+    expect(actions, ['history', 'new', 'attachment', 'voice']);
 
     await tester.enterText(
       find.byKey(const Key('assistant-input')),
@@ -529,6 +537,103 @@ void main() {
     expect(find.text('产品规划与预算'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('runs every approved current conversation option', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(430, 932));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final source = _HistoryConversationSource();
+    final exports = _FakeConversationExports();
+    final messages = <String>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AssistantPage(
+          settings: _FakeAssistantSettings(),
+          conversation: source,
+          history: source,
+          conversationExports: exports,
+          accountName: 'chenghong',
+          onDestinationSelected: (_) {},
+          onOpenHistory: () {},
+          onNewConversation: () {},
+          onOpenMore: () {},
+          onAddAttachment: () {},
+          onVoiceInput: () {},
+          onSubmit: (_) async {},
+          onMessage: messages.add,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('assistant-input')), '总结需求');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('assistant-primary-action')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('assistant-more')));
+    await tester.pumpAndSettle();
+    expect(find.text('对话选项'), findsOneWidget);
+    expect(find.text('重命名对话'), findsOneWidget);
+    expect(find.text('导出对话'), findsOneWidget);
+    expect(find.text('清空当前内容'), findsOneWidget);
+    expect(find.text('删除对话'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('assistant-options-export')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('assistant-export-format-sheet')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('assistant-export-markdown')));
+    await tester.pumpAndSettle();
+    expect(exports.format, AssistantConversationExportFormat.markdown);
+    expect(exports.document?.title, '整理产品需求和预算');
+    expect(exports.document?.turns.single.prompt, '总结需求');
+    expect(exports.document?.turns.single.response, '完成');
+
+    await tester.tap(find.byKey(const Key('assistant-more')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('assistant-options-rename')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('assistant-options-rename-input')),
+      '需求总结',
+    );
+    await tester.tap(find.byKey(const Key('assistant-options-rename-confirm')));
+    await tester.pumpAndSettle();
+    expect(source.renamedTitle, '需求总结');
+
+    await tester.tap(find.byKey(const Key('assistant-more')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('assistant-options-clear')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('assistant-options-clear-dialog')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('assistant-options-clear-confirm')));
+    await tester.pumpAndSettle();
+    expect(source.clearedId, _HistoryConversationSource.todayId);
+    expect(find.text('有什么可以帮忙的？'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('assistant-more')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('assistant-options-delete')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('assistant-options-delete-dialog')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('assistant-options-delete-confirm')));
+    await tester.pumpAndSettle();
+    expect(source.deletedId, _HistoryConversationSource.todayId);
+    expect(messages, contains('已打开系统保存面板'));
+    expect(messages, contains('对话已重命名'));
+    expect(messages, contains('当前对话内容已清空'));
+    expect(messages, contains('对话已删除'));
+    expect(tester.takeException(), isNull);
+  });
 }
 
 class _FakeAssistantSettings implements AssistantSettingsSource {
@@ -751,6 +856,7 @@ class _HistoryConversationSource
 
   String? selectedId = todayId;
   String? renamedTitle;
+  String? clearedId;
   String? deletedId;
   late final List<AssistantConversationSummary> _items = [
     AssistantConversationSummary(
@@ -775,6 +881,11 @@ class _HistoryConversationSource
 
   @override
   void cancelAssistantMessage() {}
+
+  @override
+  Future<void> clearAssistantConversation(String conversationId) async {
+    clearedId = conversationId;
+  }
 
   @override
   Future<void> deleteAssistantConversation(String conversationId) async {
@@ -813,8 +924,24 @@ class _HistoryConversationSource
     required AssistantMode mode,
     required ApprovalDelegate approvals,
     List<AssistantInputFile> files = const [],
-  }) async => const AssistantConversationReply(text: '完成');
+  }) async =>
+      const AssistantConversationReply(text: '完成', conversationId: todayId);
 
   @override
   void startNewAssistantConversation() => selectedId = null;
+}
+
+class _FakeConversationExports implements AssistantConversationExportSource {
+  AssistantConversationExportDocument? document;
+  AssistantConversationExportFormat? format;
+
+  @override
+  Future<void> export(
+    AssistantConversationExportDocument document, {
+    required AssistantConversationExportFormat format,
+    required Rect sharePositionOrigin,
+  }) async {
+    this.document = document;
+    this.format = format;
+  }
 }

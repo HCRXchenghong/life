@@ -139,6 +139,22 @@ class AssistantConversationRepository {
     }
   }
 
+  Future<void> clear(String id) async {
+    _requireId(id);
+    final updated =
+        await (_db.update(
+          _db.aiConversations,
+        )..where((table) => table.id.equals(id))).write(
+          AiConversationsCompanion(
+            previousResponseId: const Value(null),
+            updatedAt: Value(DateTime.now().toUtc()),
+          ),
+        );
+    if (updated != 1) {
+      throw StateError('Assistant conversation no longer exists');
+    }
+  }
+
   Future<void> delete(String id) async {
     _requireId(id);
     await (_db.delete(

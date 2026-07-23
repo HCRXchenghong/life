@@ -1,16 +1,16 @@
 import 'package:daylink_mobile/src/data/app_database.dart';
 import 'package:daylink_mobile/src/data/assistant_conversation_repository.dart';
 import 'package:daylink_mobile/src/domain/ai/ai_models.dart';
-import 'package:drift/drift.dart';
+import 'package:drift/drift.dart' as drift;
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test(
     'conversation history stays account-scoped and resumes safely',
     () async {
-      driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+      drift.driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
       addTearDown(() {
-        driftRuntimeOptions.dontWarnAboutMultipleDatabases = false;
+        drift.driftRuntimeOptions.dontWarnAboutMultipleDatabases = false;
       });
       final accountOne = AppDatabase.inMemory();
       final accountTwo = AppDatabase.inMemory();
@@ -43,6 +43,9 @@ void main() {
       final resumed = await first.find(created.id);
       expect(resumed?.previousResponseId, 'resp_account_one');
       expect(resumed?.providerId, provider.id);
+
+      await first.clear(created.id);
+      expect((await first.find(created.id))?.previousResponseId, isNull);
 
       await first.rename(created.id, '产品与预算');
       expect((await first.list()).single.title, '产品与预算');

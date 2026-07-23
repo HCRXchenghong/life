@@ -1066,6 +1066,15 @@ class DaylinkRuntime
   ) => services.assistantConversations.rename(conversationId, title);
 
   @override
+  Future<void> clearAssistantConversation(String conversationId) async {
+    cancelAssistantMessage();
+    await services.assistantConversations.clear(conversationId);
+    if (_activeAssistantConversationId == conversationId) {
+      _previousAssistantResponseId = null;
+    }
+  }
+
+  @override
   Future<void> deleteAssistantConversation(String conversationId) async {
     await services.assistantConversations.delete(conversationId);
     if (_activeAssistantConversationId == conversationId) {
