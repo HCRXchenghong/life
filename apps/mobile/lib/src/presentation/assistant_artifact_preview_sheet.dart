@@ -340,67 +340,14 @@ class _PresentationPreviewState extends State<_PresentationPreview> {
             itemBuilder: (_, index) {
               final slide = slides[index];
               return Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+                padding: const EdgeInsets.fromLTRB(20, 28, 20, 16),
                 child: Center(
                   child: AspectRatio(
-                    aspectRatio: 16 / 9,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        border: Border.all(color: const Color(0xFFE5E7EB)),
-                        borderRadius: BorderRadius.circular(10),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x0A000000),
-                            blurRadius: 12,
-                            offset: Offset(0, 3),
-                          ),
-                        ],
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(26),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              slide.title,
-                              style: const TextStyle(
-                                color: Color(0xFF1F2329),
-                                fontSize: 23,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                            for (final bullet in slide.bullets)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 10),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Padding(
-                                      padding: EdgeInsets.only(top: 7),
-                                      child: CircleAvatar(
-                                        radius: 2.5,
-                                        backgroundColor: Color(0xFF3370FF),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        bullet,
-                                        style: const TextStyle(
-                                          color: Color(0xFF4E5969),
-                                          fontSize: 14,
-                                          height: 1.45,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
+                    aspectRatio: 1.08,
+                    child: _PresentationSlideCard(
+                      key: Key('artifact-presentation-slide-$index'),
+                      presentationTitle: widget.presentation.title,
+                      slide: slide,
                     ),
                   ),
                 ),
@@ -409,15 +356,235 @@ class _PresentationPreviewState extends State<_PresentationPreview> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.only(bottom: 24),
-          child: Text(
-            '${_page + 1} / ${slides.length}',
-            style: const TextStyle(color: Color(0xFF646A73), fontSize: 13),
+          padding: const EdgeInsets.only(bottom: 22),
+          child: Column(
+            children: [
+              Text(
+                '${_page + 1} / ${slides.length}',
+                style: const TextStyle(color: Color(0xFF4E5969), fontSize: 13),
+              ),
+              const SizedBox(height: 10),
+              _PresentationPageDots(page: _page, pageCount: slides.length),
+            ],
           ),
         ),
       ],
     );
   }
+}
+
+class _PresentationSlideCard extends StatelessWidget {
+  const _PresentationSlideCard({
+    super.key,
+    required this.presentationTitle,
+    required this.slide,
+  });
+
+  final String presentationTitle;
+  final AssistantPresentationSlide slide;
+
+  @override
+  Widget build(BuildContext context) {
+    final titleParts = _presentationTextParts(slide.title);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(25, 24, 23, 22),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFDDE1E6)),
+        borderRadius: BorderRadius.circular(4),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A000000),
+            blurRadius: 12,
+            offset: Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 4,
+                height: 47,
+                margin: const EdgeInsets.only(top: 1),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3370FF),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      titleParts.$1,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF1F2329),
+                        fontSize: 21,
+                        height: 1.2,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      titleParts.$2 ?? presentationTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF7B8492),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 13),
+          Container(height: 1, color: const Color(0xFF3370FF)),
+          const SizedBox(height: 13),
+          Expanded(
+            child: slide.bullets.isEmpty
+                ? const Center(
+                    child: Text(
+                      '这一页暂时没有正文',
+                      style: TextStyle(color: Color(0xFF8F959E), fontSize: 12),
+                    ),
+                  )
+                : ListView.separated(
+                    padding: EdgeInsets.zero,
+                    physics: const ClampingScrollPhysics(),
+                    itemCount: slide.bullets.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    itemBuilder: (_, index) => _PresentationBulletRow(
+                      index: index,
+                      text: slide.bullets[index],
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PresentationBulletRow extends StatelessWidget {
+  const _PresentationBulletRow({required this.index, required this.text});
+
+  final int index;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = _presentationTextParts(text);
+    final icon = switch (index % 3) {
+      0 => Icons.folder_open_rounded,
+      1 => Icons.calendar_month_rounded,
+      _ => Icons.verified_user_rounded,
+    };
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 30,
+          height: 30,
+          decoration: const BoxDecoration(
+            color: Color(0xFF3370FF),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: Colors.white, size: 17),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                parts.$1,
+                style: const TextStyle(
+                  color: Color(0xFF1F2329),
+                  fontSize: 13,
+                  height: 1.25,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (parts.$2 case final description?) ...[
+                const SizedBox(height: 3),
+                Text(
+                  description,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF646A73),
+                    fontSize: 10.5,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PresentationPageDots extends StatelessWidget {
+  const _PresentationPageDots({required this.page, required this.pageCount});
+
+  final int page;
+  final int pageCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final dotCount = pageCount.clamp(1, 3);
+    final activeDot = pageCount <= dotCount
+        ? page
+        : (page * dotCount ~/ pageCount).clamp(0, dotCount - 1);
+    return Semantics(
+      label: '左右滑动切换页面',
+      child: Row(
+        key: const Key('artifact-presentation-page-dots'),
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var index = 0; index < dotCount; index++) ...[
+            if (index > 0) const SizedBox(width: 8),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(
+                color: index == activeDot
+                    ? const Color(0xFF3370FF)
+                    : const Color(0xFFD3D6DC),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+(String, String?) _presentationTextParts(String value) {
+  final normalized = value.trim();
+  for (final separator in const ['\n', '：', ': ']) {
+    final index = normalized.indexOf(separator);
+    if (index > 0 && index < normalized.length - separator.length) {
+      return (
+        normalized.substring(0, index).trim(),
+        normalized.substring(index + separator.length).trim(),
+      );
+    }
+  }
+  return (normalized, null);
 }
 
 String formatArtifactBytes(int bytes) {

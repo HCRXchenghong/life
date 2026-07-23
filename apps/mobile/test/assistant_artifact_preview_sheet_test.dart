@@ -77,9 +77,17 @@ void main() {
               title: '项目汇报',
               slides: [
                 AssistantPresentationSlide(
-                  title: '本周目标',
-                  bullets: ['保持简洁', '支持预览与下载'],
+                  title: 'Daylink 项目进展\n本周交付与下一步计划',
+                  bullets: [
+                    '助手文件能力\n支持文件卡片、预览与下载',
+                    '日程与邀请体验\n持续优化好友选时间流程',
+                    '双端稳定性\n完成 Android 与 iOS 构建验证',
+                  ],
                 ),
+                AssistantPresentationSlide(title: '下一步计划', bullets: ['保持简洁']),
+                AssistantPresentationSlide(title: '风险', bullets: []),
+                AssistantPresentationSlide(title: '数据', bullets: []),
+                AssistantPresentationSlide(title: '总结', bullets: []),
               ],
             ),
           ),
@@ -92,9 +100,22 @@ void main() {
       find.byKey(const Key('artifact-presentation-preview')),
       findsOneWidget,
     );
-    expect(find.text('本周目标'), findsOneWidget);
-    expect(find.text('支持预览与下载'), findsOneWidget);
-    expect(find.text('1 / 1'), findsOneWidget);
+    expect(find.text('Daylink 项目进展'), findsOneWidget);
+    expect(find.text('支持文件卡片、预览与下载'), findsOneWidget);
+    expect(find.text('1 / 5'), findsOneWidget);
+    expect(
+      find.byKey(const Key('artifact-presentation-page-dots')),
+      findsOneWidget,
+    );
+
+    await tester.fling(
+      find.byType(PageView),
+      const Offset(-430, 0),
+      1000,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('2 / 5'), findsOneWidget);
+    expect(find.text('下一步计划'), findsOneWidget);
   });
 }
 
