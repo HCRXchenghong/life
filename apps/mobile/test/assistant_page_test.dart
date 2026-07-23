@@ -1,9 +1,13 @@
 import 'dart:convert';
 
+import 'package:daylink_mobile/src/application/assistant_artifact_actions.dart';
+import 'package:daylink_mobile/src/application/assistant_conversation.dart';
 import 'package:daylink_mobile/src/application/assistant_image_actions.dart';
 import 'package:daylink_mobile/src/application/assistant_settings.dart';
 import 'package:daylink_mobile/src/domain/ai/ai_models.dart';
+import 'package:daylink_mobile/src/domain/ai/assistant_artifact_models.dart';
 import 'package:daylink_mobile/src/domain/ai/assistant_image_models.dart';
+import 'package:daylink_mobile/src/domain/ai/tool_protocol.dart';
 import 'package:daylink_mobile/src/presentation/app_navigation.dart';
 import 'package:daylink_mobile/src/presentation/assistant_page.dart';
 import 'package:flutter/material.dart';
@@ -185,6 +189,76 @@ void main() {
     expect(messages, contains('图片已保存到相册'));
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'generated Office file stays in chat and supports preview and download',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(430, 932));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final conversation = _FakeConversationSource();
+      final artifactActions = _FakeArtifactActions();
+      final messages = <String>[];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AssistantPage(
+            settings: _FakeAssistantSettings(),
+            conversation: conversation,
+            artifactActions: artifactActions,
+            onDestinationSelected: (_) {},
+            onOpenHistory: () {},
+            onNewConversation: () {},
+            onOpenMore: () {},
+            onAddAttachment: () {},
+            onVoiceInput: () {},
+            onSubmit: (_) async {},
+            onMessage: messages.add,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('assistant-input')),
+        '根据项目资料生成一份简洁的周报',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('assistant-primary-action')));
+      await tester.pump(const Duration(milliseconds: 350));
+
+      expect(find.text('允许生成文件？'), findsOneWidget);
+      expect(find.textContaining('项目周报'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('assistant-tool-approve')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('根据项目资料生成一份简洁的周报'), findsOneWidget);
+      expect(find.text('已生成文档'), findsOneWidget);
+      expect(find.text('项目周报.docx'), findsOneWidget);
+      expect(find.text('Word 文档 · 26 KB'), findsOneWidget);
+      expect(find.text('预览'), findsOneWidget);
+      expect(find.text('下载'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const Key('assistant-artifact-preview-artifact-1')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('artifact-document-preview')),
+        findsOneWidget,
+      );
+      expect(find.text('本周完成'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('artifact-preview-close')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const Key('assistant-artifact-download-artifact-1')),
+      );
+      await tester.pumpAndSettle();
+      expect(artifactActions.downloads, 1);
+      expect(messages, contains('已打开系统保存面板'));
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 class _FakeAssistantSettings implements AssistantSettingsSource {
@@ -248,4 +322,68 @@ class _FakeImageActions implements AssistantImageActionSource {
     AssistantGeneratedImage image, {
     required Rect sharePositionOrigin,
   }) async => shared++;
+}
+
+class _FakeConversationSource implements AssistantConversationSource {
+  @override
+  void cancelAssistantMessage() {}
+
+  @override
+  Future<AssistantConversationReply> sendAssistantMessage({
+    required String input,
+    required AssistantMode mode,
+    required ApprovalDelegate approvals,
+  }) async {
+    final decision = await approvals(
+      const ToolSpec(
+        name: 'daylink_create_word_document',
+        description: 'Create a Word document',
+        inputSchema: {'type': 'object'},
+        risk: ToolRisk.medium,
+        approval: ToolApprovalPolicy.always,
+        sandbox: ToolSandbox.localData,
+      ),
+      const ToolCall(
+        callId: 'artifact-call-1',
+        name: 'daylink_create_word_document',
+        arguments: {'title': '项目周报'},
+      ),
+    );
+    if (decision != ApprovalDecision.accept) {
+      return const AssistantConversationReply(text: '已取消');
+    }
+    return const AssistantConversationReply(
+      text: '已生成文档',
+      artifacts: [
+        AssistantGeneratedArtifact(
+          id: 'artifact-1',
+          kind: AssistantArtifactKind.document,
+          displayName: '项目周报.docx',
+          contentType:
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          byteSize: 26624,
+          localPath: '/private/daylink/artifact-1.docx',
+          preview: AssistantDocumentPreview(
+            title: '项目周报',
+            paragraphs: ['本周完成', '下周计划'],
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  void startNewAssistantConversation() {}
+}
+
+class _FakeArtifactActions implements AssistantArtifactActionSource {
+  var downloads = 0;
+
+  @override
+  Future<void> download(
+    AssistantGeneratedArtifact artifact, {
+    required Rect sharePositionOrigin,
+  }) async {
+    downloads++;
+  }
 }

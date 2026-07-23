@@ -17,6 +17,7 @@ import '../data/secret_vault.dart';
 import '../data/share_poll_client.dart';
 import '../data/share_poll_repository.dart';
 import '../domain/ai/agent_codex_transport.dart';
+import '../domain/ai/assistant_artifact_models.dart';
 import '../domain/ai/openai_responses_client.dart';
 import '../domain/ai/tool_protocol.dart';
 import '../domain/notifications/notification_settings.dart';
@@ -181,6 +182,7 @@ class DaylinkServices {
     required ApprovalDelegate approvals,
     ConfiguredShareService? share,
     ConfiguredArtifactService? artifacts,
+    void Function(AssistantGeneratedArtifact artifact)? onArtifactCreated,
     NativeAgentChannel? remoteAgent,
   }) {
     final registry = ToolRegistry(approvals: approvals);
@@ -199,6 +201,7 @@ class DaylinkServices {
       ArtifactTools(
         generator: artifacts.client,
         sink: artifacts.repository,
+        onCreated: onArtifactCreated,
       ).register(registry);
     }
     if (remoteAgent != null) {

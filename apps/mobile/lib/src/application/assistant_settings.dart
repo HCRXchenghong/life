@@ -68,9 +68,9 @@ class DaylinkAssistantSettings
 
   @override
   Future<AssistantPreferences> loadAssistantPreferences() async {
+    final configuration = await loadConfiguration();
     final client = await _client();
     try {
-      final configuration = await client.localConfiguration();
       final entitlement = await client.entitlement();
       final selectedModel = configuration.provider.textModel;
       final models = <String>{
@@ -90,6 +90,15 @@ class DaylinkAssistantSettings
             )
             .toSet(),
       );
+    } finally {
+      client.close();
+    }
+  }
+
+  Future<DaylinkAiConfiguration> loadConfiguration() async {
+    final client = await _client();
+    try {
+      return await client.localConfiguration();
     } finally {
       client.close();
     }

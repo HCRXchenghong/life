@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'src/application/assistant_settings.dart';
+import 'src/application/assistant_conversation.dart';
 import 'src/application/daylink_services.dart';
 import 'src/application/friend_schedule_list.dart';
 import 'src/data/ai_gateway_client.dart';
@@ -14,6 +15,9 @@ import 'src/data/operations_repository.dart';
 import 'src/data/schedule_repository.dart';
 import 'src/domain/ai/ai_models.dart';
 import 'src/domain/ai/assistant_image_models.dart';
+import 'src/domain/ai/assistant_artifact_models.dart';
+import 'src/domain/ai/openai_responses_client.dart';
+import 'src/domain/ai/tool_protocol.dart';
 import 'src/domain/notifications/notification_settings.dart';
 import 'src/domain/schedule/schedule_detail_models.dart';
 import 'src/domain/schedule/schedule_editor_models.dart';
@@ -741,6 +745,9 @@ class _DaylinkAppState extends State<DaylinkApp> with WidgetsBindingObserver {
           images: runtime is AssistantImageGenerationSource
               ? runtime as AssistantImageGenerationSource
               : null,
+          conversation: runtime is AssistantConversationSource
+              ? runtime as AssistantConversationSource
+              : null,
           onDestinationSelected: _selectDestination,
           onOpenHistory: () => _showPendingPage('对话历史'),
           onNewConversation: () => _showPendingPage('新对话'),
@@ -816,6 +823,7 @@ class DaylinkRuntime
         HostAwareRuntime,
         AssistantSettingsSource,
         AssistantImageGenerationSource,
+        AssistantConversationSource,
         AccountEntitlementSource,
         NotificationSettingsSource,
         DataSyncSource,
@@ -829,13 +837,20 @@ class DaylinkRuntime
     this.services,
     this._assistantSettings,
     this._friendSchedules,
+    this._apiBaseUri,
+    this._accessToken,
   );
 
   final DaylinkServices services;
   final DaylinkAssistantSettings _assistantSettings;
   final DaylinkFriendSchedules _friendSchedules;
+  final Uri _apiBaseUri;
+  final AccessTokenProvider _accessToken;
   final StreamController<String> _forcedSignOutController =
       StreamController<String>.broadcast();
+  String? _previousAssistantResponseId;
+  OpenAiResponsesClient? _activeAssistantResponses;
+  ConfiguredArtifactService? _activeArtifactService;
   bool _signedOut = false;
   bool _closed = false;
 
@@ -870,6 +885,8 @@ class DaylinkRuntime
         accessToken: accessToken,
         refreshAccessToken: refreshAccessToken,
       ),
+      apiBaseUri,
+      accessToken,
     );
     services.monitorSession(
       apiBaseUri: apiBaseUri,
@@ -914,6 +931,81 @@ class DaylinkRuntime
   @override
   void cancelAssistantImageGeneration() =>
       _assistantSettings.cancelAssistantImageGeneration();
+
+  @override
+  Future<AssistantConversationReply> sendAssistantMessage({
+    required String input,
+    required AssistantMode mode,
+    required ApprovalDelegate approvals,
+  }) async {
+    if (_signedOut) {
+      throw StateError('登录已失效，请重新登录');
+    }
+    if (mode != AssistantMode.local) {
+      throw StateError('请先在主机页面选择 SSH 主机');
+    }
+    final token = await _accessToken();
+    if (token == null) {
+      throw StateError('登录已失效，请重新登录');
+    }
+    final configuration = await _assistantSettings.loadConfiguration();
+    final artifactService = services.configureArtifacts(
+      apiBaseUri: _apiBaseUri,
+      mobileToken: token,
+    );
+    if (_activeAssistantResponses != null) {
+      artifactService.close();
+      throw StateError('已有助手请求正在处理中');
+    }
+    final responses = OpenAiResponsesClient();
+    _activeAssistantResponses = responses;
+    _activeArtifactService = artifactService;
+    final createdArtifacts = <AssistantGeneratedArtifact>[];
+    try {
+      final registry = services.createToolRegistry(
+        approvals: approvals,
+        artifacts: artifactService,
+        onArtifactCreated: createdArtifacts.add,
+      );
+      final result = await responses.run(
+        provider: configuration.provider,
+        apiKey: configuration.accessToken,
+        input: input,
+        tools: registry,
+        previousResponseId: _previousAssistantResponseId,
+      );
+      _previousAssistantResponseId = result.responseId.isEmpty
+          ? _previousAssistantResponseId
+          : result.responseId;
+      return AssistantConversationReply(
+        text: result.text.trim(),
+        artifacts: List.unmodifiable(createdArtifacts),
+      );
+    } finally {
+      if (identical(_activeAssistantResponses, responses)) {
+        _activeAssistantResponses = null;
+      }
+      if (identical(_activeArtifactService, artifactService)) {
+        _activeArtifactService = null;
+      }
+      responses.close();
+      artifactService.close();
+    }
+  }
+
+  @override
+  void cancelAssistantMessage() {
+    _activeAssistantResponses?.close();
+    _activeArtifactService?.close();
+    _activeAssistantResponses = null;
+    _activeArtifactService = null;
+  }
+
+  @override
+  void startNewAssistantConversation() {
+    cancelAssistantMessage();
+    _previousAssistantResponseId = null;
+  }
 
   @override
   Future<AiEntitlement> loadAccountEntitlement() =>
@@ -1083,6 +1175,7 @@ class DaylinkRuntime
   Future<void> _forceSignOut(String reason) async {
     if (_signedOut) return;
     _signedOut = true;
+    cancelAssistantMessage();
     _assistantSettings.cancelAssistantImageGeneration();
     await services.close();
     if (!_forcedSignOutController.isClosed) {
@@ -1098,6 +1191,7 @@ class DaylinkRuntime
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
+    cancelAssistantMessage();
     _assistantSettings.cancelAssistantImageGeneration();
     await services.close();
     await _forcedSignOutController.close();

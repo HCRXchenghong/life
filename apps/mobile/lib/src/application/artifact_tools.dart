@@ -1,12 +1,14 @@
 import '../data/artifact_client.dart';
 import '../data/artifact_repository.dart';
+import '../domain/ai/assistant_artifact_models.dart';
 import '../domain/ai/tool_protocol.dart';
 
 class ArtifactTools {
-  ArtifactTools({required this.generator, required this.sink});
+  ArtifactTools({required this.generator, required this.sink, this.onCreated});
 
   final ArtifactGenerator generator;
   final ArtifactSink sink;
+  final void Function(AssistantGeneratedArtifact artifact)? onCreated;
 
   void register(ToolRegistry registry) {
     registry
@@ -100,6 +102,17 @@ class ArtifactTools {
       title: arguments['title']! as String,
       artifact: artifact,
     );
+    onCreated?.call(
+      AssistantGeneratedArtifact(
+        id: saved.id,
+        kind: AssistantArtifactKind.parse(artifact.extension),
+        displayName: saved.displayName,
+        contentType: saved.contentType,
+        byteSize: saved.byteSize,
+        localPath: saved.localPath,
+        preview: _preview(kind, arguments),
+      ),
+    );
     return {
       'created': true,
       'artifact_ref': saved.id,
@@ -108,6 +121,48 @@ class ArtifactTools {
       'byte_size': saved.byteSize,
     };
   }
+}
+
+AssistantArtifactPreview _preview(String kind, Map<String, Object?> arguments) {
+  final title = arguments['title']! as String;
+  return switch (kind) {
+    'docx' => AssistantDocumentPreview(
+      title: title,
+      paragraphs: (arguments['paragraphs']! as List<Object?>)
+          .cast<String>()
+          .toList(growable: false),
+    ),
+    'xlsx' => AssistantSpreadsheetPreview(
+      title: title,
+      sheets: (arguments['sheets']! as List<Object?>)
+          .cast<Map<String, Object?>>()
+          .map(
+            (sheet) => AssistantSpreadsheetSheet(
+              name: sheet['name']! as String,
+              rows: (sheet['rows']! as List<Object?>)
+                  .cast<List<Object?>>()
+                  .map((row) => row.cast<String>().toList(growable: false))
+                  .toList(growable: false),
+            ),
+          )
+          .toList(growable: false),
+    ),
+    'pptx' => AssistantPresentationPreview(
+      title: title,
+      slides: (arguments['slides']! as List<Object?>)
+          .cast<Map<String, Object?>>()
+          .map(
+            (slide) => AssistantPresentationSlide(
+              title: slide['title']! as String,
+              bullets: (slide['bullets']! as List<Object?>)
+                  .cast<String>()
+                  .toList(growable: false),
+            ),
+          )
+          .toList(growable: false),
+    ),
+    _ => throw ArgumentError.value(kind, 'kind', 'unsupported artifact kind'),
+  };
 }
 
 ToolSpec _spec({

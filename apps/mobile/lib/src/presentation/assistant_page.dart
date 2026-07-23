@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../application/assistant_artifact_actions.dart';
+import '../application/assistant_conversation.dart';
 import '../application/assistant_image_actions.dart';
 import '../application/assistant_settings.dart';
 import '../data/ai_gateway_client.dart';
 import '../domain/ai/ai_models.dart';
+import '../domain/ai/assistant_artifact_models.dart';
 import '../domain/ai/assistant_image_models.dart';
+import '../domain/ai/tool_protocol.dart';
 import 'app_navigation.dart';
+import 'assistant_artifact_preview_page.dart';
 
 class AssistantPage extends StatefulWidget {
   const AssistantPage({
@@ -22,6 +27,8 @@ class AssistantPage extends StatefulWidget {
     this.settings,
     this.images,
     this.imageActions = const AssistantImageActions(),
+    this.conversation,
+    this.artifactActions = const AssistantArtifactActions(),
     this.onAddFile,
   });
 
@@ -36,6 +43,8 @@ class AssistantPage extends StatefulWidget {
   final AssistantSettingsSource? settings;
   final AssistantImageGenerationSource? images;
   final AssistantImageActionSource imageActions;
+  final AssistantConversationSource? conversation;
+  final AssistantArtifactActionSource artifactActions;
   final VoidCallback? onAddFile;
 
   @override
@@ -55,9 +64,11 @@ class _AssistantPageState extends State<AssistantPage> {
   var _imageMode = false;
   var _generationEpoch = 0;
   int? _activeImageTurn;
+  var _conversationEpoch = 0;
+  int? _activeConversationTurn;
   AssistantImageSize _imageSize = AssistantImageSize.square;
   AssistantImageQuality _imageQuality = AssistantImageQuality.medium;
-  final List<_ImageConversationTurn> _imageTurns = [];
+  final List<_AssistantConversationTurn> _turns = [];
 
   @override
   void initState() {
@@ -153,12 +164,130 @@ class _AssistantPageState extends State<AssistantPage> {
       await _generateImage(input);
       return;
     }
+    final conversation = widget.conversation;
+    if (conversation != null && _mode == AssistantMode.local) {
+      await _sendConversationMessage(conversation, input);
+      return;
+    }
     setState(() => _submitting = true);
     try {
       await widget.onSubmit(input);
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
+  }
+
+  Future<void> _sendConversationMessage(
+    AssistantConversationSource conversation,
+    String input,
+  ) async {
+    final request = ++_conversationEpoch;
+    final turnIndex = _turns.length;
+    _inputController.clear();
+    setState(() {
+      _submitting = true;
+      _activeConversationTurn = turnIndex;
+      _turns.add(_AssistantConversationTurn(prompt: input));
+    });
+    try {
+      final reply = await conversation.sendAssistantMessage(
+        input: input,
+        mode: _mode,
+        approvals: _approveTool,
+      );
+      if (!mounted || request != _conversationEpoch) return;
+      setState(() {
+        _turns[turnIndex] = _AssistantConversationTurn(
+          prompt: input,
+          response: reply.text,
+          artifacts: reply.artifacts,
+        );
+      });
+    } on Object catch (error) {
+      if (!mounted || request != _conversationEpoch) return;
+      final message = _friendlyConversationError(error);
+      setState(() {
+        _turns[turnIndex] = _AssistantConversationTurn(
+          prompt: input,
+          error: message,
+        );
+      });
+      widget.onMessage(message);
+    } finally {
+      if (mounted && request == _conversationEpoch) {
+        setState(() {
+          _submitting = false;
+          _activeConversationTurn = null;
+        });
+      }
+    }
+  }
+
+  void _cancelConversationMessage() {
+    final turnIndex = _activeConversationTurn;
+    _conversationEpoch++;
+    widget.conversation?.cancelAssistantMessage();
+    setState(() {
+      _submitting = false;
+      _activeConversationTurn = null;
+      if (turnIndex != null && turnIndex < _turns.length) {
+        final turn = _turns[turnIndex];
+        _turns[turnIndex] = _AssistantConversationTurn(
+          prompt: turn.prompt,
+          error: '已取消请求',
+        );
+      }
+    });
+    widget.onMessage('已取消请求');
+  }
+
+  void _cancelGeneration() {
+    if (_imageMode) {
+      _cancelImageGeneration();
+    } else {
+      _cancelConversationMessage();
+    }
+  }
+
+  Future<ApprovalDecision> _approveTool(ToolSpec spec, ToolCall call) async {
+    if (!mounted) return ApprovalDecision.cancel;
+    final approved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(_toolApprovalTitle(spec)),
+        content: Text(
+          _toolApprovalDescription(spec, call),
+          style: const TextStyle(
+            color: Color(0xFF4E5969),
+            fontSize: 14,
+            height: 1.55,
+          ),
+        ),
+        actions: [
+          TextButton(
+            key: const Key('assistant-tool-decline'),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            key: const Key('assistant-tool-approve'),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF3370FF),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('允许此次'),
+          ),
+        ],
+      ),
+    );
+    return approved == true
+        ? ApprovalDecision.accept
+        : ApprovalDecision.decline;
   }
 
   Future<void> _showAddTools() async {
@@ -193,12 +322,14 @@ class _AssistantPageState extends State<AssistantPage> {
       return;
     }
     final request = ++_generationEpoch;
-    final turnIndex = _imageTurns.length;
+    final turnIndex = _turns.length;
     _inputController.clear();
     setState(() {
       _submitting = true;
       _activeImageTurn = turnIndex;
-      _imageTurns.add(_ImageConversationTurn(prompt: prompt));
+      _turns.add(
+        _AssistantConversationTurn(prompt: prompt, imageRequest: true),
+      );
     });
     try {
       final image = await source.generateAssistantImage(
@@ -208,18 +339,20 @@ class _AssistantPageState extends State<AssistantPage> {
       );
       if (!mounted || request != _generationEpoch) return;
       setState(() {
-        _imageTurns[turnIndex] = _ImageConversationTurn(
+        _turns[turnIndex] = _AssistantConversationTurn(
           prompt: prompt,
           image: image,
+          imageRequest: true,
         );
       });
     } on Object catch (error) {
       if (!mounted || request != _generationEpoch) return;
       final message = _friendlyImageError(error);
       setState(() {
-        _imageTurns[turnIndex] = _ImageConversationTurn(
+        _turns[turnIndex] = _AssistantConversationTurn(
           prompt: prompt,
           error: message,
+          imageRequest: true,
         );
       });
       widget.onMessage(message);
@@ -240,11 +373,12 @@ class _AssistantPageState extends State<AssistantPage> {
     setState(() {
       _submitting = false;
       _activeImageTurn = null;
-      if (turnIndex != null && turnIndex < _imageTurns.length) {
-        final turn = _imageTurns[turnIndex];
-        _imageTurns[turnIndex] = _ImageConversationTurn(
+      if (turnIndex != null && turnIndex < _turns.length) {
+        final turn = _turns[turnIndex];
+        _turns[turnIndex] = _AssistantConversationTurn(
           prompt: turn.prompt,
           error: '已取消生成',
+          imageRequest: true,
         );
       }
     });
@@ -275,10 +409,47 @@ class _AssistantPageState extends State<AssistantPage> {
     }
   }
 
+  Future<void> _previewArtifact(AssistantGeneratedArtifact artifact) =>
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => AssistantArtifactPreviewPage(artifact: artifact),
+        ),
+      );
+
+  Future<void> _downloadArtifact(
+    BuildContext context,
+    AssistantGeneratedArtifact artifact,
+  ) async {
+    final renderObject = context.findRenderObject();
+    final origin = renderObject is RenderBox
+        ? renderObject.localToGlobal(Offset.zero) & renderObject.size
+        : const Rect.fromLTWH(0, 0, 1, 1);
+    try {
+      await widget.artifactActions.download(
+        artifact,
+        sharePositionOrigin: origin,
+      );
+      if (mounted) widget.onMessage('已打开系统保存面板');
+    } on Object {
+      if (mounted) widget.onMessage('文件导出失败，请稍后重试');
+    }
+  }
+
+  void _startNewConversation() {
+    widget.conversation?.startNewAssistantConversation();
+    setState(() {
+      _turns.clear();
+      _imageMode = false;
+    });
+    widget.onNewConversation();
+  }
+
   @override
   void dispose() {
     if (_submitting && _imageMode) {
       widget.images?.cancelAssistantImageGeneration();
+    } else if (_submitting) {
+      widget.conversation?.cancelAssistantMessage();
     }
     _inputController
       ..removeListener(_refreshInput)
@@ -306,12 +477,12 @@ class _AssistantPageState extends State<AssistantPage> {
                       supportedModes: _supportedModes,
                       onModeSelected: (mode) => setState(() => _mode = mode),
                       onOpenHistory: widget.onOpenHistory,
-                      onNewConversation: widget.onNewConversation,
+                      onNewConversation: _startNewConversation,
                       onOpenMore: widget.onOpenMore,
                     ),
                   ),
                   Expanded(
-                    child: _imageTurns.isEmpty
+                    child: _turns.isEmpty
                         ? const Align(
                             alignment: Alignment(0, -0.05),
                             child: Text(
@@ -326,14 +497,16 @@ class _AssistantPageState extends State<AssistantPage> {
                               ),
                             ),
                           )
-                        : _ImageConversation(
-                            turns: _imageTurns,
+                        : _AssistantConversation(
+                            turns: _turns,
                             onSave: _saveImage,
                             onShare: _shareImage,
                             onRegenerate: (image) {
                               setState(() => _imageMode = true);
                               _generateImage(image.prompt);
                             },
+                            onPreviewArtifact: _previewArtifact,
+                            onDownloadArtifact: _downloadArtifact,
                           ),
                   ),
                   Padding(
@@ -390,7 +563,7 @@ class _AssistantPageState extends State<AssistantPage> {
                       onAddAttachment: _showAddTools,
                       onVoiceInput: widget.onVoiceInput,
                       onSubmit: _submit,
-                      onCancel: _cancelImageGeneration,
+                      onCancel: _cancelGeneration,
                     ),
                   ),
                 ],
@@ -780,30 +953,20 @@ class _Composer extends StatelessWidget {
             child: InkWell(
               key: const Key('assistant-primary-action'),
               customBorder: const CircleBorder(),
-              onTap: submitting && imageMode
+              onTap: submitting
                   ? onCancel
-                  : submitting
-                  ? null
                   : hasInput
                   ? onSubmit
                   : onVoiceInput,
               child: SizedBox.square(
                 dimension: 44,
                 child: submitting
-                    ? imageMode
-                          ? const Icon(
-                              Icons.stop_rounded,
-                              key: Key('assistant-cancel-generation'),
-                              color: Colors.white,
-                              size: 22,
-                            )
-                          : const Padding(
-                              padding: EdgeInsets.all(13),
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
+                    ? const Icon(
+                        Icons.stop_rounded,
+                        key: Key('assistant-cancel-generation'),
+                        color: Colors.white,
+                        size: 22,
+                      )
                     : Icon(
                         hasInput
                             ? Icons.arrow_upward_rounded
@@ -1072,23 +1235,35 @@ class _ImageQualityChip extends StatelessWidget {
   );
 }
 
-class _ImageConversationTurn {
-  const _ImageConversationTurn({required this.prompt, this.image, this.error});
+class _AssistantConversationTurn {
+  const _AssistantConversationTurn({
+    required this.prompt,
+    this.response,
+    this.artifacts = const [],
+    this.image,
+    this.error,
+    this.imageRequest = false,
+  });
 
   final String prompt;
+  final String? response;
+  final List<AssistantGeneratedArtifact> artifacts;
   final AssistantGeneratedImage? image;
   final String? error;
+  final bool imageRequest;
 }
 
-class _ImageConversation extends StatelessWidget {
-  const _ImageConversation({
+class _AssistantConversation extends StatelessWidget {
+  const _AssistantConversation({
     required this.turns,
     required this.onSave,
     required this.onShare,
     required this.onRegenerate,
+    required this.onPreviewArtifact,
+    required this.onDownloadArtifact,
   });
 
-  final List<_ImageConversationTurn> turns;
+  final List<_AssistantConversationTurn> turns;
   final Future<void> Function(AssistantGeneratedImage image) onSave;
   final Future<void> Function(
     BuildContext context,
@@ -1096,6 +1271,12 @@ class _ImageConversation extends StatelessWidget {
   )
   onShare;
   final ValueChanged<AssistantGeneratedImage> onRegenerate;
+  final ValueChanged<AssistantGeneratedArtifact> onPreviewArtifact;
+  final Future<void> Function(
+    BuildContext context,
+    AssistantGeneratedArtifact artifact,
+  )
+  onDownloadArtifact;
 
   @override
   Widget build(BuildContext context) => ListView.separated(
@@ -1106,25 +1287,29 @@ class _ImageConversation extends StatelessWidget {
     separatorBuilder: (_, _) => const SizedBox(height: 22),
     itemBuilder: (context, reverseIndex) {
       final turn = turns[turns.length - reverseIndex - 1];
-      return _ImageConversationCard(
+      return _AssistantConversationCard(
         turn: turn,
         onSave: onSave,
         onShare: onShare,
         onRegenerate: onRegenerate,
+        onPreviewArtifact: onPreviewArtifact,
+        onDownloadArtifact: onDownloadArtifact,
       );
     },
   );
 }
 
-class _ImageConversationCard extends StatelessWidget {
-  const _ImageConversationCard({
+class _AssistantConversationCard extends StatelessWidget {
+  const _AssistantConversationCard({
     required this.turn,
     required this.onSave,
     required this.onShare,
     required this.onRegenerate,
+    required this.onPreviewArtifact,
+    required this.onDownloadArtifact,
   });
 
-  final _ImageConversationTurn turn;
+  final _AssistantConversationTurn turn;
   final Future<void> Function(AssistantGeneratedImage image) onSave;
   final Future<void> Function(
     BuildContext context,
@@ -1132,6 +1317,12 @@ class _ImageConversationCard extends StatelessWidget {
   )
   onShare;
   final ValueChanged<AssistantGeneratedImage> onRegenerate;
+  final ValueChanged<AssistantGeneratedArtifact> onPreviewArtifact;
+  final Future<void> Function(
+    BuildContext context,
+    AssistantGeneratedArtifact artifact,
+  )
+  onDownloadArtifact;
 
   @override
   Widget build(BuildContext context) {
@@ -1159,18 +1350,264 @@ class _ImageConversationCard extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 13),
-        if (image == null && turn.error == null)
-          const _ImageGeneratingCard()
-        else if (image == null)
+        if (turn.error != null)
           _ImageErrorCard(message: turn.error!)
-        else
+        else if (turn.imageRequest && image == null)
+          const _ImageGeneratingCard()
+        else if (image != null)
           _GeneratedImageCard(
             image: image,
             onSave: () => onSave(image),
             onShare: () => onShare(context, image),
             onRegenerate: () => onRegenerate(image),
+          )
+        else if (turn.response == null)
+          const _AssistantThinking()
+        else
+          _AssistantReplyCard(
+            response: turn.response!,
+            artifacts: turn.artifacts,
+            onPreviewArtifact: onPreviewArtifact,
+            onDownloadArtifact: (artifact) =>
+                onDownloadArtifact(context, artifact),
           ),
       ],
+    );
+  }
+}
+
+class _AssistantThinking extends StatelessWidget {
+  const _AssistantThinking();
+
+  @override
+  Widget build(BuildContext context) => const Align(
+    alignment: Alignment.centerLeft,
+    child: Padding(
+      padding: EdgeInsets.symmetric(horizontal: 5, vertical: 7),
+      child: SizedBox.square(
+        dimension: 20,
+        child: CircularProgressIndicator(
+          strokeWidth: 2.2,
+          color: Color(0xFF3370FF),
+        ),
+      ),
+    ),
+  );
+}
+
+class _AssistantReplyCard extends StatelessWidget {
+  const _AssistantReplyCard({
+    required this.response,
+    required this.artifacts,
+    required this.onPreviewArtifact,
+    required this.onDownloadArtifact,
+  });
+
+  final String response;
+  final List<AssistantGeneratedArtifact> artifacts;
+  final ValueChanged<AssistantGeneratedArtifact> onPreviewArtifact;
+  final ValueChanged<AssistantGeneratedArtifact> onDownloadArtifact;
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleResponse = response.trim().isEmpty && artifacts.isNotEmpty
+        ? '已生成${artifacts.first.kind.label}'
+        : response.trim();
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: const Color(0xFFE1E4E8)),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            Icons.auto_awesome_rounded,
+            size: 19,
+            color: Color(0xFF3370FF),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (visibleResponse.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 15,
+                    vertical: 11,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: const Color(0xFFE1E4E8)),
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Text(
+                    visibleResponse,
+                    style: const TextStyle(
+                      color: Color(0xFF1F2329),
+                      fontSize: 15,
+                      height: 1.45,
+                    ),
+                  ),
+                ),
+              for (final artifact in artifacts) ...[
+                if (visibleResponse.isNotEmpty) const SizedBox(height: 12),
+                _AssistantArtifactCard(
+                  artifact: artifact,
+                  onPreview: () => onPreviewArtifact(artifact),
+                  onDownload: () => onDownloadArtifact(artifact),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AssistantArtifactCard extends StatelessWidget {
+  const _AssistantArtifactCard({
+    required this.artifact,
+    required this.onPreview,
+    required this.onDownload,
+  });
+
+  final AssistantGeneratedArtifact artifact;
+  final VoidCallback onPreview;
+  final VoidCallback onDownload;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: Key('assistant-artifact-${artifact.id}'),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      border: Border.all(color: const Color(0xFFE1E4E8)),
+      borderRadius: BorderRadius.circular(16),
+    ),
+    clipBehavior: Clip.antiAlias,
+    child: Column(
+      children: [
+        InkWell(
+          key: Key('assistant-artifact-open-${artifact.id}'),
+          onTap: onPreview,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 15, 14, 14),
+            child: Row(
+              children: [
+                _ArtifactIcon(kind: artifact.kind),
+                const SizedBox(width: 13),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        artifact.displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF1F2329),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        '${artifact.kind.label} · '
+                        '${formatArtifactBytes(artifact.byteSize)}',
+                        style: const TextStyle(
+                          color: Color(0xFF8F959E),
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const Divider(height: 1, color: Color(0xFFE8EAED)),
+        SizedBox(
+          height: 46,
+          child: Row(
+            children: [
+              Expanded(
+                child: TextButton(
+                  key: Key('assistant-artifact-preview-${artifact.id}'),
+                  onPressed: onPreview,
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF3370FF),
+                    shape: const RoundedRectangleBorder(),
+                  ),
+                  child: const Text(
+                    '预览',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+              const VerticalDivider(
+                width: 1,
+                indent: 9,
+                endIndent: 9,
+                color: Color(0xFFE8EAED),
+              ),
+              Expanded(
+                child: TextButton(
+                  key: Key('assistant-artifact-download-${artifact.id}'),
+                  onPressed: onDownload,
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF3370FF),
+                    shape: const RoundedRectangleBorder(),
+                  ),
+                  child: const Text(
+                    '下载',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _ArtifactIcon extends StatelessWidget {
+  const _ArtifactIcon({required this.kind});
+
+  final AssistantArtifactKind kind;
+
+  @override
+  Widget build(BuildContext context) {
+    final (color, icon) = switch (kind) {
+      AssistantArtifactKind.document => (
+        const Color(0xFF3370FF),
+        Icons.description_rounded,
+      ),
+      AssistantArtifactKind.spreadsheet => (
+        const Color(0xFF12A150),
+        Icons.table_chart_rounded,
+      ),
+      AssistantArtifactKind.presentation => (
+        const Color(0xFFF07B3F),
+        Icons.slideshow_rounded,
+      ),
+    };
+    return Container(
+      width: 50,
+      height: 56,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(11),
+      ),
+      child: Icon(icon, color: color, size: 27),
     );
   }
 }
@@ -1350,6 +1787,46 @@ String _friendlyImageError(Object error) {
   }
   return '图片生成失败，请稍后重试';
 }
+
+String _friendlyConversationError(Object error) {
+  if (error is AiGatewayException) {
+    return switch (error.code) {
+      'subscription_required' => '当前账号没有可用的 AI 套餐',
+      'quota_exceeded' || 'monthly_quota_exceeded' => '本月 AI 额度已用完',
+      'session_rejected' || 'invalid_token' => '登录已失效，请重新登录',
+      'rate_limited' => '请求太频繁，请稍后再试',
+      _ => '助手暂时无法响应，请稍后重试',
+    };
+  }
+  final message = error.toString();
+  if (message.contains('登录已失效')) return '登录已失效，请重新登录';
+  if (message.contains('SSH 主机')) return '请先在主机页面选择 SSH 主机';
+  return '助手暂时无法响应，请稍后重试';
+}
+
+String _toolApprovalDescription(ToolSpec spec, ToolCall call) {
+  final title = call.arguments['title'] as String?;
+  final action = switch (spec.name) {
+    'daylink_create_word_document' => '生成 Word 文档',
+    'daylink_create_spreadsheet' => '生成 Excel 表格',
+    'daylink_create_presentation' => '生成 PPT 演示文稿',
+    _ => null,
+  };
+  if (action == null) {
+    return '助手请求执行“${spec.name}”。确认后只允许执行当前这一次操作。';
+  }
+  final titleLine = title == null || title.trim().isEmpty
+      ? ''
+      : '\n\n文件标题：${title.trim()}';
+  return '$action$titleLine\n\n文件只会保存到当前登录账号的本地隔离空间。';
+}
+
+String _toolApprovalTitle(ToolSpec spec) => switch (spec.name) {
+  'daylink_create_word_document' ||
+  'daylink_create_spreadsheet' ||
+  'daylink_create_presentation' => '允许生成文件？',
+  _ => '允许执行此操作？',
+};
 
 String _reasoningLabel(AiReasoningEffort effort) => switch (effort) {
   AiReasoningEffort.low => '低',

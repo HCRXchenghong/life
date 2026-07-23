@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:daylink_mobile/src/application/artifact_tools.dart';
 import 'package:daylink_mobile/src/data/artifact_client.dart';
 import 'package:daylink_mobile/src/data/artifact_repository.dart';
+import 'package:daylink_mobile/src/domain/ai/assistant_artifact_models.dart';
 import 'package:daylink_mobile/src/domain/ai/tool_protocol.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -13,13 +14,18 @@ void main() {
       var approvals = 0;
       final generator = _Generator();
       final sink = _Sink();
+      final created = <AssistantGeneratedArtifact>[];
       final registry = ToolRegistry(
         approvals: (_, _) async {
           approvals++;
           return ApprovalDecision.accept;
         },
       );
-      ArtifactTools(generator: generator, sink: sink).register(registry);
+      ArtifactTools(
+        generator: generator,
+        sink: sink,
+        onCreated: created.add,
+      ).register(registry);
 
       final result = await registry.invoke(
         const ToolCall(
@@ -37,6 +43,10 @@ void main() {
       expect(generator.request?['kind'], 'docx');
       expect(result.output.toString(), isNot(contains('/srv/daylink/private')));
       expect(result.output.toString(), isNot(contains('localPath')));
+      expect(created.single.displayName, '周计划.docx');
+      expect((created.single.preview as AssistantDocumentPreview).paragraphs, [
+        '按用户提供的内容生成',
+      ]);
       expect(
         registry.specs.map((spec) => spec.name),
         containsAll(const [
