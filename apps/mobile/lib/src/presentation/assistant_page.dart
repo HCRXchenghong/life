@@ -8,6 +8,7 @@ import '../application/assistant_conversation.dart';
 import '../application/assistant_conversation_export.dart';
 import '../application/assistant_file_picker.dart';
 import '../application/assistant_image_actions.dart';
+import '../application/assistant_image_picker.dart';
 import '../application/assistant_settings.dart';
 import '../data/ai_gateway_client.dart';
 import '../domain/ai/ai_models.dart';
@@ -39,6 +40,7 @@ class AssistantPage extends StatefulWidget {
     this.artifactActions = const AssistantArtifactActions(),
     this.conversationExports = const AssistantConversationExportActions(),
     this.fileSource = const DeviceAssistantInputFileSource(),
+    this.imageSource = const DeviceAssistantInputImageSource(),
     this.accountName = 'Daylink',
   });
 
@@ -58,6 +60,7 @@ class AssistantPage extends StatefulWidget {
   final AssistantArtifactActionSource artifactActions;
   final AssistantConversationExportSource conversationExports;
   final AssistantInputFileSource fileSource;
+  final AssistantInputImageSource imageSource;
   final String accountName;
 
   @override
@@ -178,8 +181,13 @@ class _AssistantPageState extends State<AssistantPage> {
   }
 
   Future<void> _submit() async {
-    final input = _inputController.text.trim();
-    if (input.isEmpty || _submitting) return;
+    final typedInput = _inputController.text.trim();
+    if ((typedInput.isEmpty && _inputFiles.isEmpty) || _submitting) return;
+    final input = typedInput.isNotEmpty
+        ? typedInput
+        : _inputFiles.every((file) => file.isImage)
+        ? '请查看并说明这些图片。'
+        : '请读取并总结这些附件。';
     if (_imageMode) {
       await _generateImage(input);
       return;
@@ -334,6 +342,37 @@ class _AssistantPageState extends State<AssistantPage> {
     }
   }
 
+  Future<void> _pickAssistantImages() async {
+    if (_submitting) return;
+    try {
+      final selected = await widget.imageSource.pickImages();
+      if (!mounted || selected.isEmpty) return;
+      final merged = [..._inputFiles, ...selected];
+      if (merged.length > maximumAssistantInputFiles) {
+        widget.onMessage('图片和文件合计最多添加 5 个');
+        return;
+      }
+      final totalBytes = merged.fold<int>(
+        0,
+        (total, file) => total + file.bytes.length,
+      );
+      if (totalBytes > maximumAssistantInputFilesBytes) {
+        widget.onMessage('图片和文件合计不能超过 20 MB');
+        return;
+      }
+      setState(() {
+        _imageMode = false;
+        _inputFiles
+          ..clear()
+          ..addAll(merged);
+      });
+    } on AssistantFileSelectionException catch (error) {
+      if (mounted) widget.onMessage(error.message);
+    } on Object {
+      if (mounted) widget.onMessage('无法读取所选图片，请重新选择');
+    }
+  }
+
   Future<void> _showAddTools() async {
     final action = await showModalBottomSheet<_AssistantAddAction>(
       context: context,
@@ -347,7 +386,7 @@ class _AssistantPageState extends State<AssistantPage> {
     if (!mounted || action == null) return;
     switch (action) {
       case _AssistantAddAction.image:
-        widget.onAddAttachment();
+        await _pickAssistantImages();
       case _AssistantAddAction.file:
         await _pickAssistantFiles();
       case _AssistantAddAction.generateImage:
@@ -743,7 +782,11 @@ class _AssistantPageState extends State<AssistantPage> {
                   ),
                   Expanded(
                     child: _turns.isEmpty
-                        ? const _AssistantEmptyState()
+                        ? _AssistantEmptyState(
+                            hasImageAttachments: _inputFiles.any(
+                              (file) => file.isImage,
+                            ),
+                          )
                         : _AssistantConversation(
                             turns: _turns,
                             onSave: _saveImage,
@@ -756,11 +799,25 @@ class _AssistantPageState extends State<AssistantPage> {
                             onDownloadArtifact: _downloadArtifact,
                           ),
                   ),
-                  if (_inputFiles.isNotEmpty)
+                  if (_inputFiles.any((file) => file.isImage))
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(23, 0, 23, 10),
+                      child: _AssistantInputImagesBar(
+                        files: _inputFiles
+                            .where((file) => file.isImage)
+                            .toList(growable: false),
+                        enabled: !_submitting,
+                        onRemove: (file) =>
+                            setState(() => _inputFiles.remove(file)),
+                      ),
+                    ),
+                  if (_inputFiles.any((file) => !file.isImage))
                     Padding(
                       padding: const EdgeInsets.fromLTRB(23, 0, 23, 10),
                       child: _AssistantInputFilesBar(
-                        files: _inputFiles,
+                        files: _inputFiles
+                            .where((file) => !file.isImage)
+                            .toList(growable: false),
                         enabled: !_submitting,
                         onRemove: (file) =>
                             setState(() => _inputFiles.remove(file)),
@@ -817,6 +874,7 @@ class _AssistantPageState extends State<AssistantPage> {
                       controller: _inputController,
                       submitting: _submitting,
                       imageMode: _imageMode,
+                      hasAttachments: _inputFiles.isNotEmpty,
                       onAddAttachment: _showAddTools,
                       onVoiceInput: widget.onVoiceInput,
                       onSubmit: _submit,
@@ -838,22 +896,24 @@ class _AssistantPageState extends State<AssistantPage> {
 }
 
 class _AssistantEmptyState extends StatelessWidget {
-  const _AssistantEmptyState();
+  const _AssistantEmptyState({required this.hasImageAttachments});
+
+  final bool hasImageAttachments;
 
   @override
-  Widget build(BuildContext context) => const Align(
+  Widget build(BuildContext context) => Align(
     alignment: Alignment(0, -0.05),
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(
+        const Icon(
           Icons.auto_awesome_rounded,
           key: Key('assistant-greeting-icon'),
           color: Color(0xFF3370FF),
           size: 31,
         ),
-        SizedBox(height: 17),
-        Text(
+        const SizedBox(height: 17),
+        const Text(
           '有什么可以帮忙的？',
           key: Key('assistant-greeting'),
           style: TextStyle(
@@ -864,6 +924,19 @@ class _AssistantEmptyState extends StatelessWidget {
             letterSpacing: -0.3,
           ),
         ),
+        if (hasImageAttachments) ...[
+          const SizedBox(height: 13),
+          const Text(
+            '你可以发送图片，让助手查看并处理',
+            key: Key('assistant-image-help'),
+            style: TextStyle(
+              color: Color(0xFF8F959E),
+              fontSize: 14,
+              height: 1.35,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+        ],
       ],
     ),
   );
@@ -1404,6 +1477,107 @@ class _AssistantInputFilesBar extends StatelessWidget {
   );
 }
 
+class _AssistantInputImagesBar extends StatelessWidget {
+  const _AssistantInputImagesBar({
+    required this.files,
+    required this.enabled,
+    required this.onRemove,
+  });
+
+  final List<AssistantInputFile> files;
+  final bool enabled;
+  final ValueChanged<AssistantInputFile> onRemove;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    key: const Key('assistant-input-images'),
+    height: 122,
+    child: ListView.separated(
+      scrollDirection: Axis.horizontal,
+      clipBehavior: Clip.none,
+      itemCount: files.length,
+      separatorBuilder: (_, _) => const SizedBox(width: 12),
+      itemBuilder: (context, index) {
+        final file = files[index];
+        return SizedBox(
+          key: Key('assistant-input-image-$index'),
+          width: 100,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: 100,
+                    height: 96,
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: const Color(0xFFE1E4E8)),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.memory(
+                        file.bytes,
+                        key: Key('assistant-input-image-preview-$index'),
+                        fit: BoxFit.cover,
+                        gaplessPlayback: true,
+                        errorBuilder: (_, _, _) => const ColoredBox(
+                          color: Color(0xFFF2F3F5),
+                          child: Icon(
+                            Icons.broken_image_outlined,
+                            color: Color(0xFF8F959E),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: -7,
+                    right: -7,
+                    child: Material(
+                      color: const Color(0xFF243342),
+                      shape: const CircleBorder(
+                        side: BorderSide(color: Colors.white, width: 2),
+                      ),
+                      child: InkWell(
+                        key: Key('assistant-input-image-remove-$index'),
+                        customBorder: const CircleBorder(),
+                        onTap: enabled ? () => onRemove(file) : null,
+                        child: const SizedBox.square(
+                          dimension: 25,
+                          child: Icon(
+                            Icons.close_rounded,
+                            color: Colors.white,
+                            size: 17,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 5),
+              Text(
+                file.filename,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF8F959E),
+                  fontSize: 11.5,
+                  height: 1.2,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    ),
+  );
+}
+
 class _AssistantInputFileBadge extends StatelessWidget {
   const _AssistantInputFileBadge({super.key, required this.file});
 
@@ -1458,6 +1632,7 @@ class _Composer extends StatelessWidget {
     required this.controller,
     required this.submitting,
     required this.imageMode,
+    required this.hasAttachments,
     required this.onAddAttachment,
     required this.onVoiceInput,
     required this.onSubmit,
@@ -1467,6 +1642,7 @@ class _Composer extends StatelessWidget {
   final TextEditingController controller;
   final bool submitting;
   final bool imageMode;
+  final bool hasAttachments;
   final VoidCallback onAddAttachment;
   final VoidCallback onVoiceInput;
   final VoidCallback onSubmit;
@@ -1475,6 +1651,7 @@ class _Composer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasInput = controller.text.trim().isNotEmpty;
+    final canSubmit = hasInput || hasAttachments;
     return Container(
       height: 66,
       decoration: BoxDecoration(
@@ -1546,7 +1723,7 @@ class _Composer extends StatelessWidget {
               customBorder: const CircleBorder(),
               onTap: submitting
                   ? onCancel
-                  : hasInput
+                  : canSubmit
                   ? onSubmit
                   : onVoiceInput,
               child: SizedBox.square(
@@ -1559,11 +1736,11 @@ class _Composer extends StatelessWidget {
                         size: 22,
                       )
                     : Icon(
-                        hasInput
+                        canSubmit
                             ? Icons.arrow_upward_rounded
                             : Icons.graphic_eq_rounded,
                         color: Colors.white,
-                        size: hasInput ? 25 : 27,
+                        size: canSubmit ? 25 : 27,
                       ),
               ),
             ),

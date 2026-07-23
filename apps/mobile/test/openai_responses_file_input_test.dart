@@ -72,4 +72,75 @@ void main() {
       throwsArgumentError,
     );
   });
+
+  test('sends real image bytes as Responses API input_image content', () async {
+    Map<String, Object?>? requestBody;
+    final httpClient = MockClient((request) async {
+      requestBody = jsonDecode(request.body) as Map<String, Object?>;
+      return http.Response(
+        jsonEncode({'id': 'response-2', 'output_text': '已读取图片'}),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    });
+    final client = OpenAiResponsesClient(httpClient: httpClient);
+    addTearDown(client.close);
+    final registry = ToolRegistry(
+      approvals: (_, _) async => ApprovalDecision.decline,
+    );
+    final png = Uint8List.fromList(const [
+      0x89,
+      0x50,
+      0x4e,
+      0x47,
+      0x0d,
+      0x0a,
+      0x1a,
+      0x0a,
+      0x00,
+    ]);
+
+    final result = await client.run(
+      provider: AiProviderModel(
+        id: 'provider-1',
+        name: 'Responses',
+        kind: AiProviderKind.openaiResponses,
+        baseUrl: Uri.parse('https://api.example.test/v1'),
+        textModel: 'vision-model',
+        secretRef: 'secret',
+      ),
+      apiKey: 'test-key',
+      input: '说明图片',
+      files: [
+        AssistantInputFile(
+          filename: '日程.png',
+          contentType: 'image/png',
+          bytes: png,
+        ),
+      ],
+      tools: registry,
+    );
+
+    final input = requestBody!['input']! as List<Object?>;
+    final message = input.single as Map<String, Object?>;
+    final content = message['content']! as List<Object?>;
+    final image = content.first as Map<String, Object?>;
+    expect(image['type'], 'input_image');
+    expect(image['detail'], 'auto');
+    expect(image['image_url'], 'data:image/png;base64,iVBORw0KGgoA');
+    expect(image, isNot(contains('filename')));
+    expect(content.last, {'type': 'input_text', 'text': '说明图片'});
+    expect(result.text, '已读取图片');
+  });
+
+  test('rejects an image whose bytes do not match its declared type', () {
+    expect(
+      () => AssistantInputFile(
+        filename: '伪装图片.png',
+        contentType: 'image/png',
+        bytes: Uint8List.fromList(const [0xff, 0xd8, 0xff]),
+      ),
+      throwsArgumentError,
+    );
+  });
 }

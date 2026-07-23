@@ -31,13 +31,21 @@ class OpenAiResponsesClient {
         'role': 'user',
         'content': [
           for (final file in files)
-            {
-              'type': 'input_file',
-              'filename': file.filename,
-              'file_data':
-                  'data:${file.contentType};base64,${base64Encode(file.bytes)}',
-              if (file.contentType == 'application/pdf') 'detail': 'auto',
-            },
+            if (file.isImage)
+              {
+                'type': 'input_image',
+                'image_url':
+                    'data:${file.contentType};base64,${base64Encode(file.bytes)}',
+                'detail': 'auto',
+              }
+            else
+              {
+                'type': 'input_file',
+                'filename': file.filename,
+                'file_data':
+                    'data:${file.contentType};base64,${base64Encode(file.bytes)}',
+                if (file.contentType == 'application/pdf') 'detail': 'auto',
+              },
           {'type': 'input_text', 'text': input},
         ],
       },

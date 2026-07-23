@@ -240,6 +240,19 @@ func validateAssistantResponseInput(value any) error {
 				if fileCount > maximumAssistantInputFiles || fileBytes > maximumAssistantInputFileSum {
 					return errors.New("file input limit exceeded")
 				}
+			case "input_image":
+				if !hasOnlyKeys(part, "type", "image_url", "detail") {
+					return errors.New("input image has unknown fields")
+				}
+				size, err := validateAssistantBase64Image(part)
+				if err != nil {
+					return err
+				}
+				fileCount++
+				fileBytes += size
+				if fileCount > maximumAssistantInputFiles || fileBytes > maximumAssistantInputFileSum {
+					return errors.New("image input limit exceeded")
+				}
 			default:
 				return errors.New("unsupported content part")
 			}
@@ -304,6 +317,40 @@ func validateAssistantBase64File(part map[string]any) (int, error) {
 	return len(decoded), nil
 }
 
+func validateAssistantBase64Image(part map[string]any) (int, error) {
+	data, _ := part["image_url"].(string)
+	comma := strings.IndexByte(data, ',')
+	if comma < 0 || !strings.HasPrefix(data, "data:") {
+		return 0, errors.New("image data URI is invalid")
+	}
+	metadata := data[len("data:"):comma]
+	if !strings.HasSuffix(metadata, ";base64") {
+		return 0, errors.New("image data must be base64")
+	}
+	contentType := strings.TrimSuffix(metadata, ";base64")
+	if !acceptedAssistantImageContentTypes[contentType] {
+		return 0, errors.New("image content type is unsupported")
+	}
+	if detail, exists := part["detail"]; exists {
+		value, ok := detail.(string)
+		if !ok || (value != "auto" && value != "low" && value != "high") {
+			return 0, errors.New("image detail is invalid")
+		}
+	}
+	encoded := data[comma+1:]
+	if len(encoded) == 0 || len(encoded) > base64.StdEncoding.EncodedLen(maximumAssistantInputFile) {
+		return 0, errors.New("image is too large")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil || len(decoded) == 0 || len(decoded) > maximumAssistantInputFile {
+		return 0, errors.New("image base64 is invalid")
+	}
+	if !validAssistantFileMagic(contentType, decoded) {
+		return 0, errors.New("image content does not match its type")
+	}
+	return len(decoded), nil
+}
+
 func validAssistantFileMagic(contentType string, content []byte) bool {
 	switch contentType {
 	case "application/pdf":
@@ -312,6 +359,14 @@ func validAssistantFileMagic(contentType string, content []byte) bool {
 		"application/vnd.openxmlformats-officedocument.presentationml.presentation",
 		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
 		return len(content) >= 4 && content[0] == 0x50 && content[1] == 0x4b
+	case "image/png":
+		return len(content) >= 8 &&
+			content[0] == 0x89 && content[1] == 0x50 && content[2] == 0x4e && content[3] == 0x47 &&
+			content[4] == 0x0d && content[5] == 0x0a && content[6] == 0x1a && content[7] == 0x0a
+	case "image/jpeg":
+		return len(content) >= 3 && content[0] == 0xff && content[1] == 0xd8 && content[2] == 0xff
+	case "image/webp":
+		return len(content) >= 12 && string(content[:4]) == "RIFF" && string(content[8:12]) == "WEBP"
 	default:
 		return true
 	}
@@ -332,6 +387,10 @@ var acceptedAssistantFileContentTypes = map[string]bool{
 	"text/javascript": true, "application/typescript": true, "text/x-python": true,
 	"text/x-ruby": true, "text/x-rust": true, "text/x-swift": true,
 	"application/x-sql": true, "application/yaml": true,
+}
+
+var acceptedAssistantImageContentTypes = map[string]bool{
+	"image/png": true, "image/jpeg": true, "image/webp": true,
 }
 
 func (s *Server) handleAssistantImages(w http.ResponseWriter, r *http.Request) {

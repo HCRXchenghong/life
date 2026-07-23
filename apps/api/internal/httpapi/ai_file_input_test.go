@@ -67,3 +67,47 @@ func TestValidateAssistantResponseInputRejectsURLsAndOversizedFiles(t *testing.T
 		t.Fatal("oversized file was accepted")
 	}
 }
+
+func TestValidateAssistantResponseInputAcceptsBoundedBase64Image(t *testing.T) {
+	t.Parallel()
+	image := []byte{0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00}
+	payload := "data:image/png;base64," + base64.StdEncoding.EncodeToString(image)
+	err := validateAssistantResponseInput([]any{map[string]any{
+		"role": "user",
+		"content": []any{
+			map[string]any{"type": "input_image", "image_url": payload, "detail": "auto"},
+			map[string]any{"type": "input_text", "text": "说明图片内容"},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("valid image input rejected: %v", err)
+	}
+}
+
+func TestValidateAssistantResponseInputRejectsRemoteAndMismatchedImages(t *testing.T) {
+	t.Parallel()
+	remote := []any{map[string]any{
+		"role": "user",
+		"content": []any{
+			map[string]any{"type": "input_image", "image_url": "https://example.com/private.png"},
+			map[string]any{"type": "input_text", "text": "说明图片"},
+		},
+	}}
+	if validateAssistantResponseInput(remote) == nil {
+		t.Fatal("remote image URL was accepted")
+	}
+
+	mismatched := []any{map[string]any{
+		"role": "user",
+		"content": []any{
+			map[string]any{
+				"type":      "input_image",
+				"image_url": "data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte("not a PNG")),
+			},
+			map[string]any{"type": "input_text", "text": "说明图片"},
+		},
+	}}
+	if validateAssistantResponseInput(mismatched) == nil {
+		t.Fatal("image with mismatched content was accepted")
+	}
+}

@@ -6,6 +6,7 @@ import 'package:daylink_mobile/src/application/assistant_conversation.dart';
 import 'package:daylink_mobile/src/application/assistant_conversation_export.dart';
 import 'package:daylink_mobile/src/application/assistant_file_picker.dart';
 import 'package:daylink_mobile/src/application/assistant_image_actions.dart';
+import 'package:daylink_mobile/src/application/assistant_image_picker.dart';
 import 'package:daylink_mobile/src/application/assistant_settings.dart';
 import 'package:daylink_mobile/src/domain/ai/ai_models.dart';
 import 'package:daylink_mobile/src/domain/ai/assistant_artifact_models.dart';
@@ -29,6 +30,7 @@ void main() {
       MaterialApp(
         home: AssistantPage(
           settings: settings,
+          imageSource: _FakeInputImageSource(),
           onDestinationSelected: (_) {},
           onOpenHistory: () {},
           onNewConversation: () {},
@@ -76,6 +78,7 @@ void main() {
       MaterialApp(
         home: AssistantPage(
           settings: settings,
+          imageSource: _FakeInputImageSource(),
           onDestinationSelected: destinations.add,
           onOpenHistory: () => actions.add('history'),
           onNewConversation: () => actions.add('new'),
@@ -126,7 +129,7 @@ void main() {
     await tester.tap(find.byKey(const Key('assistant-add-image')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('assistant-microphone')));
-    expect(actions, ['history', 'new', 'attachment', 'voice']);
+    expect(actions, ['history', 'new', 'voice']);
 
     await tester.enterText(
       find.byKey(const Key('assistant-input')),
@@ -318,6 +321,67 @@ void main() {
     expect(find.text('已读取真实文件'), findsOneWidget);
     expect(find.text('真实资料.pdf'), findsNWidgets(2));
   });
+
+  testWidgets(
+    'renders selected image thumbnails and sends images without typed text',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(430, 932));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final conversation = _FileConversationSource();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AssistantPage(
+            settings: _FakeAssistantSettings(),
+            conversation: conversation,
+            imageSource: _FakeInputImageSource(),
+            onDestinationSelected: (_) {},
+            onOpenHistory: () {},
+            onNewConversation: () {},
+            onOpenMore: () {},
+            onAddAttachment: () {},
+            onVoiceInput: () {},
+            onSubmit: (_) async {},
+            onMessage: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('assistant-add')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('assistant-add-image')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('assistant-input-images')), findsOneWidget);
+      expect(
+        find.byKey(const Key('assistant-input-image-preview-0')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('assistant-input-image-preview-1')),
+        findsOneWidget,
+      );
+      expect(find.text('工作台.png'), findsOneWidget);
+      expect(find.text('日程照片.png'), findsOneWidget);
+      expect(find.text('你可以发送图片，让助手查看并处理'), findsOneWidget);
+      expect(find.byIcon(Icons.mic_none_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.arrow_upward_rounded), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('assistant-input-image-remove-0')));
+      await tester.pump();
+      expect(find.text('工作台.png'), findsNothing);
+      expect(find.text('日程照片.png'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('assistant-primary-action')));
+      await tester.pumpAndSettle();
+      expect(conversation.files, hasLength(1));
+      expect(conversation.files.single.isImage, isTrue);
+      expect(conversation.input, '请查看并说明这些图片。');
+      expect(find.byKey(const Key('assistant-input-images')), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('renders approved compact file cards by real Office type', (
     tester,
@@ -775,6 +839,28 @@ class _FakeFileSource implements AssistantInputFileSource {
   ];
 }
 
+class _FakeInputImageSource implements AssistantInputImageSource {
+  @override
+  Future<List<AssistantInputFile>> pickImages() async {
+    final bytes = base64Decode(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk'
+      '+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    );
+    return [
+      AssistantInputFile(
+        filename: '工作台.png',
+        contentType: 'image/png',
+        bytes: bytes,
+      ),
+      AssistantInputFile(
+        filename: '日程照片.png',
+        contentType: 'image/png',
+        bytes: bytes,
+      ),
+    ];
+  }
+}
+
 class _OfficeFileSource implements AssistantInputFileSource {
   @override
   Future<List<AssistantInputFile>> pickFiles() async => [
@@ -829,6 +915,7 @@ class _OfficeAnalysisConversationSource implements AssistantConversationSource {
 
 class _FileConversationSource implements AssistantConversationSource {
   List<AssistantInputFile> files = const [];
+  String? input;
 
   @override
   void cancelAssistantMessage() {}
@@ -841,6 +928,7 @@ class _FileConversationSource implements AssistantConversationSource {
     List<AssistantInputFile> files = const [],
   }) async {
     this.files = files;
+    this.input = input;
     return const AssistantConversationReply(text: '已读取真实文件');
   }
 
