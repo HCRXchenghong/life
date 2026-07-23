@@ -187,8 +187,8 @@ class _AssistantPageState extends State<AssistantPage> {
     final request = ++_conversationEpoch;
     final turnIndex = _turns.length;
     final files = List<AssistantInputFile>.unmodifiable(_inputFiles);
-    final fileNames = files
-        .map((file) => file.filename)
+    final sourceFiles = files
+        .map(_AssistantConversationFile.fromInput)
         .toList(growable: false);
     _inputController.clear();
     setState(() {
@@ -196,7 +196,7 @@ class _AssistantPageState extends State<AssistantPage> {
       _activeConversationTurn = turnIndex;
       _inputFiles.clear();
       _turns.add(
-        _AssistantConversationTurn(prompt: input, fileNames: fileNames),
+        _AssistantConversationTurn(prompt: input, sourceFiles: sourceFiles),
       );
     });
     try {
@@ -210,7 +210,7 @@ class _AssistantPageState extends State<AssistantPage> {
       setState(() {
         _turns[turnIndex] = _AssistantConversationTurn(
           prompt: input,
-          fileNames: fileNames,
+          sourceFiles: sourceFiles,
           response: reply.text,
           artifacts: reply.artifacts,
         );
@@ -221,7 +221,7 @@ class _AssistantPageState extends State<AssistantPage> {
       setState(() {
         _turns[turnIndex] = _AssistantConversationTurn(
           prompt: input,
-          fileNames: fileNames,
+          sourceFiles: sourceFiles,
           error: message,
         );
       });
@@ -247,7 +247,7 @@ class _AssistantPageState extends State<AssistantPage> {
         final turn = _turns[turnIndex];
         _turns[turnIndex] = _AssistantConversationTurn(
           prompt: turn.prompt,
-          fileNames: turn.fileNames,
+          sourceFiles: turn.sourceFiles,
           error: '已取消请求',
         );
       }
@@ -1178,24 +1178,7 @@ class _AssistantInputFileBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (label, color) = switch (file.contentType) {
-      final type
-          when type.contains('wordprocessingml') ||
-              type == 'application/msword' =>
-        ('W', const Color(0xFF3370FF)),
-      final type
-          when type.contains('spreadsheetml') ||
-              type == 'application/vnd.ms-excel' ||
-              type == 'text/csv' ||
-              type == 'text/tsv' =>
-        ('X', const Color(0xFF12A150)),
-      final type
-          when type.contains('presentationml') ||
-              type == 'application/vnd.ms-powerpoint' =>
-        ('P', const Color(0xFFF07B3F)),
-      'application/pdf' => ('PDF', const Color(0xFFE5484D)),
-      _ => ('<>', const Color(0xFF646A73)),
-    };
+    final (label, color) = _assistantFileBadgeStyle(file.contentType);
     return Container(
       width: 36,
       height: 42,
@@ -1216,6 +1199,26 @@ class _AssistantInputFileBadge extends StatelessWidget {
     );
   }
 }
+
+(String, Color) _assistantFileBadgeStyle(String contentType) =>
+    switch (contentType) {
+      final type
+          when type.contains('wordprocessingml') ||
+              type == 'application/msword' =>
+        ('W', const Color(0xFF3370FF)),
+      final type
+          when type.contains('spreadsheetml') ||
+              type == 'application/vnd.ms-excel' ||
+              type == 'text/csv' ||
+              type == 'text/tsv' =>
+        ('X', const Color(0xFF12A150)),
+      final type
+          when type.contains('presentationml') ||
+              type == 'application/vnd.ms-powerpoint' =>
+        ('P', const Color(0xFFF07B3F)),
+      'application/pdf' => ('PDF', const Color(0xFFE5484D)),
+      _ => ('<>', const Color(0xFF646A73)),
+    };
 
 class _Composer extends StatelessWidget {
   const _Composer({
@@ -1593,7 +1596,7 @@ class _ImageQualityChip extends StatelessWidget {
 class _AssistantConversationTurn {
   const _AssistantConversationTurn({
     required this.prompt,
-    this.fileNames = const [],
+    this.sourceFiles = const [],
     this.response,
     this.artifacts = const [],
     this.image,
@@ -1602,12 +1605,28 @@ class _AssistantConversationTurn {
   });
 
   final String prompt;
-  final List<String> fileNames;
+  final List<_AssistantConversationFile> sourceFiles;
   final String? response;
   final List<AssistantGeneratedArtifact> artifacts;
   final AssistantGeneratedImage? image;
   final String? error;
   final bool imageRequest;
+}
+
+class _AssistantConversationFile {
+  const _AssistantConversationFile({
+    required this.filename,
+    required this.contentType,
+  });
+
+  factory _AssistantConversationFile.fromInput(AssistantInputFile file) =>
+      _AssistantConversationFile(
+        filename: file.filename,
+        contentType: file.contentType,
+      );
+
+  final String filename;
+  final String contentType;
 }
 
 class _AssistantConversation extends StatelessWidget {
@@ -1687,50 +1706,24 @@ class _AssistantConversationCard extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (turn.fileNames.isNotEmpty) ...[
+        if (turn.sourceFiles.isNotEmpty) ...[
           Align(
             alignment: Alignment.centerRight,
-            child: Wrap(
-              alignment: WrapAlignment.end,
-              spacing: 7,
-              runSpacing: 7,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                for (final name in turn.fileNames)
-                  Container(
-                    constraints: const BoxConstraints(maxWidth: 250),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 11,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border.all(color: const Color(0xFFE1E4E8)),
-                      borderRadius: BorderRadius.circular(13),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.insert_drive_file_rounded,
-                          size: 18,
-                          color: Color(0xFF3370FF),
-                        ),
-                        const SizedBox(width: 7),
-                        Flexible(
-                          child: Text(
-                            name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Color(0xFF4E5969),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                for (
+                  var index = 0;
+                  index < turn.sourceFiles.length;
+                  index++
+                ) ...[
+                  _AssistantSentFileCard(
+                    key: Key('assistant-sent-file-$index'),
+                    file: turn.sourceFiles[index],
                   ),
+                  if (index != turn.sourceFiles.length - 1)
+                    const SizedBox(height: 7),
+                ],
               ],
             ),
           ),
@@ -1772,12 +1765,70 @@ class _AssistantConversationCard extends StatelessWidget {
         else
           _AssistantReplyCard(
             response: turn.response!,
+            sourceFiles: turn.sourceFiles,
             artifacts: turn.artifacts,
             onPreviewArtifact: onPreviewArtifact,
             onDownloadArtifact: (artifact) =>
                 onDownloadArtifact(context, artifact),
           ),
       ],
+    );
+  }
+}
+
+class _AssistantSentFileCard extends StatelessWidget {
+  const _AssistantSentFileCard({super.key, required this.file});
+
+  final _AssistantConversationFile file;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = _assistantFileBadgeStyle(file.contentType);
+    return Container(
+      width: 238,
+      height: 58,
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFE1E4E8)),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Container(
+            key: Key('assistant-sent-file-kind-${file.filename}'),
+            width: 36,
+            height: 42,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              label,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: label.length > 1 ? 10 : 18,
+                fontWeight: FontWeight.w700,
+                letterSpacing: label.length > 1 ? -0.4 : 0,
+              ),
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Text(
+              file.filename,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFF1F2329),
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1804,12 +1855,14 @@ class _AssistantThinking extends StatelessWidget {
 class _AssistantReplyCard extends StatelessWidget {
   const _AssistantReplyCard({
     required this.response,
+    required this.sourceFiles,
     required this.artifacts,
     required this.onPreviewArtifact,
     required this.onDownloadArtifact,
   });
 
   final String response;
+  final List<_AssistantConversationFile> sourceFiles;
   final List<AssistantGeneratedArtifact> artifacts;
   final ValueChanged<AssistantGeneratedArtifact> onPreviewArtifact;
   final ValueChanged<AssistantGeneratedArtifact> onDownloadArtifact;
@@ -1843,22 +1896,54 @@ class _AssistantReplyCard extends StatelessWidget {
             children: [
               if (visibleResponse.isNotEmpty)
                 Container(
+                  key: const Key('assistant-response-card'),
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 15,
-                    vertical: 11,
+                    horizontal: 17,
+                    vertical: 16,
                   ),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     border: Border.all(color: const Color(0xFFE1E4E8)),
                     borderRadius: BorderRadius.circular(15),
                   ),
-                  child: Text(
-                    visibleResponse,
-                    style: const TextStyle(
-                      color: Color(0xFF1F2329),
-                      fontSize: 15,
-                      height: 1.45,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _AssistantResponseBody(response: visibleResponse),
+                      if (sourceFiles.isNotEmpty) ...[
+                        const SizedBox(height: 15),
+                        Wrap(
+                          key: const Key('assistant-response-sources'),
+                          spacing: 7,
+                          runSpacing: 7,
+                          children: [
+                            for (final file in sourceFiles)
+                              Container(
+                                constraints: const BoxConstraints(
+                                  maxWidth: 190,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 9,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF2F3F5),
+                                  borderRadius: BorderRadius.circular(7),
+                                ),
+                                child: Text(
+                                  file.filename,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Color(0xFF646A73),
+                                    fontSize: 11.5,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               for (final artifact in artifacts) ...[
@@ -1875,6 +1960,210 @@ class _AssistantReplyCard extends StatelessWidget {
       ],
     );
   }
+}
+
+class _AssistantResponseBody extends StatelessWidget {
+  const _AssistantResponseBody({required this.response});
+
+  final String response;
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = _parseAssistantResponse(response);
+    return Column(
+      key: const Key('assistant-response-body'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var index = 0; index < lines.length; index++) ...[
+          if (index > 0) SizedBox(height: _assistantResponseGap(lines[index])),
+          _AssistantResponseLineView(line: lines[index]),
+        ],
+      ],
+    );
+  }
+}
+
+enum _AssistantResponseLineKind {
+  paragraph,
+  heading,
+  bullet,
+  numbered,
+  unchecked,
+  checked,
+  spacer,
+}
+
+class _AssistantResponseLine {
+  const _AssistantResponseLine(this.kind, this.text, {this.marker});
+
+  final _AssistantResponseLineKind kind;
+  final String text;
+  final String? marker;
+}
+
+List<_AssistantResponseLine> _parseAssistantResponse(String response) {
+  final parsed = <_AssistantResponseLine>[];
+  final heading = RegExp(r'^\s*#{1,6}\s+(.+?)\s*$');
+  final checkbox = RegExp(r'^\s*(?:[-*]\s+)?\[([ xX])\]\s+(.+?)\s*$');
+  final bullet = RegExp(r'^\s*[-*•]\s+(.+?)\s*$');
+  final numbered = RegExp(r'^\s*(\d+[.)])\s+(.+?)\s*$');
+
+  for (final raw in response.replaceAll('\r\n', '\n').split('\n')) {
+    final line = raw.trimRight();
+    if (line.trim().isEmpty) {
+      if (parsed.isNotEmpty &&
+          parsed.last.kind != _AssistantResponseLineKind.spacer) {
+        parsed.add(
+          const _AssistantResponseLine(_AssistantResponseLineKind.spacer, ''),
+        );
+      }
+      continue;
+    }
+    final headingMatch = heading.firstMatch(line);
+    if (headingMatch != null) {
+      parsed.add(
+        _AssistantResponseLine(
+          _AssistantResponseLineKind.heading,
+          headingMatch.group(1)!,
+        ),
+      );
+      continue;
+    }
+    final checkboxMatch = checkbox.firstMatch(line);
+    if (checkboxMatch != null) {
+      parsed.add(
+        _AssistantResponseLine(
+          checkboxMatch.group(1)!.trim().isEmpty
+              ? _AssistantResponseLineKind.unchecked
+              : _AssistantResponseLineKind.checked,
+          checkboxMatch.group(2)!,
+        ),
+      );
+      continue;
+    }
+    final bulletMatch = bullet.firstMatch(line);
+    if (bulletMatch != null) {
+      parsed.add(
+        _AssistantResponseLine(
+          _AssistantResponseLineKind.bullet,
+          bulletMatch.group(1)!,
+        ),
+      );
+      continue;
+    }
+    final numberedMatch = numbered.firstMatch(line);
+    if (numberedMatch != null) {
+      parsed.add(
+        _AssistantResponseLine(
+          _AssistantResponseLineKind.numbered,
+          numberedMatch.group(2)!,
+          marker: numberedMatch.group(1),
+        ),
+      );
+      continue;
+    }
+    parsed.add(
+      _AssistantResponseLine(_AssistantResponseLineKind.paragraph, line.trim()),
+    );
+  }
+  while (parsed.isNotEmpty &&
+      parsed.last.kind == _AssistantResponseLineKind.spacer) {
+    parsed.removeLast();
+  }
+  return parsed;
+}
+
+double _assistantResponseGap(_AssistantResponseLine line) =>
+    switch (line.kind) {
+      _AssistantResponseLineKind.heading => 14,
+      _AssistantResponseLineKind.spacer => 0,
+      _ => 8,
+    };
+
+class _AssistantResponseLineView extends StatelessWidget {
+  const _AssistantResponseLineView({required this.line});
+
+  final _AssistantResponseLine line;
+
+  @override
+  Widget build(BuildContext context) => switch (line.kind) {
+    _AssistantResponseLineKind.heading => Text(
+      line.text,
+      style: const TextStyle(
+        color: Color(0xFF1F2329),
+        fontSize: 18,
+        height: 1.35,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+    _AssistantResponseLineKind.bullet => _AssistantResponseListLine(
+      marker: const Text(
+        '•',
+        style: TextStyle(color: Color(0xFF1F2329), fontSize: 18, height: 1.35),
+      ),
+      text: line.text,
+    ),
+    _AssistantResponseLineKind.numbered => _AssistantResponseListLine(
+      marker: Text(
+        line.marker!,
+        style: const TextStyle(
+          color: Color(0xFF646A73),
+          fontSize: 14,
+          height: 1.5,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      text: line.text,
+    ),
+    _AssistantResponseLineKind.unchecked ||
+    _AssistantResponseLineKind.checked => _AssistantResponseListLine(
+      marker: Icon(
+        line.kind == _AssistantResponseLineKind.checked
+            ? Icons.check_circle_rounded
+            : Icons.circle_outlined,
+        color: line.kind == _AssistantResponseLineKind.checked
+            ? const Color(0xFF3370FF)
+            : const Color(0xFF8F959E),
+        size: 20,
+      ),
+      text: line.text,
+    ),
+    _AssistantResponseLineKind.spacer => const SizedBox(height: 3),
+    _AssistantResponseLineKind.paragraph => Text(
+      line.text,
+      style: const TextStyle(
+        color: Color(0xFF1F2329),
+        fontSize: 15,
+        height: 1.5,
+      ),
+    ),
+  };
+}
+
+class _AssistantResponseListLine extends StatelessWidget {
+  const _AssistantResponseListLine({required this.marker, required this.text});
+
+  final Widget marker;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      SizedBox(width: 26, child: Center(child: marker)),
+      const SizedBox(width: 2),
+      Expanded(
+        child: Text(
+          text,
+          style: const TextStyle(
+            color: Color(0xFF1F2329),
+            fontSize: 14.5,
+            height: 1.5,
+          ),
+        ),
+      ),
+    ],
+  );
 }
 
 class _AssistantArtifactCard extends StatelessWidget {

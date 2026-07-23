@@ -308,7 +308,7 @@ void main() {
     expect(conversation.files.single.filename, '真实资料.pdf');
     expect(conversation.files.single.bytes, [0x25, 0x50, 0x44, 0x46]);
     expect(find.text('已读取真实文件'), findsOneWidget);
-    expect(find.text('真实资料.pdf'), findsOneWidget);
+    expect(find.text('真实资料.pdf'), findsNWidgets(2));
   });
 
   testWidgets('renders approved compact file cards by real Office type', (
@@ -353,6 +353,67 @@ void main() {
     expect(find.text('产品需求文档.docx'), findsNothing);
     expect(find.text('预算明细.xlsx'), findsOneWidget);
   });
+
+  testWidgets(
+    'renders approved real file analysis result inside the conversation',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(430, 932));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final conversation = _OfficeAnalysisConversationSource();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AssistantPage(
+            settings: _FakeAssistantSettings(),
+            conversation: conversation,
+            fileSource: _OfficeFileSource(),
+            onDestinationSelected: (_) {},
+            onOpenHistory: () {},
+            onNewConversation: () {},
+            onOpenMore: () {},
+            onAddAttachment: () {},
+            onVoiceInput: () {},
+            onSubmit: (_) async {},
+            onMessage: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('assistant-add')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('assistant-add-file')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('assistant-input')),
+        '总结重点并整理待办',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('assistant-primary-action')));
+      await tester.pumpAndSettle();
+
+      expect(conversation.files, hasLength(2));
+      expect(find.byKey(const Key('assistant-input-files')), findsNothing);
+      expect(find.byKey(const Key('assistant-sent-file-0')), findsOneWidget);
+      expect(find.byKey(const Key('assistant-sent-file-1')), findsOneWidget);
+      expect(find.text('W'), findsOneWidget);
+      expect(find.text('X'), findsOneWidget);
+      expect(find.text('总结重点并整理待办'), findsOneWidget);
+      expect(find.byKey(const Key('assistant-response-card')), findsOneWidget);
+      expect(find.text('已读取 2 个文件。'), findsOneWidget);
+      expect(find.text('重点'), findsOneWidget);
+      expect(find.text('本月预算合计 12 万元'), findsOneWidget);
+      expect(find.text('待办'), findsOneWidget);
+      expect(find.text('确认首期功能范围'), findsOneWidget);
+      expect(
+        find.byKey(const Key('assistant-response-sources')),
+        findsOneWidget,
+      );
+      expect(find.text('产品需求文档.docx'), findsNWidgets(2));
+      expect(find.text('预算明细.xlsx'), findsNWidgets(2));
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 class _FakeAssistantSettings implements AssistantSettingsSource {
@@ -510,6 +571,40 @@ class _OfficeFileSource implements AssistantInputFileSource {
       bytes: Uint8List.fromList(const [0x50, 0x4b, 0x03, 0x04]),
     ),
   ];
+}
+
+class _OfficeAnalysisConversationSource implements AssistantConversationSource {
+  List<AssistantInputFile> files = const [];
+
+  @override
+  void cancelAssistantMessage() {}
+
+  @override
+  Future<AssistantConversationReply> sendAssistantMessage({
+    required String input,
+    required AssistantMode mode,
+    required ApprovalDelegate approvals,
+    List<AssistantInputFile> files = const [],
+  }) async {
+    this.files = files;
+    return const AssistantConversationReply(
+      text: '''
+已读取 2 个文件。
+
+## 重点
+- 产品目标聚焦团队日程协作
+- 首期需要完成邀请、提醒与同步
+- 本月预算合计 12 万元
+
+## 待办
+- [ ] 确认首期功能范围
+- [ ] 补充邀请流程验收标准
+- [ ] 核对预算负责人和截止时间''',
+    );
+  }
+
+  @override
+  void startNewAssistantConversation() {}
 }
 
 class _FileConversationSource implements AssistantConversationSource {
