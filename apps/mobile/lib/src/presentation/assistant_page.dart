@@ -510,20 +510,7 @@ class _AssistantPageState extends State<AssistantPage> {
                   ),
                   Expanded(
                     child: _turns.isEmpty
-                        ? const Align(
-                            alignment: Alignment(0, -0.05),
-                            child: Text(
-                              '有什么可以帮忙的？',
-                              key: Key('assistant-greeting'),
-                              style: TextStyle(
-                                color: Color(0xFF1F2329),
-                                fontSize: 25,
-                                height: 1.25,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: -0.3,
-                              ),
-                            ),
-                          )
+                        ? const _AssistantEmptyState()
                         : _AssistantConversation(
                             turns: _turns,
                             onSave: _saveImage,
@@ -613,6 +600,38 @@ class _AssistantPageState extends State<AssistantPage> {
           ),
         ],
       ),
+    ),
+  );
+}
+
+class _AssistantEmptyState extends StatelessWidget {
+  const _AssistantEmptyState();
+
+  @override
+  Widget build(BuildContext context) => const Align(
+    alignment: Alignment(0, -0.05),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          Icons.auto_awesome_rounded,
+          key: Key('assistant-greeting-icon'),
+          color: Color(0xFF3370FF),
+          size: 31,
+        ),
+        SizedBox(height: 17),
+        Text(
+          '有什么可以帮忙的？',
+          key: Key('assistant-greeting'),
+          style: TextStyle(
+            color: Color(0xFF1F2329),
+            fontSize: 25,
+            height: 1.25,
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.3,
+          ),
+        ),
+      ],
     ),
   );
 }
@@ -1072,77 +1091,130 @@ class _AssistantInputFilesBar extends StatelessWidget {
   final ValueChanged<AssistantInputFile> onRemove;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    key: const Key('assistant-input-files'),
-    height: 58,
-    child: ListView.separated(
-      scrollDirection: Axis.horizontal,
-      itemCount: files.length,
-      separatorBuilder: (_, _) => const SizedBox(width: 8),
-      itemBuilder: (context, index) {
-        final file = files[index];
-        return Container(
-          key: Key('assistant-input-file-$index'),
-          constraints: const BoxConstraints(maxWidth: 245),
-          padding: const EdgeInsets.fromLTRB(12, 8, 5, 8),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border.all(color: const Color(0xFFE1E4E8)),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.insert_drive_file_rounded,
-                size: 22,
-                color: Color(0xFF3370FF),
-              ),
-              const SizedBox(width: 9),
-              Flexible(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final itemWidth = files.length == 1
+          ? constraints.maxWidth.clamp(0, 245).toDouble()
+          : ((constraints.maxWidth - 8) / 2).clamp(172, 205).toDouble();
+      return SizedBox(
+        key: const Key('assistant-input-files'),
+        height: 62,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: files.length,
+          separatorBuilder: (_, _) => const SizedBox(width: 8),
+          itemBuilder: (context, index) {
+            final file = files[index];
+            return SizedBox(
+              width: itemWidth,
+              child: Container(
+                key: Key('assistant-input-file-$index'),
+                padding: const EdgeInsets.fromLTRB(10, 8, 4, 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: const Color(0xFFE1E4E8)),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
                   children: [
-                    Text(
-                      file.filename,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF1F2329),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
+                    _AssistantInputFileBadge(
+                      key: Key('assistant-input-file-kind-$index'),
+                      file: file,
+                    ),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            file.filename,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Color(0xFF1F2329),
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            formatArtifactBytes(file.bytes.length),
+                            style: const TextStyle(
+                              color: Color(0xFF8F959E),
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      formatArtifactBytes(file.bytes.length),
-                      style: const TextStyle(
-                        color: Color(0xFF8F959E),
-                        fontSize: 11,
+                    IconButton(
+                      key: Key('assistant-input-file-remove-$index'),
+                      onPressed: enabled ? () => onRemove(file) : null,
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints.tightFor(
+                        width: 29,
+                        height: 36,
                       ),
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                      color: const Color(0xFF646A73),
                     ),
                   ],
                 ),
               ),
-              IconButton(
-                key: Key('assistant-input-file-remove-$index'),
-                onPressed: enabled ? () => onRemove(file) : null,
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints.tightFor(
-                  width: 31,
-                  height: 36,
-                ),
-                icon: const Icon(Icons.close_rounded, size: 17),
-                color: const Color(0xFF646A73),
-              ),
-            ],
-          ),
-        );
-      },
-    ),
+            );
+          },
+        ),
+      );
+    },
   );
+}
+
+class _AssistantInputFileBadge extends StatelessWidget {
+  const _AssistantInputFileBadge({super.key, required this.file});
+
+  final AssistantInputFile file;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = switch (file.contentType) {
+      final type
+          when type.contains('wordprocessingml') ||
+              type == 'application/msword' =>
+        ('W', const Color(0xFF3370FF)),
+      final type
+          when type.contains('spreadsheetml') ||
+              type == 'application/vnd.ms-excel' ||
+              type == 'text/csv' ||
+              type == 'text/tsv' =>
+        ('X', const Color(0xFF12A150)),
+      final type
+          when type.contains('presentationml') ||
+              type == 'application/vnd.ms-powerpoint' =>
+        ('P', const Color(0xFFF07B3F)),
+      'application/pdf' => ('PDF', const Color(0xFFE5484D)),
+      _ => ('<>', const Color(0xFF646A73)),
+    };
+    return Container(
+      width: 36,
+      height: 42,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        label,
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: label.length > 1 ? 10 : 18,
+          fontWeight: FontWeight.w700,
+          letterSpacing: label.length > 1 ? -0.4 : 0,
+        ),
+      ),
+    );
+  }
 }
 
 class _Composer extends StatelessWidget {

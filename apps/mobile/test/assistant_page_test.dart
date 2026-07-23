@@ -310,6 +310,49 @@ void main() {
     expect(find.text('已读取真实文件'), findsOneWidget);
     expect(find.text('真实资料.pdf'), findsOneWidget);
   });
+
+  testWidgets('renders approved compact file cards by real Office type', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(430, 932));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AssistantPage(
+          settings: _FakeAssistantSettings(),
+          fileSource: _OfficeFileSource(),
+          onDestinationSelected: (_) {},
+          onOpenHistory: () {},
+          onNewConversation: () {},
+          onOpenMore: () {},
+          onAddAttachment: () {},
+          onVoiceInput: () {},
+          onSubmit: (_) async {},
+          onMessage: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('assistant-greeting-icon')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('assistant-add')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('assistant-add-file')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('产品需求文档.docx'), findsOneWidget);
+    expect(find.text('预算明细.xlsx'), findsOneWidget);
+    expect(find.text('W'), findsOneWidget);
+    expect(find.text('X'), findsOneWidget);
+    expect(find.byKey(const Key('assistant-input-file-0')), findsOneWidget);
+    expect(find.byKey(const Key('assistant-input-file-1')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('assistant-input-file-remove-0')));
+    await tester.pump();
+    expect(find.text('产品需求文档.docx'), findsNothing);
+    expect(find.text('预算明细.xlsx'), findsOneWidget);
+  });
 }
 
 class _FakeAssistantSettings implements AssistantSettingsSource {
@@ -447,6 +490,24 @@ class _FakeFileSource implements AssistantInputFileSource {
       filename: '真实资料.pdf',
       contentType: 'application/pdf',
       bytes: Uint8List.fromList(const [0x25, 0x50, 0x44, 0x46]),
+    ),
+  ];
+}
+
+class _OfficeFileSource implements AssistantInputFileSource {
+  @override
+  Future<List<AssistantInputFile>> pickFiles() async => [
+    AssistantInputFile(
+      filename: '产品需求文档.docx',
+      contentType:
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      bytes: Uint8List.fromList(const [0x50, 0x4b, 0x03, 0x04]),
+    ),
+    AssistantInputFile(
+      filename: '预算明细.xlsx',
+      contentType:
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      bytes: Uint8List.fromList(const [0x50, 0x4b, 0x03, 0x04]),
     ),
   ];
 }
