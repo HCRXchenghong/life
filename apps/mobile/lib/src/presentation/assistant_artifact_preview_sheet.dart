@@ -29,101 +29,104 @@ class AssistantArtifactPreviewSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final height = MediaQuery.sizeOf(context).height * 0.86;
-    return Container(
-      key: const Key('assistant-artifact-preview-sheet'),
-      height: height,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          const SizedBox(height: 10),
-          Container(
-            width: 34,
-            height: 4,
-            decoration: BoxDecoration(
-              color: const Color(0xFFD7DAE0),
-              borderRadius: BorderRadius.circular(2),
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        key: const Key('assistant-artifact-preview-sheet'),
+        height: height,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            const SizedBox(height: 10),
+            Container(
+              width: 34,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFFD7DAE0),
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 17, 12),
-            child: Row(
-              children: [
-                Material(
-                  color: Colors.white,
-                  shape: const CircleBorder(
-                    side: BorderSide(color: Color(0xFFE1E4E8)),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: InkWell(
-                    key: const Key('artifact-preview-close'),
-                    customBorder: const CircleBorder(),
-                    onTap: () => Navigator.maybePop(context),
-                    child: const SizedBox.square(
-                      dimension: 44,
-                      child: Icon(
-                        Icons.close_rounded,
-                        size: 25,
-                        color: Color(0xFF1F2329),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 17, 12),
+              child: Row(
+                children: [
+                  Material(
+                    color: Colors.white,
+                    shape: const CircleBorder(
+                      side: BorderSide(color: Color(0xFFE1E4E8)),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      key: const Key('artifact-preview-close'),
+                      customBorder: const CircleBorder(),
+                      onTap: () => Navigator.maybePop(context),
+                      child: const SizedBox.square(
+                        dimension: 44,
+                        child: Icon(
+                          Icons.close_rounded,
+                          size: 25,
+                          color: Color(0xFF1F2329),
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        artifact.displayName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Color(0xFF1F2329),
-                          fontSize: 17,
-                          fontWeight: FontWeight.w600,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          artifact.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Color(0xFF1F2329),
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        '${artifact.kind.label} · '
-                        '${formatArtifactBytes(artifact.byteSize)}',
-                        style: const TextStyle(
-                          color: Color(0xFF8F959E),
-                          fontSize: 12,
+                        const SizedBox(height: 3),
+                        Text(
+                          '${artifact.kind.label} · '
+                          '${formatArtifactBytes(artifact.byteSize)}',
+                          style: const TextStyle(
+                            color: Color(0xFF8F959E),
+                            fontSize: 12,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                TextButton.icon(
-                  key: const Key('artifact-preview-download'),
-                  onPressed: onDownload,
-                  style: TextButton.styleFrom(
-                    foregroundColor: const Color(0xFF1F2329),
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  TextButton.icon(
+                    key: const Key('artifact-preview-download'),
+                    onPressed: onDownload,
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFF1F2329),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    icon: const Icon(Icons.download_rounded, size: 22),
+                    label: const Text('下载', style: TextStyle(fontSize: 14)),
                   ),
-                  icon: const Icon(Icons.download_rounded, size: 22),
-                  label: const Text('下载', style: TextStyle(fontSize: 14)),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Container(
-              margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF7F8FA),
-                borderRadius: BorderRadius.circular(18),
+                ],
               ),
-              clipBehavior: Clip.antiAlias,
-              child: _ArtifactPreviewBody(preview: artifact.preview),
             ),
-          ),
-        ],
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF7F8FA),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: _ArtifactPreviewBody(preview: artifact.preview),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -232,21 +235,49 @@ class _SpreadsheetPreviewState extends State<_SpreadsheetPreview> {
     return Column(
       key: const Key('artifact-spreadsheet-preview'),
       children: [
-        if (sheets.length > 1)
-          SizedBox(
-            height: 48,
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              scrollDirection: Axis.horizontal,
-              itemCount: sheets.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
-              itemBuilder: (_, index) => ChoiceChip(
-                label: Text(sheets[index].name),
-                selected: index == _selectedSheet,
-                onSelected: (_) => setState(() => _selectedSheet = index),
-              ),
-            ),
+        SizedBox(
+          height: 58,
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            scrollDirection: Axis.horizontal,
+            itemCount: sheets.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 30),
+            itemBuilder: (_, index) {
+              final selected = index == _selectedSheet;
+              return InkWell(
+                key: Key('artifact-spreadsheet-sheet-$index'),
+                onTap: () => setState(() => _selectedSheet = index),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      sheets[index].name,
+                      style: TextStyle(
+                        color: selected
+                            ? const Color(0xFF3370FF)
+                            : const Color(0xFF1F2329),
+                        fontSize: 15,
+                        fontWeight: selected
+                            ? FontWeight.w600
+                            : FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      width: selected ? 30 : 0,
+                      height: 2.5,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3370FF),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
+        ),
         Expanded(
           child: columnCount == 0
               ? const Center(
@@ -256,55 +287,138 @@ class _SpreadsheetPreviewState extends State<_SpreadsheetPreview> {
                   ),
                 )
               : SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Table(
-                      defaultColumnWidth: const FixedColumnWidth(132),
-                      border: TableBorder.all(color: const Color(0xFFDDE1E6)),
-                      children: [
-                        for (
-                          var rowIndex = 0;
-                          rowIndex < selected.rows.length;
-                          rowIndex++
-                        )
-                          TableRow(
-                            decoration: BoxDecoration(
-                              color: rowIndex == 0
-                                  ? const Color(0xFFF0F4FF)
-                                  : Colors.white,
-                            ),
-                            children: [
-                              for (
-                                var columnIndex = 0;
-                                columnIndex < columnCount;
-                                columnIndex++
-                              )
-                                Padding(
-                                  padding: const EdgeInsets.all(10),
-                                  child: Text(
-                                    columnIndex < selected.rows[rowIndex].length
-                                        ? selected.rows[rowIndex][columnIndex]
-                                        : '',
-                                    style: TextStyle(
-                                      color: const Color(0xFF333740),
-                                      fontSize: 13,
-                                      fontWeight: rowIndex == 0
-                                          ? FontWeight.w600
-                                          : FontWeight.w400,
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                      ],
-                    ),
+                  padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
+                  child: _SpreadsheetTableCard(
+                    rows: selected.rows,
+                    columnCount: columnCount,
                   ),
                 ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 22),
+          child: Column(
+            children: [
+              Text(
+                '工作表 ${_selectedSheet + 1} / ${sheets.length}',
+                style: const TextStyle(color: Color(0xFF4E5969), fontSize: 13),
+              ),
+              const SizedBox(height: 10),
+              _PreviewPageDots(
+                page: _selectedSheet,
+                pageCount: sheets.length,
+                semanticLabel: '工作表位置',
+              ),
+            ],
+          ),
         ),
       ],
     );
   }
+}
+
+class _SpreadsheetTableCard extends StatelessWidget {
+  const _SpreadsheetTableCard({required this.rows, required this.columnCount});
+
+  final List<List<String>> rows;
+  final int columnCount;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const Key('artifact-spreadsheet-table-card'),
+    padding: const EdgeInsets.all(13),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      border: Border.all(color: const Color(0xFFE1E4E8)),
+      borderRadius: BorderRadius.circular(10),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x0A000000),
+          blurRadius: 12,
+          offset: Offset(0, 3),
+        ),
+      ],
+    ),
+    child: SingleChildScrollView(
+      key: const Key('artifact-spreadsheet-horizontal-scroll'),
+      scrollDirection: Axis.horizontal,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(7),
+        child: Table(
+          defaultColumnWidth: const FixedColumnWidth(108),
+          border: TableBorder.all(color: const Color(0xFFDDE1E6)),
+          children: [
+            for (var rowIndex = 0; rowIndex < rows.length; rowIndex++)
+              _spreadsheetRow(
+                row: rows[rowIndex],
+                rowIndex: rowIndex,
+                columnCount: columnCount,
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+TableRow _spreadsheetRow({
+  required List<String> row,
+  required int rowIndex,
+  required int columnCount,
+}) {
+  final isHeader = rowIndex == 0;
+  final isSummary = _isSpreadsheetSummaryRow(row);
+  return TableRow(
+    decoration: BoxDecoration(
+      color: isHeader
+          ? const Color(0xFFF0F4FF)
+          : isSummary
+          ? const Color(0xFFFAFBFC)
+          : Colors.white,
+    ),
+    children: [
+      for (var columnIndex = 0; columnIndex < columnCount; columnIndex++)
+        SizedBox(
+          height: isHeader ? 54 : 58,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
+              child: Text(
+                columnIndex < row.length ? row[columnIndex] : '',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: _spreadsheetCellColor(
+                    columnIndex < row.length ? row[columnIndex] : '',
+                    isHeader: isHeader,
+                  ),
+                  fontSize: 12.5,
+                  height: 1.2,
+                  fontWeight: isHeader || isSummary
+                      ? FontWeight.w600
+                      : FontWeight.w400,
+                ),
+              ),
+            ),
+          ),
+        ),
+    ],
+  );
+}
+
+bool _isSpreadsheetSummaryRow(List<String> row) {
+  if (row.isEmpty) return false;
+  return const {'合计', '总计', '汇总', '小计'}.contains(row.first.trim());
+}
+
+Color _spreadsheetCellColor(String value, {required bool isHeader}) {
+  if (isHeader) return const Color(0xFF1F2329);
+  return switch (value.trim()) {
+    '正常' || '完成' || '已完成' || '通过' => const Color(0xFF12A150),
+    '超出' || '异常' || '风险' || '逾期' => const Color(0xFFE65C19),
+    '进行中' => const Color(0xFF3370FF),
+    _ => const Color(0xFF333740),
+  };
 }
 
 class _PresentationPreview extends StatefulWidget {
@@ -364,7 +478,11 @@ class _PresentationPreviewState extends State<_PresentationPreview> {
                 style: const TextStyle(color: Color(0xFF4E5969), fontSize: 13),
               ),
               const SizedBox(height: 10),
-              _PresentationPageDots(page: _page, pageCount: slides.length),
+              _PreviewPageDots(
+                page: _page,
+                pageCount: slides.length,
+                semanticLabel: '左右滑动切换页面',
+              ),
             ],
           ),
         ),
@@ -535,11 +653,16 @@ class _PresentationBulletRow extends StatelessWidget {
   }
 }
 
-class _PresentationPageDots extends StatelessWidget {
-  const _PresentationPageDots({required this.page, required this.pageCount});
+class _PreviewPageDots extends StatelessWidget {
+  const _PreviewPageDots({
+    required this.page,
+    required this.pageCount,
+    required this.semanticLabel,
+  });
 
   final int page;
   final int pageCount;
+  final String semanticLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -548,7 +671,7 @@ class _PresentationPageDots extends StatelessWidget {
         ? page
         : (page * dotCount ~/ pageCount).clamp(0, dotCount - 1);
     return Semantics(
-      label: '左右滑动切换页面',
+      label: semanticLabel,
       child: Row(
         key: const Key('artifact-presentation-page-dots'),
         mainAxisSize: MainAxisSize.min,

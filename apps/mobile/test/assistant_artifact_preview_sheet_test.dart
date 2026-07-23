@@ -47,8 +47,24 @@ void main() {
                 AssistantSpreadsheetSheet(
                   name: '预算',
                   rows: [
-                    ['项目', '金额'],
-                    ['交通', '120'],
+                    ['项目', '预算', '实际', '状态'],
+                    ['交通', '¥1,200', '¥980', '正常'],
+                    ['住宿', '¥2,000', '¥2,180', '超出'],
+                    ['合计', '¥3,200', '¥3,160', ''],
+                  ],
+                ),
+                AssistantSpreadsheetSheet(
+                  name: '明细',
+                  rows: [
+                    ['日期', '项目'],
+                    ['7 月 24 日', '交通'],
+                  ],
+                ),
+                AssistantSpreadsheetSheet(
+                  name: '说明',
+                  rows: [
+                    ['说明'],
+                    ['金额为含税价格'],
                   ],
                 ),
               ],
@@ -64,7 +80,25 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('项目'), findsOneWidget);
-    expect(find.text('120'), findsOneWidget);
+    expect(find.text('¥1,200'), findsOneWidget);
+    expect(find.text('正常'), findsOneWidget);
+    expect(find.text('超出'), findsOneWidget);
+    expect(find.text('合计'), findsOneWidget);
+    expect(find.text('工作表 1 / 3'), findsOneWidget);
+    expect(
+      find.byKey(const Key('artifact-spreadsheet-horizontal-scroll')),
+      findsOneWidget,
+    );
+
+    final normal = tester.widget<Text>(find.text('正常'));
+    final overBudget = tester.widget<Text>(find.text('超出'));
+    expect(normal.style?.color, const Color(0xFF12A150));
+    expect(overBudget.style?.color, const Color(0xFFE65C19));
+
+    await tester.tap(find.byKey(const Key('artifact-spreadsheet-sheet-1')));
+    await tester.pumpAndSettle();
+    expect(find.text('工作表 2 / 3'), findsOneWidget);
+    expect(find.text('7 月 24 日'), findsOneWidget);
   });
 
   testWidgets('previews generated presentation slides', (tester) async {
@@ -108,11 +142,7 @@ void main() {
       findsOneWidget,
     );
 
-    await tester.fling(
-      find.byType(PageView),
-      const Offset(-430, 0),
-      1000,
-    );
+    await tester.fling(find.byType(PageView), const Offset(-430, 0), 1000);
     await tester.pumpAndSettle();
     expect(find.text('2 / 5'), findsOneWidget);
     expect(find.text('下一步计划'), findsOneWidget);
