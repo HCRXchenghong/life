@@ -11,7 +11,7 @@ import '../domain/ai/assistant_artifact_models.dart';
 import '../domain/ai/assistant_image_models.dart';
 import '../domain/ai/tool_protocol.dart';
 import 'app_navigation.dart';
-import 'assistant_artifact_preview_page.dart';
+import 'assistant_artifact_preview_sheet.dart';
 
 class AssistantPage extends StatefulWidget {
   const AssistantPage({
@@ -410,10 +410,10 @@ class _AssistantPageState extends State<AssistantPage> {
   }
 
   Future<void> _previewArtifact(AssistantGeneratedArtifact artifact) =>
-      Navigator.of(context).push<void>(
-        MaterialPageRoute<void>(
-          builder: (_) => AssistantArtifactPreviewPage(artifact: artifact),
-        ),
+      showAssistantArtifactPreviewSheet(
+        context: context,
+        artifact: artifact,
+        onDownload: () => _downloadArtifact(context, artifact),
       );
 
   Future<void> _downloadArtifact(

@@ -1,59 +1,132 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../domain/ai/assistant_artifact_models.dart';
 
-class AssistantArtifactPreviewPage extends StatelessWidget {
-  const AssistantArtifactPreviewPage({super.key, required this.artifact});
+Future<void> showAssistantArtifactPreviewSheet({
+  required BuildContext context,
+  required AssistantGeneratedArtifact artifact,
+  required VoidCallback onDownload,
+}) => showModalBottomSheet<void>(
+  context: context,
+  useSafeArea: true,
+  isScrollControlled: true,
+  backgroundColor: Colors.transparent,
+  barrierColor: const Color(0x99000000),
+  builder: (_) =>
+      AssistantArtifactPreviewSheet(artifact: artifact, onDownload: onDownload),
+);
+
+class AssistantArtifactPreviewSheet extends StatelessWidget {
+  const AssistantArtifactPreviewSheet({
+    super.key,
+    required this.artifact,
+    required this.onDownload,
+  });
 
   final AssistantGeneratedArtifact artifact;
+  final VoidCallback onDownload;
 
   @override
-  Widget build(BuildContext context) => AnnotatedRegion<SystemUiOverlayStyle>(
-    value: SystemUiOverlayStyle.dark,
-    child: Scaffold(
-      backgroundColor: const Color(0xFFF7F8FA),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFF7F8FA),
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          key: const Key('artifact-preview-close'),
-          tooltip: '关闭预览',
-          onPressed: () => Navigator.maybePop(context),
-          icon: const Icon(Icons.close_rounded),
-        ),
-        titleSpacing: 4,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              artifact.displayName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Color(0xFF1F2329),
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            Text(
-              '${artifact.kind.label} · ${formatArtifactBytes(artifact.byteSize)}',
-              style: const TextStyle(
-                color: Color(0xFF8F959E),
-                fontSize: 11,
-                fontWeight: FontWeight.w400,
-              ),
-            ),
-          ],
-        ),
+  Widget build(BuildContext context) {
+    final height = MediaQuery.sizeOf(context).height * 0.86;
+    return Container(
+      key: const Key('assistant-artifact-preview-sheet'),
+      height: height,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
-      body: SafeArea(
-        top: false,
-        child: _ArtifactPreviewBody(preview: artifact.preview),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          const SizedBox(height: 10),
+          Container(
+            width: 34,
+            height: 4,
+            decoration: BoxDecoration(
+              color: const Color(0xFFD7DAE0),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 17, 12),
+            child: Row(
+              children: [
+                Material(
+                  color: Colors.white,
+                  shape: const CircleBorder(
+                    side: BorderSide(color: Color(0xFFE1E4E8)),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    key: const Key('artifact-preview-close'),
+                    customBorder: const CircleBorder(),
+                    onTap: () => Navigator.maybePop(context),
+                    child: const SizedBox.square(
+                      dimension: 44,
+                      child: Icon(
+                        Icons.close_rounded,
+                        size: 25,
+                        color: Color(0xFF1F2329),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        artifact.displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF1F2329),
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '${artifact.kind.label} · '
+                        '${formatArtifactBytes(artifact.byteSize)}',
+                        style: const TextStyle(
+                          color: Color(0xFF8F959E),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton.icon(
+                  key: const Key('artifact-preview-download'),
+                  onPressed: onDownload,
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF1F2329),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  icon: const Icon(Icons.download_rounded, size: 22),
+                  label: const Text('下载', style: TextStyle(fontSize: 14)),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF7F8FA),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: _ArtifactPreviewBody(preview: artifact.preview),
+            ),
+          ),
+        ],
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _ArtifactPreviewBody extends StatelessWidget {
@@ -125,6 +198,12 @@ class _DocumentPreview extends StatelessWidget {
             ],
           ],
         ),
+      ),
+      const SizedBox(height: 18),
+      const Text(
+        '1 / 1',
+        textAlign: TextAlign.center,
+        style: TextStyle(color: Color(0xFF646A73), fontSize: 13),
       ),
     ],
   );

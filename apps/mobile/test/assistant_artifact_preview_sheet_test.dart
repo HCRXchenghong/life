@@ -1,5 +1,5 @@
 import 'package:daylink_mobile/src/domain/ai/assistant_artifact_models.dart';
-import 'package:daylink_mobile/src/presentation/assistant_artifact_preview_page.dart';
+import 'package:daylink_mobile/src/presentation/assistant_artifact_preview_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -7,9 +7,10 @@ void main() {
   testWidgets('previews generated Word content without opening a Work editor', (
     tester,
   ) async {
+    var downloads = 0;
     await tester.pumpWidget(
       MaterialApp(
-        home: AssistantArtifactPreviewPage(
+        home: AssistantArtifactPreviewSheet(
           artifact: _artifact(
             kind: AssistantArtifactKind.document,
             preview: const AssistantDocumentPreview(
@@ -17,20 +18,27 @@ void main() {
               paragraphs: ['本周完成了文件卡片', '下周继续完善助手'],
             ),
           ),
+          onDownload: () => downloads++,
         ),
       ),
     );
 
+    expect(
+      find.byKey(const Key('assistant-artifact-preview-sheet')),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('artifact-document-preview')), findsOneWidget);
     expect(find.text('项目周报'), findsOneWidget);
     expect(find.text('本周完成了文件卡片'), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
+    await tester.tap(find.byKey(const Key('artifact-preview-download')));
+    expect(downloads, 1);
   });
 
   testWidgets('previews generated spreadsheet cells', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: AssistantArtifactPreviewPage(
+        home: AssistantArtifactPreviewSheet(
           artifact: _artifact(
             kind: AssistantArtifactKind.spreadsheet,
             preview: const AssistantSpreadsheetPreview(
@@ -46,6 +54,7 @@ void main() {
               ],
             ),
           ),
+          onDownload: () {},
         ),
       ),
     );
@@ -61,7 +70,7 @@ void main() {
   testWidgets('previews generated presentation slides', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: AssistantArtifactPreviewPage(
+        home: AssistantArtifactPreviewSheet(
           artifact: _artifact(
             kind: AssistantArtifactKind.presentation,
             preview: const AssistantPresentationPreview(
@@ -74,6 +83,7 @@ void main() {
               ],
             ),
           ),
+          onDownload: () {},
         ),
       ),
     );

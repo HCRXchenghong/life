@@ -243,6 +243,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(
+        find.byKey(const Key('assistant-artifact-preview-sheet')),
+        findsOneWidget,
+      );
+      expect(
         find.byKey(const Key('artifact-document-preview')),
         findsOneWidget,
       );
