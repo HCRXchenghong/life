@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -8,6 +9,7 @@ import 'package:daylink_mobile/src/application/assistant_file_picker.dart';
 import 'package:daylink_mobile/src/application/assistant_image_actions.dart';
 import 'package:daylink_mobile/src/application/assistant_image_picker.dart';
 import 'package:daylink_mobile/src/application/assistant_settings.dart';
+import 'package:daylink_mobile/src/application/assistant_speech_input.dart';
 import 'package:daylink_mobile/src/domain/ai/ai_models.dart';
 import 'package:daylink_mobile/src/domain/ai/assistant_artifact_models.dart';
 import 'package:daylink_mobile/src/domain/ai/assistant_image_models.dart';
@@ -73,12 +75,15 @@ void main() {
     final submitted = <String>[];
     final actions = <String>[];
     final destinations = <AppDestination>[];
+    final speech = _FakeSpeechInputSource();
+    addTearDown(speech.dispose);
 
     await tester.pumpWidget(
       MaterialApp(
         home: AssistantPage(
           settings: settings,
           imageSource: _FakeInputImageSource(),
+          speechSource: speech,
           onDestinationSelected: destinations.add,
           onOpenHistory: () => actions.add('history'),
           onNewConversation: () => actions.add('new'),
@@ -129,7 +134,21 @@ void main() {
     await tester.tap(find.byKey(const Key('assistant-add-image')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('assistant-microphone')));
-    expect(actions, ['history', 'new', 'voice']);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('assistant-speech-panel')), findsOneWidget);
+    expect(find.text('周六下午和朋友出去'), findsOneWidget);
+    expect(find.byKey(const Key('assistant-speech-waveform')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('assistant-speech-finish')));
+    await tester.pumpAndSettle();
+    expect(speech.stopCount, 1);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('assistant-input')))
+          .controller
+          ?.text,
+      '周六下午和朋友出去',
+    );
+    expect(actions, ['history', 'new']);
 
     await tester.enterText(
       find.byKey(const Key('assistant-input')),
@@ -382,6 +401,50 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('cancels speech input without writing its transcript', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(430, 932));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final speech = _FakeSpeechInputSource();
+    addTearDown(speech.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AssistantPage(
+          settings: _FakeAssistantSettings(),
+          speechSource: speech,
+          onDestinationSelected: (_) {},
+          onOpenHistory: () {},
+          onNewConversation: () {},
+          onOpenMore: () {},
+          onAddAttachment: () {},
+          onVoiceInput: () {},
+          onSubmit: (_) async {},
+          onMessage: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('assistant-microphone')));
+    await tester.pumpAndSettle();
+    expect(find.text('周六下午和朋友出去'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('assistant-speech-cancel')));
+    await tester.pumpAndSettle();
+    expect(speech.cancelCount, 1);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('assistant-input')))
+          .controller
+          ?.text,
+      isEmpty,
+    );
+    expect(find.byKey(const Key('assistant-speech-panel')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('renders approved compact file cards by real Office type', (
     tester,
@@ -859,6 +922,41 @@ class _FakeInputImageSource implements AssistantInputImageSource {
       ),
     ];
   }
+}
+
+class _FakeSpeechInputSource implements AssistantSpeechInputSource {
+  final _updates = StreamController<AssistantSpeechUpdate>.broadcast();
+  var startCount = 0;
+  var stopCount = 0;
+  var cancelCount = 0;
+
+  @override
+  Stream<AssistantSpeechUpdate> get updates => _updates.stream;
+
+  @override
+  Future<void> start({String locale = 'zh-CN'}) async {
+    startCount++;
+    _updates.add(
+      const AssistantSpeechUpdate(
+        transcript: '周六下午和朋友出去',
+        level: 0.72,
+        isFinal: false,
+      ),
+    );
+  }
+
+  @override
+  Future<void> stop() async {
+    stopCount++;
+  }
+
+  @override
+  Future<void> cancel() async {
+    cancelCount++;
+  }
+
+  @override
+  Future<void> dispose() => _updates.close();
 }
 
 class _OfficeFileSource implements AssistantInputFileSource {

@@ -10,6 +10,7 @@ import '../application/assistant_file_picker.dart';
 import '../application/assistant_image_actions.dart';
 import '../application/assistant_image_picker.dart';
 import '../application/assistant_settings.dart';
+import '../application/assistant_speech_input.dart';
 import '../data/ai_gateway_client.dart';
 import '../domain/ai/ai_models.dart';
 import '../domain/ai/assistant_artifact_models.dart';
@@ -41,6 +42,7 @@ class AssistantPage extends StatefulWidget {
     this.conversationExports = const AssistantConversationExportActions(),
     this.fileSource = const DeviceAssistantInputFileSource(),
     this.imageSource = const DeviceAssistantInputImageSource(),
+    this.speechSource,
     this.accountName = 'Daylink',
   });
 
@@ -61,6 +63,7 @@ class AssistantPage extends StatefulWidget {
   final AssistantConversationExportSource conversationExports;
   final AssistantInputFileSource fileSource;
   final AssistantInputImageSource imageSource;
+  final AssistantSpeechInputSource? speechSource;
   final String accountName;
 
   @override
@@ -88,12 +91,21 @@ class _AssistantPageState extends State<AssistantPage> {
   final List<_AssistantConversationTurn> _turns = [];
   final Map<String, List<_AssistantConversationTurn>> _turnsByConversation = {};
   String? _activeConversationId;
+  late AssistantSpeechInputSource _speechSource;
+  late bool _ownsSpeechSource;
+  StreamSubscription<AssistantSpeechUpdate>? _speechSubscription;
+  var _speechListening = false;
+  var _speechStarting = false;
+  var _speechTranscript = '';
+  var _speechLevel = 0.0;
+  var _speechEpoch = 0;
 
   @override
   void initState() {
     super.initState();
     _inputController.addListener(_refreshInput);
     _activeConversationId = widget.history?.activeAssistantConversationId;
+    _bindSpeechSource();
     _loadPreferences();
   }
 
@@ -104,10 +116,129 @@ class _AssistantPageState extends State<AssistantPage> {
     if (!identical(oldWidget.history, widget.history)) {
       _activeConversationId = widget.history?.activeAssistantConversationId;
     }
+    if (!identical(oldWidget.speechSource, widget.speechSource)) {
+      unawaited(_replaceSpeechSource());
+    }
+  }
+
+  void _bindSpeechSource() {
+    _ownsSpeechSource = widget.speechSource == null;
+    _speechSource = widget.speechSource ?? NativeAssistantSpeechInputSource();
+    _speechSubscription = _speechSource.updates.listen(
+      _handleSpeechUpdate,
+      onError: _handleSpeechError,
+    );
+  }
+
+  Future<void> _replaceSpeechSource() async {
+    _speechEpoch++;
+    if (_speechListening || _speechStarting) {
+      await _speechSource.cancel();
+    }
+    await _speechSubscription?.cancel();
+    if (_ownsSpeechSource) await _speechSource.dispose();
+    if (!mounted) return;
+    setState(() {
+      _speechListening = false;
+      _speechStarting = false;
+      _speechTranscript = '';
+      _speechLevel = 0;
+    });
+    _bindSpeechSource();
   }
 
   void _refreshInput() {
     if (mounted) setState(() {});
+  }
+
+  void _handleSpeechUpdate(AssistantSpeechUpdate update) {
+    if (!mounted || !_speechListening) return;
+    setState(() {
+      _speechTranscript = update.transcript;
+      _speechLevel = update.level;
+    });
+  }
+
+  void _handleSpeechError(Object error) {
+    if (!mounted || !_speechListening) return;
+    final message = error is AssistantSpeechException
+        ? error.message
+        : '语音识别失败，请重试';
+    setState(() {
+      _speechListening = false;
+      _speechStarting = false;
+      _speechLevel = 0;
+    });
+    widget.onMessage(message);
+  }
+
+  Future<void> _startSpeechInput() async {
+    if (_submitting || _speechListening || _speechStarting) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    final request = ++_speechEpoch;
+    setState(() {
+      _speechListening = true;
+      _speechStarting = true;
+      _speechTranscript = '';
+      _speechLevel = 0.08;
+    });
+    try {
+      await _speechSource.start();
+      if (!mounted || request != _speechEpoch) return;
+      setState(() => _speechStarting = false);
+    } on AssistantSpeechException catch (error) {
+      if (!mounted || request != _speechEpoch) return;
+      setState(() {
+        _speechListening = false;
+        _speechStarting = false;
+        _speechLevel = 0;
+      });
+      widget.onMessage(error.message);
+    } on Object {
+      if (!mounted || request != _speechEpoch) return;
+      setState(() {
+        _speechListening = false;
+        _speechStarting = false;
+        _speechLevel = 0;
+      });
+      widget.onMessage('语音识别失败，请重试');
+    }
+  }
+
+  Future<void> _finishSpeechInput() async {
+    if (!_speechListening && !_speechStarting) return;
+    final transcript = _speechTranscript.trim();
+    _speechEpoch++;
+    setState(() {
+      _speechListening = false;
+      _speechStarting = false;
+      _speechLevel = 0;
+    });
+    await _speechSource.stop();
+    if (!mounted) return;
+    if (transcript.isEmpty) {
+      widget.onMessage('没有识别到清晰的语音');
+      return;
+    }
+    final current = _inputController.text.trim();
+    _inputController.text = current.isEmpty
+        ? transcript
+        : '$current $transcript';
+    _inputController.selection = TextSelection.collapsed(
+      offset: _inputController.text.length,
+    );
+  }
+
+  Future<void> _cancelSpeechInput() async {
+    if (!_speechListening && !_speechStarting) return;
+    _speechEpoch++;
+    setState(() {
+      _speechListening = false;
+      _speechStarting = false;
+      _speechTranscript = '';
+      _speechLevel = 0;
+    });
+    await _speechSource.cancel();
   }
 
   Future<void> _loadPreferences() async {
@@ -732,6 +863,9 @@ class _AssistantPageState extends State<AssistantPage> {
   }
 
   void _startNewConversation() {
+    if (_speechListening || _speechStarting) {
+      unawaited(_cancelSpeechInput());
+    }
     _cacheActiveConversationTurns();
     widget.conversation?.startNewAssistantConversation();
     setState(() {
@@ -745,6 +879,15 @@ class _AssistantPageState extends State<AssistantPage> {
 
   @override
   void dispose() {
+    _speechEpoch++;
+    if (_speechListening || _speechStarting) {
+      unawaited(_speechSource.cancel());
+    }
+    final speechSubscription = _speechSubscription;
+    if (speechSubscription != null) {
+      unawaited(speechSubscription.cancel());
+    }
+    if (_ownsSpeechSource) unawaited(_speechSource.dispose());
     if (_submitting && _imageMode) {
       widget.images?.cancelAssistantImageGeneration();
     } else if (_submitting) {
@@ -782,11 +925,16 @@ class _AssistantPageState extends State<AssistantPage> {
                   ),
                   Expanded(
                     child: _turns.isEmpty
-                        ? _AssistantEmptyState(
-                            hasImageAttachments: _inputFiles.any(
-                              (file) => file.isImage,
-                            ),
-                          )
+                        ? _speechListening
+                              ? _AssistantSpeechEmptyState(
+                                  transcript: _speechTranscript,
+                                  starting: _speechStarting,
+                                )
+                              : _AssistantEmptyState(
+                                  hasImageAttachments: _inputFiles.any(
+                                    (file) => file.isImage,
+                                  ),
+                                )
                         : _AssistantConversation(
                             turns: _turns,
                             onSave: _saveImage,
@@ -868,19 +1016,30 @@ class _AssistantPageState extends State<AssistantPage> {
                       ),
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(22, 0, 22, 34),
-                    child: _Composer(
-                      controller: _inputController,
-                      submitting: _submitting,
-                      imageMode: _imageMode,
-                      hasAttachments: _inputFiles.isNotEmpty,
-                      onAddAttachment: _showAddTools,
-                      onVoiceInput: widget.onVoiceInput,
-                      onSubmit: _submit,
-                      onCancel: _cancelGeneration,
+                  if (_speechListening)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(22, 0, 22, 24),
+                      child: _AssistantSpeechPanel(
+                        starting: _speechStarting,
+                        level: _speechLevel,
+                        onCancel: _cancelSpeechInput,
+                        onFinish: _finishSpeechInput,
+                      ),
+                    )
+                  else
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(22, 0, 22, 34),
+                      child: _Composer(
+                        controller: _inputController,
+                        submitting: _submitting,
+                        imageMode: _imageMode,
+                        hasAttachments: _inputFiles.isNotEmpty,
+                        onAddAttachment: _showAddTools,
+                        onVoiceInput: _startSpeechInput,
+                        onSubmit: _submit,
+                        onCancel: _cancelGeneration,
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -938,6 +1097,220 @@ class _AssistantEmptyState extends StatelessWidget {
           ),
         ],
       ],
+    ),
+  );
+}
+
+class _AssistantSpeechEmptyState extends StatelessWidget {
+  const _AssistantSpeechEmptyState({
+    required this.transcript,
+    required this.starting,
+  });
+
+  final String transcript;
+  final bool starting;
+
+  @override
+  Widget build(BuildContext context) => Align(
+    alignment: const Alignment(0, -0.05),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Icon(
+          Icons.auto_awesome_rounded,
+          color: Color(0xFF3370FF),
+          size: 31,
+        ),
+        const SizedBox(height: 17),
+        Text(
+          starting ? '正在准备…' : '正在聆听…',
+          key: const Key('assistant-speech-heading'),
+          style: const TextStyle(
+            color: Color(0xFF1F2329),
+            fontSize: 25,
+            height: 1.25,
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.3,
+          ),
+        ),
+        const SizedBox(height: 13),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 300),
+          child: Text(
+            transcript.isEmpty ? '请开始说话' : transcript,
+            key: const Key('assistant-speech-transcript'),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Color(0xFF8F959E),
+              fontSize: 14,
+              height: 1.35,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _AssistantSpeechPanel extends StatelessWidget {
+  const _AssistantSpeechPanel({
+    required this.starting,
+    required this.level,
+    required this.onCancel,
+    required this.onFinish,
+  });
+
+  final bool starting;
+  final double level;
+  final VoidCallback onCancel;
+  final VoidCallback onFinish;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const Key('assistant-speech-panel'),
+    height: 208,
+    padding: const EdgeInsets.fromLTRB(20, 22, 20, 17),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      border: Border.all(color: const Color(0xFFE1E4E8)),
+      borderRadius: BorderRadius.circular(28),
+    ),
+    child: Column(
+      children: [
+        Text(
+          starting ? '正在准备' : '语音输入',
+          style: const TextStyle(
+            color: Color(0xFF1F2329),
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const Spacer(),
+        _AssistantSpeechWaveform(level: level),
+        const Spacer(),
+        Row(
+          children: [
+            _AssistantSpeechAction(
+              key: const Key('assistant-speech-cancel'),
+              icon: Icons.close_rounded,
+              foreground: const Color(0xFF1F2329),
+              background: Colors.white,
+              border: const Color(0xFFE1E4E8),
+              onTap: onCancel,
+            ),
+            const Expanded(
+              child: Text(
+                '说完后点击完成',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Color(0xFF8F959E),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ),
+            _AssistantSpeechAction(
+              key: const Key('assistant-speech-finish'),
+              icon: Icons.check_rounded,
+              foreground: Colors.white,
+              background: const Color(0xFF3370FF),
+              border: const Color(0xFF3370FF),
+              onTap: onFinish,
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+
+class _AssistantSpeechWaveform extends StatelessWidget {
+  const _AssistantSpeechWaveform({required this.level});
+
+  final double level;
+
+  static const _shape = <double>[
+    7,
+    10,
+    17,
+    25,
+    22,
+    28,
+    42,
+    21,
+    14,
+    26,
+    17,
+    20,
+    27,
+    34,
+    20,
+    25,
+    19,
+    13,
+    8,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final intensity = 0.5 + level.clamp(0, 1) * 0.5;
+    return SizedBox(
+      key: const Key('assistant-speech-waveform'),
+      height: 48,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          for (final height in _shape)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2.5),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 90),
+                curve: Curves.easeOut,
+                width: 4,
+                height: (height * intensity).clamp(6, 44),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3370FF),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AssistantSpeechAction extends StatelessWidget {
+  const _AssistantSpeechAction({
+    super.key,
+    required this.icon,
+    required this.foreground,
+    required this.background,
+    required this.border,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color foreground;
+  final Color background;
+  final Color border;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: background,
+    shape: CircleBorder(side: BorderSide(color: border)),
+    child: InkWell(
+      customBorder: const CircleBorder(),
+      onTap: onTap,
+      child: SizedBox.square(
+        dimension: 48,
+        child: Icon(icon, color: foreground, size: 26),
+      ),
     ),
   );
 }
